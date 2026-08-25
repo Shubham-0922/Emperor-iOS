@@ -48,6 +48,18 @@ The reference copy is **source only** — no `node_modules`, no `Data/`, no `chr
 **Always `grep` for an importer before treating a component as specification.** The live chat
 surface is `src/tools/ToolWorkspace.jsx`, rendering through `src/tools/renderers/Markdown.jsx`.
 
+## Repository
+
+Jithro is its own repository, independent of the platform. Origin is a bare repo on the
+server at `/srv/git/Jithro.git`, matching the convention `EmperorAI.git` uses.
+
+```bash
+git clone root@<server>:/srv/git/Jithro.git jithro-ios
+```
+
+Push back with `git push`. The platform lives in a separate repo and must never be committed
+here — the `emperor-ai/` copy beside this one is read-only reference.
+
 ## Working on Linux (the normal case)
 
 Development happens on Linux; a Mac is used only for what genuinely cannot be done without
