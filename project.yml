@@ -1,0 +1,53 @@
+# Xcode project definition, consumed by XcodeGen.
+#
+#   brew install xcodegen && xcodegen generate && open Jithro.xcodeproj
+#
+# The project file is generated rather than committed so that adding a source file is an
+# edit to this spec instead of a merge conflict in a 3,000-line pbxproj.
+name: Jithro
+options:
+  bundleIdPrefix: com.emperorailabs
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # The core library is written for Swift 6 concurrency; the SwiftUI layer is @MainActor
+    # throughout. Keep this strict so data races surface at compile time rather than as
+    # intermittent streaming glitches.
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: "" # set this to your Apple Developer team id before archiving
+
+targets:
+  Jithro:
+    type: application
+    platform: iOS
+    sources:
+      # The pure-logic core, shared verbatim with the SPM package so `swift test` on any
+      # machine exercises exactly the code the app ships.
+      - path: Sources/JithroCore
+      - path: Jithro
+    info:
+      path: Jithro/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Jithro
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Required: the app opens the camera to scan paperbooks. Without a purpose string
+        # iOS terminates the app the moment the scanner is presented.
+        NSCameraUsageDescription: >
+          Jithro uses the camera to scan paperbooks, orders and pleadings into your
+          document library.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.emperorailabs.jithro
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2" # iPhone and iPad
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
