@@ -1,31 +1,35 @@
 # Prompt: build the Android client
 
 Written to be pasted into a **fresh Claude Code session** started in
-`/home/dennis/Documents/Jithro_iOS/`, on your local Linux machine. It assumes no prior
+`/home/dennis/Documents/Jithro_Android/`, on your local Linux machine. It assumes no prior
 context. Everything between the rules is the prompt.
 
-Before pasting, check the two sibling directories exist:
+Before pasting, check the layout is in place:
 
 ```bash
-cd /home/dennis/Documents/Jithro_iOS && ls
-# expect: emperor-ai  jithro-ios
+ls /home/dennis/Documents/
+# expect: emperor-ai  Jithro_Android  Jithro_iOS
 ```
 
 ---
 
 Build **Jithro for Android** — a native Kotlin client for the Juristar legal-AI platform.
 
-You are starting fresh with no prior context. Everything you need is in this directory. Work
-in a new sibling folder `jithro-android/` with its own git repository. Do **not** modify
-`jithro-ios/` or `emperor-ai/`.
+You are starting fresh with no prior context. Work **in the current directory**,
+`/home/dennis/Documents/Jithro_Android/`, and initialise a git repository here.
+
+Two sibling directories are your references. **Never modify either:**
+
+- `../emperor-ai/` — the platform source
+- `../Jithro_iOS/` — the finished iOS client for the same backend
 
 ## Your environment
 
 - **Local Linux machine.** Unlike the iOS client, Android builds and tests entirely here —
   there is no other machine in the loop. Verify continuously rather than deferring.
-- **The backend is not running locally.** `emperor-ai/` is a read-only source snapshot with no
-  `node_modules`, no database, no `.git`. Do not try to start it. Verify claims by **reading
-  the source**, not by calling a server.
+- **The backend is not running locally.** `../emperor-ai/` is a read-only source snapshot with
+  no `node_modules`, no database, no `.git`. Do not try to start it. Verify claims by
+  **reading the source**, not by calling a server.
 - The live API is `https://dev.emperorailabs.com/api`. You may need it eventually, but note the
   warning under *Authentication* before you touch it.
 - You may need to install a JDK (17+) and the Android SDK command-line tools. Check first and
@@ -33,23 +37,23 @@ in a new sibling folder `jithro-android/` with its own git repository. Do **not*
 
 ## What is already here
 
-- **`emperor-ai/`** — the platform source. This is the backend the app talks to. Its wire
+- **`../emperor-ai/`** — the platform source. This is the backend the app talks to. Its wire
   format is hand-rolled and largely undocumented, so this is the ground truth.
-- **`jithro-ios/`** — a finished, tested iOS client for the same backend, with 95 passing
+- **`../Jithro_iOS/`** — a finished, tested iOS client for the same backend, with 95 passing
   tests that encode the backend's real behaviour, including a dozen edge cases that were
   expensive to find. A reference implementation, not something to translate line by line.
 
 Read these first, in order:
 
-1. `jithro-ios/CLAUDE.md` — which platform files matter, which are dead code
-2. `jithro-ios/README.md` — the backend contracts that fail silently
-3. `jithro-ios/ROADMAP.md` — what the platform actually is, what is broken in it, and why v1
-   is scoped the way it is
-4. `jithro-ios/Sources/JithroCore/` and its tests — the behaviour, stated precisely
+1. `../Jithro_iOS/CLAUDE.md` — which platform files matter, which are dead code
+2. `../Jithro_iOS/README.md` — the backend contracts that fail silently
+3. `../Jithro_iOS/ROADMAP.md` — what the platform actually is, what is broken in it, and why
+   v1 is scoped the way it is
+4. `../Jithro_iOS/Sources/JithroCore/` and its tests — the behaviour, stated precisely
 
 ## Ground rules
 
-**Read the platform source rather than guessing.** Every real bug in the iOS client was found
+**Read `../emperor-ai/` rather than guessing.** Every real bug in the iOS client was found
 that way.
 
 **Grep for an importer before treating any platform component as specification.** These are
@@ -68,7 +72,7 @@ than citing, say so.
 Mirror the split that made the iOS client testable without a device:
 
 ```
-jithro-android/
+Jithro_Android/          ← you are here
   core/     ← pure Kotlin/JVM. No Android imports. Plain JUnit tests.
   app/      ← Jetpack Compose UI and Android APIs only.
 ```
@@ -82,7 +86,7 @@ EncryptedSharedPreferences or the Android Keystore for the token.
 
 ## Backend contracts that fail silently
 
-Each cost the iOS client a real bug. Verify each against `emperor-ai/` as you implement it.
+Each cost the iOS client a real bug. Verify each against `../emperor-ai/` as you implement it.
 
 1. **The chat stream is not SSE.** `POST /chat` returns chunked `text/plain` with pseudo-XML
    control tags interleaved into the prose. No framing, no `data:` prefixes, **no terminator**
@@ -179,7 +183,7 @@ subscriptions, and the product currently takes no in-app money — keep it that 
 1. `./gradlew test` passes, with the core covering the fourteen contracts above. The iOS
    client has 95 tests; treat that as the bar, not a ceiling.
 2. `./gradlew assembleDebug` produces an installable APK.
-3. A `CLAUDE.md` in `jithro-android/` mirroring the iOS one: where the reference is, what is
+3. A `CLAUDE.md` here mirroring `../Jithro_iOS/CLAUDE.md`: where the reference is, what is
    dead code, the contracts, and any Android-specific traps you hit.
 4. A README covering the module split and how to build.
 5. Git history with meaningful commits, in a repository of its own.
