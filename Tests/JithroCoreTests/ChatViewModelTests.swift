@@ -13,6 +13,7 @@ private final class FakeChat: ChatProviding, @unchecked Sendable {
     var sentHistory: [ChatMessage] = []
     var sentModel: ChatModel?
     var sentRole: ChatRole?
+    var sentWebSearch: Bool?
 
     func messages(chatID: String) async throws -> [ChatMessage] {
         if let messagesError { throw messagesError }
@@ -28,6 +29,7 @@ private final class FakeChat: ChatProviding, @unchecked Sendable {
         sentHistory = history
         sentModel = model
         sentRole = role
+        sentWebSearch = webSearch
         if let sendError { throw sendError }
         let queued = events
         return AsyncThrowingStream { continuation in
@@ -59,6 +61,41 @@ private func settle(_ model: ChatViewModel) async {
 /// The class is deliberately **not** `@MainActor`: Linux XCTest cannot cast a `@MainActor`
 /// test method and aborts the entire run. Each test hops through `withModel`, which is
 /// isolated, so the view model is still exercised on the main actor.
+final class ChatWebSearchTests: XCTestCase {
+
+    /// Off by default. The platform's own default is no explicit search mode, and asking for
+    /// one on every turn would slow ordinary questions down for nothing.
+    func testWebSearchIsOffByDefault() async {
+        await withModel { fake, model in
+            model.send("What is the limitation period?")
+            await settle(model)
+            XCTAssertEqual(fake.sentWebSearch, false)
+        }
+    }
+
+    func testTurningItOnAsksForASearch() async {
+        await withModel { fake, model in
+            model.webSearch = true
+            model.send("What did the Court hold last week?")
+            await settle(model)
+            XCTAssertEqual(fake.sentWebSearch, true)
+        }
+    }
+
+    /// The preference is per-conversation and persists across turns — a matter that needs
+    /// current law needs it for every question, not the first one.
+    func testThePreferenceSurvivesTheTurn() async {
+        await withModel { fake, model in
+            model.webSearch = true
+            model.send("First")
+            await settle(model)
+            model.send("Second")
+            await settle(model)
+            XCTAssertEqual(fake.sentWebSearch, true)
+        }
+    }
+}
+
 final class ChatViewModelTests: XCTestCase {
 
     // MARK: - Loading
@@ -186,7 +223,11 @@ final class ChatViewModelTests: XCTestCase {
 
     /// The server refuses a second run on a chat already generating and answers 200 with an
     /// explanation. That explanation is not an answer and must stay out of the transcript.
-    func testBusyRefusalStaysOutOfTheTranscript() async {
+    ///
+    /// The refusal happens **before** anything is stored (`sync-server.js:7256-7276`), so the
+    /// optimistic user bubble is a turn that exists nowhere. Leaving it made the typed question
+    /// disappear on the next load with no trace; it is handed back to the composer instead.
+    func testBusyRefusalGivesTheQuestionBackRatherThanLosingIt() async {
         await withModel { fake, model in
             fake.events = [.busy("Your draft for this chat is still being generated.")]
             model.send("Another question")
@@ -194,9 +235,34 @@ final class ChatViewModelTests: XCTestCase {
 
             XCTAssertNotNil(model.busyNotice)
             XCTAssertNil(model.live)
-            // The user's own turn stays; no assistant turn is fabricated from the refusal.
-            XCTAssertEqual(model.messages.count, 1)
-            XCTAssertEqual(model.messages.first?.role, .user)
+            XCTAssertTrue(
+                model.messages.isEmpty,
+                "nothing was stored server-side, so nothing belongs in the transcript")
+            XCTAssertEqual(
+                model.restoredDraft, "Another question",
+                "and the user's typing is not thrown away")
+        }
+    }
+
+    /// Stopping mid-poll must not append the answer twice. A poll already in flight when
+    /// `stop()` ran used to resurrect `live` and finish a second time — and since history is
+    /// posted back verbatim, the duplicate was then persisted server-side.
+    func testStoppingDuringAnInFlightPollDoesNotDoubleAppend() async {
+        await withModel { fake, model in
+            fake.status = StreamStatus(
+                active: true, done: false, incomplete: false, isTyping: true,
+                step: "unknown", contentLength: 8, content: "The draft")
+            await model.load()
+            XCTAssertTrue(model.isStreaming)
+
+            model.stop()
+            await settle(model)
+            let afterStop = model.messages.count
+
+            // Give any late poll a chance to land.
+            try? await Task.sleep(for: .milliseconds(60))
+
+            XCTAssertEqual(model.messages.count, afterStop, "the turn is appended once")
         }
     }
 
@@ -256,6 +322,36 @@ final class ChatViewModelTests: XCTestCase {
 
             XCTAssertFalse(model.wasInterrupted)
             XCTAssertNil(model.busyNotice)
+        }
+    }
+
+    /// The server reports a token-truncated draft as complete, because `/chat`'s `onDone`
+    /// (sync-server.js:7797) discards the provider's `status:'length'` verdict. The shape of
+    /// the answer is the only remaining evidence, so the view model must act on it.
+    func testADraftStrandedMidDocumentIsFlaggedDespiteACleanServerVerdict() async {
+        await withModel { fake, model in
+            fake.status = StreamStatus(active: false, done: true, incomplete: false)
+            fake.events = [.content(StreamContent.parse(
+                "[CANVAS_TRIGGER: Written Submissions]\n<canvas_content><p>IN THE HIGH COURT"))]
+            model.send("Draft written submissions")
+            await settle(model)
+
+            XCTAssertTrue(
+                model.wasInterrupted,
+                "an unclosed document block means truncated, whatever /stream-status says")
+        }
+    }
+
+    /// The converse: a complete artifact with a clean verdict must not be flagged.
+    func testACompleteDraftIsNotFlagged() async {
+        await withModel { fake, model in
+            fake.status = StreamStatus(active: false, done: true, incomplete: false)
+            fake.events = [.content(StreamContent.parse(
+                "[CANVAS_TRIGGER: Draft]\n<canvas_content><p>Complete.</p></canvas_content>"))]
+            model.send("Draft it")
+            await settle(model)
+
+            XCTAssertFalse(model.wasInterrupted)
         }
     }
 }

@@ -86,6 +86,56 @@ final class ChatStreamParserTests: XCTestCase {
         XCTAssertEqual(parser.raw, "short")
     }
 
+    /// The offset indexes the server's **content-only** string.
+    ///
+    /// `fullContent` is appended to only by content deltas (`OpenRouterProvider.js:642,646`) and
+    /// never by the `<think>` blocks written alongside them (`:616`). Our buffer keeps those
+    /// blocks for the reasoning panel, so it is longer — and slicing it at N directly cuts too
+    /// early and eats real answer text. Fires only on a reasoning model, which is exactly why
+    /// it survived the first round of tests.
+    /// Reasoning is flushed at sentence boundaries as it arrives, so it precedes the content of
+    /// the round that produced it. A rollback therefore takes that round's reasoning with it,
+    /// and must leave every earlier round's reasoning standing.
+    ///
+    /// Counted naively, `raw` here is 26 units longer than the string the server measured, so
+    /// slicing at 11 directly would cut inside the first reasoning block and destroy prose.
+    func testTruncateIgnoresReasoningWhenCountingTheOffset() {
+        let parser = ChatStreamParser()
+        _ = feed(parser, [
+            "<think>First pass.</think>",
+            "Good start.",                                  // server content 0..11
+            "<think>Reconsidering.</think>",                // round 2 begins at content 11
+            "BAD ATTEMPT<truncate:11/>",                    // round 2 failed — roll back to 11
+            "Real answer.",
+        ])
+        XCTAssertEqual(
+            parser.raw,
+            "<think>First pass.</think>Good start.Real answer.",
+            "round 1's reasoning survives; round 2's goes with its content")
+    }
+
+    /// Several surviving reasoning blocks accumulate several rounds of drift, so the
+    /// translation has to walk them all rather than adjusting once.
+    func testTruncateAccountsForEveryReasoningBlock() {
+        let parser = ChatStreamParser()
+        _ = feed(parser, [
+            "<think>a</think>", "One.",          // content 0..4
+            "<think>bb</think>", "Two.",         // content 4..8
+            "<think>ccc</think>",                // round 3 begins at content 8
+            "junk<truncate:8/>",
+            "Three.",
+        ])
+        XCTAssertEqual(parser.raw, "<think>a</think>One.<think>bb</think>Two.Three.")
+    }
+
+    /// A rollback landing inside the prose *before* any reasoning must be unaffected by the
+    /// translation — the mapping has to be identity until the first `<think>`.
+    func testTruncateBeforeAnyReasoningIsUnchanged() {
+        let parser = ChatStreamParser()
+        _ = feed(parser, ["Keep.Drop<think>x</think><truncate:5/>", "Next."])
+        XCTAssertEqual(parser.raw, "Keep.Next.")
+    }
+
     // MARK: - Busy refusal
 
     /// A second send on a chat that is still generating is answered 200, with the refusal
@@ -137,5 +187,30 @@ final class ChatStreamParserTests: XCTestCase {
         }
         events += parser.finish()
         XCTAssertEqual(parser.raw, text)
+    }
+
+    /// **Content that arrives in the same chunk as the marker is the retry's real answer.**
+    /// Discarding to end-of-buffer deletes it. The server sleeps before retrying, which makes
+    /// the coalesced case rare rather than impossible — a proxy or the OS can still merge them,
+    /// and the web client loses the text when that happens (`streamManager.js:294-296`).
+    func testContentArrivingWithTheMarkerSurvivesTheRollback() {
+        let parser = ChatStreamParser()
+        _ = feed(parser, ["Good start.", "BAD ATTEMPT<truncate:11/>Real answer."])
+        XCTAssertEqual(parser.raw, "Good start.Real answer.")
+    }
+
+    /// Two rollbacks in one delivered chunk must both apply.
+    func testTwoRollbacksInOneChunkBothApply() {
+        let parser = ChatStreamParser()
+        _ = feed(parser, ["Keep.", "one<truncate:5/>two<truncate:5/>three"])
+        XCTAssertEqual(parser.raw, "Keep.three")
+    }
+
+    /// The rollback offset still reaches the listener, so superseded work can be marked rather
+    /// than silently vanishing.
+    func testARollbackIsStillReported() {
+        let parser = ChatStreamParser()
+        let events = feed(parser, ["Good start.BAD<truncate:11/>Real."])
+        XCTAssertTrue(events.contains { if case .rolledBack = $0 { return true }; return false })
     }
 }

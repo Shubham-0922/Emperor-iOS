@@ -16,10 +16,10 @@ can verify rather than trust.
 
 | | |
 |---|---|
-| Swift files | 22 (11 core, 11 app) |
-| Tests | **95, all passing** |
+| Swift files | 64 (40 core, 24 app) |
+| Tests | **332, all passing** (see `V1_BUILD_PLAN.md`) |
 | Test runtime | ~0.4s |
-| Lines of core logic | ~1,900 |
+| Lines of core logic | ~6,250 |
 | Buildable here | Core only (no iOS SDK on Linux) |
 | Buildable on your Mac | Yes — `xcodegen generate && open Jithro.xcodeproj` |
 
@@ -35,6 +35,8 @@ code and the shipped code are the same bytes. No second copy to drift.
 
 ## 1.2 Core — what each file does
 
+**Wire format and transport**
+
 | File | Purpose |
 |---|---|
 | `ChatStreamParser.swift` | Parses the `/chat` wire format. Two layers, matching the server's own ordering. |
@@ -44,23 +46,43 @@ code and the shipped code are the same bytes. No second copy to drift.
 | `ChatOptions.swift` | `ChatModel` and `ChatRole` enums — the allowed wire values. |
 | `APIModels.swift` | Codable models + `WireDate` (three timestamp encodings). |
 | `APIClient.swift` | HTTP layer. Injects bearer token **and** `userId` on every request. |
-| `AuthService.swift` | Login, register, sign-out. |
-| `ChatService.swift` | Chat history, streaming turns, rejoin, reasoning snapshots. |
-| `UploadService.swift` | Resumable chunked upload + ingestion polling. |
-| `FileService.swift` | Document tree, search, citation resolution, file download. |
 | `JSONValue.swift` | Permissive JSON for the two schemaless payloads. |
 
+**Services.** Each declares the protocol its view model depends on, so every screen can be
+driven without a server.
+
+| File | Purpose |
+|---|---|
+| `AuthService.swift` | Login, register, sign-out. |
+| `ChatService.swift` | Chat history, streaming turns, rejoin, reasoning snapshots. `ChatProviding`, `ChatListProviding`. |
+| `UploadService.swift` | Resumable chunked upload + ingestion polling. `UploadProviding`. |
+| `FileService.swift` | Document tree, search, citation resolution, file download. `FileProviding`. |
+| `CredentialStore.swift` | Where the token is persisted. The Keychain's one seam into the core. |
+
+**View models and presentation.** All `@MainActor`, all tested on Linux.
+
+| File | Purpose |
+|---|---|
+| `Session.swift` | Auth state, session restore, owns the shared `APIClient`. |
+| `ChatViewModel.swift` | Turn state, in-flight recovery, completeness confirmation, citation resolution, scan attachment. |
+| `ChatListViewModel.swift` | Conversation list, loading/empty-state rules. |
+| `FileLibraryViewModel.swift` | Document search, grouping by matter, selection reconciliation. |
+| `SourceDocumentViewModel.swift` | Cited-document fetch, titles, 1-based → 0-based page mapping. |
+| `DisplayText.swift` | Filename un-sanitising and error wording — one copy of each rule. |
+| `ScannedDocument.swift` | The scan bundle, its naming rule, and `ScanError`. |
+| `ArtifactDocument.swift` | The page wrapper a drafted HTML fragment is rendered inside. |
+
 ## 1.3 App layer
+
+What is left needs UIKit, SwiftUI or the Security framework, and nothing else.
 
 | File | Purpose |
 |---|---|
 | `JithroApp.swift` | Entry point, root routing on auth state. |
-| `Session.swift` | `@Observable` auth state, owns the shared `APIClient`. |
-| `Keychain.swift` | Token storage, `WhenUnlockedThisDeviceOnly`, never iCloud. |
+| `Keychain.swift` | The real `CredentialStore`: `WhenUnlockedThisDeviceOnly`, never iCloud. |
 | `LoginView.swift` | Sign in / register. |
 | `ChatListView.swift` | Conversation list. |
 | `ChatThreadView.swift` | Transcript, composer, model/role pickers, citation taps. |
-| `ChatViewModel.swift` | Turn state, in-flight recovery, completeness confirmation. |
 | `ReasoningPanel.swift` | Collapsible plan + work log + reasoning. |
 | `ArtifactView.swift` | Draft/table viewer (hardened `WKWebView`), citation strip. |
 | `FileLibraryView.swift` | Document picker grouped by matter. |

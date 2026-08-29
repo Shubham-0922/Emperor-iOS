@@ -115,4 +115,91 @@ final class StreamContentTests: XCTestCase {
     func testCleanAnswerIsNotFlaggedInterrupted() {
         XCTAssertFalse(StreamContent.parse("A complete answer.").wasInterrupted)
     }
+
+    // MARK: - Truncation detection
+
+    /// A draft stranded inside an unclosed wrapper is the failure the server cannot report:
+    /// `/chat` discards the provider's `status:'length'` verdict (sync-server.js:7797), so this
+    /// arrives with no marker, `incomplete:false`, and a clean end of stream.
+    func testAnUnclosedDocumentBlockIsDetectedAsTruncation() {
+        let content = StreamContent.parse(
+            "[CANVAS_TRIGGER: Written Submissions]\n<canvas_content><p>IN THE HIGH COURT")
+        XCTAssertTrue(content.hasUnclosedDocumentBlock)
+        XCTAssertTrue(content.looksTruncated)
+        XCTAssertFalse(content.wasInterrupted, "no marker was present — this is the inferred case")
+    }
+
+    func testAnUnclosedTableBlockIsAlsoDetected() {
+        let content = StreamContent.parse("<table_content>| A | B |")
+        XCTAssertTrue(content.looksTruncated)
+    }
+
+    /// A complete artifact must not be mistaken for a truncated one.
+    func testAClosedDocumentBlockIsNotTruncated() {
+        let content = StreamContent.parse(
+            "[CANVAS_TRIGGER: Draft]\n<canvas_content><p>Complete.</p></canvas_content>")
+        XCTAssertFalse(content.hasUnclosedDocumentBlock)
+        XCTAssertFalse(content.looksTruncated)
+        XCTAssertEqual(content.artifacts.count, 1)
+    }
+
+    /// Several artifacts in one answer, all closed.
+    func testMultipleClosedBlocksAreNotTruncated() {
+        let content = StreamContent.parse(
+            "<canvas_content>one</canvas_content>Then:<canvas_content>two</canvas_content>")
+        XCTAssertFalse(content.looksTruncated)
+        XCTAssertEqual(content.artifacts.count, 2)
+    }
+
+    /// The closing tag must never be miscounted as an opening one.
+    func testClosingTagIsNotCountedAsAnOpening() {
+        let content = StreamContent.parse("</canvas_content>")
+        XCTAssertFalse(content.hasUnclosedDocumentBlock)
+    }
+
+    /// The explicit marker still works, and still means truncated.
+    func testTheServerMarkerStillReportsTruncation() {
+        let content = StreamContent.parse(
+            "Partial answer.\n\n---\n\u{26A0}\u{FE0F} **This response was interrupted and is incomplete.**")
+        XCTAssertTrue(content.wasInterrupted)
+        XCTAssertTrue(content.looksTruncated)
+    }
+
+    // MARK: - What goes back to the server
+
+    /// **The destructive one.** `POST /chat` replaces the chat's stored messages with exactly
+    /// what it receives (`sync-server.js:4250`), so the assistant turn this client appends is
+    /// what survives — for the web client too. Posting `prose` back would permanently delete
+    /// the drafted document and every citation on the next follow-up question.
+    func testPersistableContentKeepsArtifactsAndCitations() {
+        let answer = """
+            The suit is barred <@Sale_Deed.pdf:P-5:7>.
+
+            [CANVAS_TRIGGER: Written Submissions]
+            <canvas_content><p>IN THE HIGH COURT</p></canvas_content>
+            """
+        let content = StreamContent.parse(answer)
+
+        XCTAssertFalse(
+            content.prose.contains("<@Sale_Deed.pdf:P-5:7>"), "prose is stripped, as intended")
+        XCTAssertTrue(
+            content.persistableContent.contains("<@Sale_Deed.pdf:P-5:7>"),
+            "the citation must survive the round trip")
+        XCTAssertTrue(
+            content.persistableContent.contains("<canvas_content>"),
+            "so must the drafted document")
+        XCTAssertTrue(content.persistableContent.contains("IN THE HIGH COURT"))
+    }
+
+    /// The model's private reasoning must NOT go back — the server's own persisted copy
+    /// (`fullContent`) never contains it, and echoing it would put the model's working into
+    /// the stored history.
+    func testPersistableContentDropsPrivateReasoning() {
+        let content = StreamContent.parse(
+            "<think>Let me reconsider limitation.</think>The suit is barred.")
+
+        XCTAssertFalse(content.persistableContent.contains("<think>"))
+        XCTAssertFalse(content.persistableContent.contains("reconsider limitation"))
+        XCTAssertTrue(content.persistableContent.contains("The suit is barred."))
+    }
 }

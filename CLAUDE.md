@@ -35,7 +35,7 @@ The reference copy is **source only** — no `node_modules`, no `Data/`, no `chr
 | `src/lib/api.js` | The transport layer: `<status>` extraction, chunk holdback |
 | `src/providers/OpenRouterProvider.js` | Model aliases, retries, `<truncate:N/>` |
 | `src/roles/roleConfig.js` | The real role contract (7 UI roles → 3 wire values) |
-| `lib/filing/index.js` | The one module that authenticates properly — copy this pattern |
+| `lib/filing/index.js` | Often cited as the module that authenticates properly. **It does not** — `resolveUserId` (line 92) falls back to the client-supplied id when no token is sent, so omitting the header defeats it. Copy `getUserFromRequest` (`sync-server.js:6162`) instead |
 | `AGENTS.md` | Corrected 2026-08-25; every claim carries a `file:line` |
 
 ### Do not trust these — verified dead code
@@ -68,7 +68,7 @@ as possible into `Sources/JithroCore/`**, which builds and tests here.
 
 ```bash
 sudo apt install swiftlang     # Swift 6.1.3 on Ubuntu; no iOS SDK, but the core builds
-cd jithro-ios && swift test    # 95 tests
+cd jithro-ios && swift test    # 618 tests
 ```
 
 View models live in the core for this reason — turn state, recovery and error handling are
@@ -108,10 +108,23 @@ that makes no sense against the current source, `rm -rf .build` before investiga
 ## How to work on this repo
 
 - **Put logic in `Sources/JithroCore/`.** It is Foundation-only — no UIKit, no SwiftUI — so it
-  compiles and tests anywhere, including Linux and CI. `swift test` runs 95 tests in under a
-  second. Anything that could plausibly live there should.
+  compiles and tests anywhere, including Linux and CI. `swift test` runs 618 tests in a few
+  seconds. Anything that could plausibly live there should.
+- **A view should hold no logic worth testing.** Everything a screen does other than lay itself
+  out — loading, error wording, selection, empty-state rules — belongs in a `@MainActor` view
+  model in the core. Where that needs a service, the service declares a protocol next to itself
+  (`ChatProviding`, `ChatListProviding`, `FileProviding`, `UploadProviding`, `CredentialStore`)
+  and the view model takes the protocol, so the screen can be driven with no server and no
+  device. `Tests/JithroCoreTests/Fakes.swift` holds the stand-ins.
 - **The SwiftUI layer in `Jithro/` needs Xcode.** It was authored on a Linux box with no iOS
-  SDK, so parts of it have never been compiled.
+  SDK, so **none of it has ever been type-checked**. Keeping it thin is the point: what remains
+  there is what genuinely needs UIKit, SwiftUI or the Security framework.
+- **`swiftc -parse $(find Jithro -name '*.swift')` is the standing gate for that layer.** It
+  runs without the iOS SDK and catches every syntax error, and it is in CI. It does **not**
+  type-check — two real compile errors (a `@Sendable` closure capturing a `@Bindable` local, a
+  non-`Sendable` `UserDefaults` in a `Sendable` struct) parsed cleanly and were caught only by
+  reproducing them against `swiftc -swift-version 6 -typecheck`. When you suspect something,
+  build a minimal repro with mock types and compile it; do not reason about it by eye.
 - **The Xcode project is generated**, not committed: `xcodegen generate`. Add files by editing
   `project.yml`.
 - The app target compiles `Sources/JithroCore` directly, so the tested code and the shipped
@@ -128,21 +141,62 @@ Full detail in `README.md`. The short list:
 4. **Filenames are sanitised per UTF-16 code unit** — mapping over Swift `Character`s breaks
    every Devanagari filename.
 5. **`role` must be omitted, never sent empty** — an empty string lands in the system prompt.
-6. **Timestamps arrive in three encodings** on different fields. Use `WireDate`.
+6. **Timestamps arrive in four encodings** on different fields — ISO8601 with milliseconds,
+   zoneless SQLite `CURRENT_TIMESTAMP`, bare `YYYY-MM-DD`, and epoch millis. One `GET /case`
+   response carries three of them at once. Use `WireDate`; a single `dateDecodingStrategy`
+   cannot do it.
 7. **Status codes are unreliable** — `/stream-status` returns 200 for errors. Branch on `error`.
 8. **A 200 on the last upload chunk means "bytes received", not "file ready".** Poll.
+9. **Every court date means a day in India**, not in the device's zone. Bucketing the cause
+   list against `Calendar.current` shows the wrong day's hearings to anyone travelling. Use
+   `WireDate.dayKey` / `WireDate.parseDay`, which are pinned to `Asia/Kolkata`.
+10. **`/cause-list` takes no date range** — it returns every listing for every date. Fetch once,
+    window locally.
+11. **`/enhance-prompt` answers 200 on every failure**, with an empty or half-finished body and
+    no error envelope. Streaming it straight into the composer leaves a truncated half-sentence
+    the user never wrote. Once a chunk has landed the box is *ours*: restore the original.
+12. **The four diary routes answer 200 for everything**, and a *validation* error is caught and
+    reported as "could not reach the court". An incomplete form is therefore indistinguishable
+    from an outage — check completeness client-side, or the user retries forever.
+13. **`favorite-file` tests `favorite !== false`.** A missing key stars the document. Omitting
+    the field is not a read; it is a write in the wrong direction.
+14. **`rename-file` force-preserves the extension** and sanitises the rest. The name the user
+    typed is a request; render the one the response echoes back. Annexure citations match the
+    exact on-disk name.
+15. **`delete-file` and `delete-folder` succeed on a path that is not there.** "It worked" is
+    not evidence the file existed. Refetch rather than patching the local model.
+16. **`/documents` and `/tables` return the same array under both keys** — on `/tables`, the
+    `documents` key holds tables. Key off the path you called, never the key name.
+17. **`POST /save-case` can refuse an unrelated case with "already on the team dashboard".**
+    `ext_id` falls back to `courtCode|caseType|caseNumber|caseYear`, and the diary routes leave
+    all of those empty for NCLAT (always), NCLT and CNR-less SC matters — so they collide on a
+    unique index. A 409 means "already pinned" only if the card has a CNR or a case number.
+18. **`/documents/content` returns `{"success":true,"content":""}` for an id that does not
+    exist**, so "gone" and "empty" are the same response. It also has **no owner predicate**
+    (`SELECT content FROM canvas_documents WHERE id = ?`) — any caller who knows an id reads it.
+    Nothing on that route is an authorisation boundary.
 
 ## Runtime connectivity
 
-The app talks to `https://dev.emperorailabs.com/api` (`APIConfig.production`). That host is
-public — it needs no VPN and no tunnel of your own — so a build running on your Mac or a device
-reaches the live platform straight away.
+The host is chosen by `APIEnvironment`, not hard-coded. Debug builds resolve to
+`dev.emperorailabs.com`; Release resolves to `backend.emperorailabs.com`. A Release build
+**cannot** be made to point at the dev tunnel — `APIConfig.resolveEnvironment` forces production
+regardless of the build setting, and `APIEnvironmentTests` pins that.
+
+Both hosts are public and need no VPN, so a build on your Mac reaches the platform straight
+away.
 
 **It is also unauthenticated.** Anyone who knows a user id can read that user's matters. The
 client already sends both a bearer token and `userId` so it will keep working unchanged once
 the backend is hardened. See `ROADMAP.md` §0.3.
 
-## The two reports
+## The reports
 
-- `ROADMAP.md` — technical status and v1 plan, with citations.
+- `V1_BUILD_PLAN.md` — **start here.** Current iOS status, a verified platform audit, and the
+  step-by-step v1 plan. Written 2026-08-26 from a five-pass source audit of `../emperor-ai/`.
+  Its §C lists five points where it **supersedes `ROADMAP.md`** — most importantly, the
+  authentication picture is worse than recorded there, and `lib/filing/` is *not* a correct
+  auth template.
+- `ROADMAP.md` — the earlier status report. §1 is still the best narrative of what was built
+  and why; treat its Part 3 plan as superseded.
 - `REPORT.md` — the same ground in plain English.

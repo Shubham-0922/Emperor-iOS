@@ -7,6 +7,7 @@ import WebKit
 /// bordered tables of contents. A lawyer needs to see that as it will read on paper, so it is
 /// rendered rather than shown as source.
 struct ArtifactDetailView: View {
+    @Environment(\.theme) private var theme
     let artifact: StreamArtifact
     @Environment(\.dismiss) private var dismiss
 
@@ -17,12 +18,9 @@ struct ArtifactDetailView: View {
                 case .html:
                     DocumentWebView(html: artifact.body)
                 case .markdown:
-                    ScrollView([.horizontal, .vertical]) {
-                        Text(artifact.body)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                            .padding()
-                    }
+                    // Not monospaced source: a chronology is a table, and rendering the pipe
+                    // syntax verbatim is a visibly broken answer.
+                    MarkdownArtifactView(markdown: artifact.body)
                 }
             }
             .navigationTitle(artifact.title)
@@ -41,10 +39,7 @@ struct ArtifactDetailView: View {
     }
 }
 
-/// Renders a model-authored HTML fragment.
-///
-/// The fragment is wrapped in a minimal document that supplies page-like typography; the
-/// model supplies only inline styles and no CSS classes.
+/// Renders a model-authored HTML fragment. The page wrapper is `ArtifactDocument.html`.
 ///
 /// - Important: this content is model-authored and never sanitised upstream — the platform's
 ///   web renderer uses `rehype-raw` with no `rehype-sanitize`. So JavaScript is disabled, and
@@ -73,27 +68,7 @@ private struct DocumentWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {
         guard context.coordinator.lastRendered != html else { return }
         context.coordinator.lastRendered = html
-        view.loadHTMLString(Self.document(wrapping: html), baseURL: nil)
-    }
-
-    private static func document(wrapping fragment: String) -> String {
-        """
-        <!doctype html>
-        <html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          :root { color-scheme: light dark; }
-          body {
-            font: 16px/1.55 -apple-system, "Times New Roman", serif;
-            margin: 20px; word-wrap: break-word;
-          }
-          table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-          th, td { border: 1px solid currentColor; padding: 6px; }
-          /* Wide tables of contents must scroll rather than force the page sideways. */
-          .scroll { overflow-x: auto; }
-        </style>
-        </head><body><div class="scroll">\(fragment)</div></body></html>
-        """
+        view.loadHTMLString(ArtifactDocument.html(wrapping: html), baseURL: nil)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -116,8 +91,15 @@ private struct DocumentWebView: UIViewRepresentable {
 /// This is the platform's central claim — nothing is offered on trust — so citations get
 /// their own affordance rather than being buried in the prose.
 struct CitationStrip: View {
+    @Environment(\.theme) private var theme
     let mentions: [AnnexureMention]
     var onSelect: (AnnexureMention) -> Void
+
+    private func citationLabel(for mention: AnnexureMention) -> String {
+        let name = DisplayText.fileName(mention.fileName)
+        guard let pages = mention.pageDescription else { return name }
+        return "\(name), \(pages)"
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -128,18 +110,23 @@ struct CitationStrip: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "doc.text.magnifyingglass")
-                            Text(mention.fileName.replacingOccurrences(of: "_", with: " "))
+                            Text(DisplayText.fileName(mention.fileName))
                                 .lineLimit(1)
                             if let pages = mention.pageDescription {
-                                Text(pages).foregroundStyle(.secondary)
+                                Text(pages).foregroundStyle(theme.textSecondary)
                             }
                         }
                         .font(.caption2)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .background(.quaternary, in: Capsule())
+                        .background(theme.surfaceElevated, in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    // Read as one phrase. Separately, VoiceOver announces a filename and a
+                    // page number with no relationship between them.
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(citationLabel(for: mention))
+                    .accessibilityHint("Opens the source document at the cited page")
                 }
             }
             .padding(.vertical, 1)

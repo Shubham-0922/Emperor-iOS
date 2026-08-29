@@ -2,29 +2,15 @@ import SwiftUI
 import VisionKit
 import PDFKit
 
-struct ScannedDocument {
-    var pdfData: Data
-    var suggestedName: String
-}
-
-enum ScanError: LocalizedError {
-    case noPages
-    case pdfGenerationFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .noPages: return "No pages were captured."
-        case .pdfGenerationFailed: return "Those pages could not be assembled into a PDF."
-        }
-    }
-}
-
 /// Wraps the system document camera.
 ///
 /// Scanning is the strongest reason for this app to exist on a phone: it turns a physical
 /// paperbook on a courtroom desk into something the model can read, without a desktop
 /// scanner. Pages are assembled client-side into a single PDF so the DMS receives one
 /// document per bundle rather than a pile of loose images.
+///
+/// `ScannedDocument` and `ScanError` live in the core, along with the naming rule — what is
+/// left here is only what genuinely needs a camera.
 struct DocumentScannerView: UIViewControllerRepresentable {
     var onFinish: (Result<ScannedDocument, Error>) -> Void
 
@@ -69,11 +55,9 @@ struct DocumentScannerView: UIViewControllerRepresentable {
 
             // A scan is an image-only PDF, so the server will mark it "scanned" rather than
             // OCR it. That is still usable — the model reads those pages visually.
-            let stamp = ISO8601DateFormatter().string(from: Date())
-                .replacingOccurrences(of: ":", with: "-")
             onFinish(.success(ScannedDocument(
                 pdfData: data,
-                suggestedName: "Scan-\(stamp).pdf")))
+                suggestedName: ScannedDocument.suggestedName(for: Date()))))
         }
 
         func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {

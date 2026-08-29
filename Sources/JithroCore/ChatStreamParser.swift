@@ -49,6 +49,9 @@ final class ChatStreamParser {
         pattern: "<truncate:(\\d+)/>", options: [])
     private static let usageRegex = try! NSRegularExpression(
         pattern: "<usage>([\\s\\S]*?)</usage>", options: [])
+    /// Complete reasoning blocks, for offset translation only — see `rawOffset(forContentOffset:)`.
+    private static let reasoningRegex = try! NSRegularExpression(
+        pattern: "<think>[\\s\\S]*?</think>", options: [])
 
     /// The literal the server sends when a run is already in flight for this chat
     /// (sync-server.js:7273). It arrives as a `<status>` tag, ahead of its own explanation.
@@ -169,8 +172,12 @@ final class ChatStreamParser {
         if let usage = extractUsage() {
             events.append(.usage(usage))
         }
-        if let offset = applyTruncate() {
+        // Loop: keeping the tail means a chunk can carry more than one rollback. Bounded so a
+        // malformed marker can never spin.
+        var rollbacks = 0
+        while rollbacks < 16, let offset = applyTruncate() {
             events.append(.rolledBack(offset: offset))
+            rollbacks += 1
         }
         events.append(.content(raw))
         return events
@@ -197,13 +204,66 @@ final class ChatStreamParser {
         let digits = ns.substring(with: match.range(at: 1))
         guard let offset = Int(digits) else { return nil }
 
+        // N indexes the server's content-only string, not ours. Translate first.
+        let target = rawOffset(forContentOffset: max(offset, 0))
+
         // Clamp to the marker's own position rather than to the buffer length. The marker sits
         // at or after the cut by construction, so clamping this way always removes it —
         // whereas clamping to length (as the web client's `slice(0, N)` does) leaves a stray
         // `<truncate:N/>` rendering as prose if N ever overruns.
-        let cut = min(max(offset, 0), match.range.location)
-        raw = ns.substring(to: cut)
+        let cut = min(target, match.range.location)
+
+        // Keep whatever followed the marker. Everything after it is the retry's real content,
+        // which the server means to keep — so discarding to end-of-buffer deletes the new answer
+        // whenever the marker and the retry arrive in the same delivered chunk. The server
+        // sleeps before retrying, which makes that rare rather than impossible: a proxy or the
+        // OS can still coalesce them. The web client has this bug (`streamManager.js:294-296`).
+        let afterMarker = match.range.location + match.range.length
+        let tail = afterMarker < ns.length ? ns.substring(from: afterMarker) : ""
+        raw = ns.substring(to: cut) + tail
         return cut
+    }
+
+    /// Translates a server content offset into an offset into `raw`.
+    ///
+    /// The two are different coordinate systems. The server computes `N` as `fullContent.length`
+    /// (`OpenRouterProvider.js:528`), and `fullContent` is appended to **only** by content deltas
+    /// (`:642`, `:646`) and error strings — it never receives the `<think>` blocks the provider
+    /// writes alongside them (`:616`). Our `raw` carries those blocks, because the reasoning
+    /// panel downstream is built from them.
+    ///
+    /// So `raw` is longer than the string `N` measures, by the width of every `<think>` block
+    /// emitted so far. Slicing `raw` at `N` directly would cut **earlier** than the server meant
+    /// and delete real answer text — silently, and only on a reasoning model.
+    ///
+    /// `<status>` needs no accounting here: layer 1 removed it before `raw` ever saw it. Nor
+    /// does `<usage>`: `extractUsage()` lifts it out ahead of this call, and the server writes it
+    /// once at the very end, after any rollback could occur.
+    private func rawOffset(forContentOffset offset: Int) -> Int {
+        let ns = raw as NSString
+        var remainingContent = offset
+        var position = 0
+
+        for span in reasoningSpans() {
+            let contentBefore = span.location - position
+            if remainingContent <= contentBefore { return position + remainingContent }
+            remainingContent -= contentBefore
+            position = span.location + span.length
+        }
+        return min(position + remainingContent, ns.length)
+    }
+
+    /// Every complete `<think>…</think>` span in `raw`, ascending.
+    ///
+    /// Only `<think>` — that is the wrapper the *server* writes reasoning under, and therefore
+    /// the only thing systematically absent from the string its offsets measure. The wider set
+    /// `StreamContent` strips defensively (`<thinking>`, `<scratchpad>`, …) belongs to upstream
+    /// models and travels inside content, so it is counted by the server too.
+    private func reasoningSpans() -> [NSRange] {
+        let ns = raw as NSString
+        return Self.reasoningRegex
+            .matches(in: raw, options: [], range: NSRange(location: 0, length: ns.length))
+            .map(\.range)
     }
 
     private func extractUsage() -> JSONValue? {

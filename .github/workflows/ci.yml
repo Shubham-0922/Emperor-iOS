@@ -1,0 +1,323 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  # Lets you produce a build without pushing — Actions tab → CI → Run workflow.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The tested half. `Sources/JithroCore` is Foundation-only by design, so the whole wire
+  # format, every view model and all error handling is verifiable without a Mac or an iOS SDK.
+  core:
+    name: Core tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: swift build --build-tests
+
+      - name: Test
+        run: swift test --parallel
+
+  # The gate that would have caught the never-compiled SwiftUI layer.
+  #
+  # `swiftc -parse` does syntax-only parsing: no type checking, no module resolution, so it runs
+  # without the iOS SDK. It will not catch a wrong API or a bad type, but it does catch every
+  # unbalanced brace, malformed expression and broken result-builder body — which is the class
+  # of error that accumulates in code nothing has ever compiled.
+  syntax:
+    name: SwiftUI syntax (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse the app layer
+        run: |
+          files=$(find Jithro -name '*.swift')
+          test -n "$files" || { echo "no Swift files found under Jithro/"; exit 1; }
+          echo "$files" | sed 's/^/  /'
+          swiftc -parse $files
+
+  # XcodeGen is a SwiftPM package and builds on Linux, so the project spec can be validated
+  # without a Mac — it catches a missing file, a malformed spec and a bad Info.plist key.
+  # It does NOT compile anything.
+  project-spec:
+    name: Validate project.yml (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build XcodeGen
+        run: |
+          git clone --depth 1 https://github.com/yonaskolb/XcodeGen.git /tmp/xcodegen
+          swift build -c release --package-path /tmp/xcodegen
+
+      - name: Generate
+        run: /tmp/xcodegen/.build/release/xcodegen generate --spec project.yml
+
+      - name: Every Swift file reached the target
+        run: |
+          expected=$(find Sources/JithroCore Jithro -name '*.swift' | wc -l)
+          actual=$(grep -c '\.swift .*sourcecode' Jithro.xcodeproj/project.pbxproj)
+          echo "expected $expected, target has $actual"
+          test "$expected" -eq "$actual"
+
+      - name: The privacy manifest ships
+        run: grep -q 'PrivacyInfo.xcprivacy' Jithro.xcodeproj/project.pbxproj
+
+  # The real thing. Everything above is a proxy for this, and this is the only job that
+  # type-checks the SwiftUI layer against the actual SDK.
+  #
+  # No Apple account, no secrets, no signing. If this is green the code compiles; that is the
+  # single largest unknown in the project and it costs nothing to answer.
+  ios:
+    name: iOS build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The runner ships several Xcodes and its default is not always the newest. Take the
+      # highest installed rather than pinning an exact version: GitHub rolls the image every
+      # few weeks and drops old Xcodes, so a hard pin turns into a red build for a reason that
+      # has nothing to do with the code.
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate the project
+        run: xcodegen generate
+
+      # `generic/platform=iOS Simulator` rather than a named device: the runner image's device
+      # list changes between releases, and a build should not fail because "iPhone 16" was
+      # renamed.
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Jithro.xcodeproj \
+            -scheme Jithro \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+  # An .ipa you can actually put on a phone, without an Apple Developer Program membership.
+  #
+  # It is **unsigned**. iOS will not install it as-is; you re-sign it on your own machine with
+  # a free Apple ID using AltStore or Sideloadly, which is allowed and needs no payment. The
+  # catch is Apple's, not ours: a free-account signature lasts **7 days**, after which the app
+  # refuses to launch until you re-sign it. For anything beyond trying it out, use TestFlight.
+  #
+  # Archiving with signing disabled is the whole trick: `xcodebuild archive` normally demands a
+  # team, but a device-architecture build with `CODE_SIGNING_ALLOWED=NO` produces a complete,
+  # unsigned `.app`. An `.ipa` is then just that app inside a `Payload/` folder, zipped.
+  unsigned-ipa:
+    name: Unsigned .ipa (sideload)
+    runs-on: macos-15
+    # Only after the compile is known good — an archive of code that does not build is noise.
+    needs: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate the project
+        run: xcodegen generate
+
+      - name: Archive for a device, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Jithro.xcodeproj \
+            -scheme Jithro \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Jithro.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            | xcbeautify --renderer github-actions
+
+      # `xcodebuild -exportArchive` cannot be used here: export always signs, and there is
+      # nothing to sign with. The Payload/ layout below is exactly what an .ipa is.
+      - name: Wrap the app as an .ipa
+        run: |
+          set -euo pipefail
+          app="build/Jithro.xcarchive/Products/Applications/Jithro.app"
+          test -d "$app" || { echo "no .app in the archive — the build produced nothing"; exit 1; }
+          mkdir -p build/Payload
+          cp -R "$app" build/Payload/
+          (cd build && zip -qry Jithro-unsigned.ipa Payload)
+          ls -lh build/Jithro-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jithro-unsigned-ipa
+          path: build/Jithro-unsigned.ipa
+          # Long enough to still be there next week, short enough not to hoard binaries.
+          retention-days: 30
+
+  # The real distribution path. Signs against your Apple Developer Program membership and
+  # uploads to TestFlight, from where anyone you invite installs it like a normal app.
+  #
+  # Skipped entirely until the secrets exist, so the rest of CI stays green without them —
+  # `secrets` cannot be read in a job-level `if`, hence the check inside the first step.
+  testflight:
+    name: TestFlight
+    runs-on: macos-15
+    needs: ios
+    # Only from the default branch, and only on a deliberate run or a tag. Every push to a
+    # feature branch becoming a TestFlight build would burn your 90-day build numbers.
+    if: >
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/'))
+    steps:
+      - name: Are the signing secrets configured?
+        id: gate
+        env:
+          CERT: ${{ secrets.APPLE_DIST_CERT_P12 }}
+          KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          if [ -n "$CERT" ] && [ -n "$KEY" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::TestFlight secrets are not set — skipping. See docs/RELEASING.md."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.ready == 'true'
+
+      - name: Select Xcode
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Install tools
+        if: steps.gate.outputs.ready == 'true'
+        run: brew install xcodegen xcbeautify
+
+      # A throwaway keychain, not the login one: the runner is destroyed afterwards, and this
+      # keeps the private key out of any shared store even so.
+      - name: Import the signing certificate
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          CERT_P12: ${{ secrets.APPLE_DIST_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_DIST_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          # Without this, codesign blocks on a GUI prompt that nobody can answer and the job
+          # hangs until it times out.
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain"
+          security list-keychain -d user -s "$keychain"
+
+          profiles=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$profiles"
+          echo "$PROFILE" | base64 --decode > "$profiles/jithro.mobileprovision"
+
+      - name: Generate the project
+        if: steps.gate.outputs.ready == 'true'
+        run: xcodegen generate
+
+      - name: Archive
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Jithro.xcodeproj \
+            -scheme Jithro \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Jithro.xcarchive \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            | xcbeautify --renderer github-actions
+
+      - name: Export a signed .ipa
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath build/Jithro.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist build/ExportOptions.plist
+
+      # An App Store Connect API key, not an Apple ID password: it is revocable, scoped, and
+      # unaffected by two-factor auth — which would otherwise make an unattended upload
+      # impossible.
+      - name: Upload to TestFlight
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/private_keys
+          echo "$KEY" | base64 --decode > ~/private_keys/AuthKey_$KEY_ID.p8
+          xcrun altool --upload-app \
+            --type ios \
+            --file build/export/Jithro.ipa \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          name: Jithro-signed-ipa
+          path: build/export/Jithro.ipa
+          retention-days: 30

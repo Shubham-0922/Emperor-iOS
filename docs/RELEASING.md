@@ -1,0 +1,141 @@
+# Getting Jithro onto a phone
+
+Everything here runs on GitHub Actions. **No Mac is needed to build.** A Mac is only needed if
+you choose the sideload route and want to re-sign the app yourself.
+
+## First: put the repo on GitHub
+
+Origin today is the bare repo on the server (`/srv/git/Jithro.git`), which Actions cannot see.
+Add GitHub as a second remote rather than replacing it:
+
+```bash
+gh repo create Jithro --private --source=. --remote=github
+git push github main
+```
+
+A **private** repo bills macOS minutes at **10×** — this workflow uses roughly 14 minutes of
+macOS time per full run, so about 140 billable minutes. The free tier is 2,000 minutes/month,
+so that is around 14 full runs. A **public** repo is unlimited and free. If the code can be
+public, make it public; if not, use `workflow_dispatch` to build deliberately rather than on
+every push.
+
+## The three outputs
+
+| What | Apple account | Runs on a phone? | How long it lasts |
+|---|---|---|---|
+| Simulator build (`ios` job) | none | no — Mac simulator only | n/a |
+| **Unsigned `.ipa`** (`unsigned-ipa` job) | none | yes, after you re-sign it | **7 days** |
+| **TestFlight** (`testflight` job) | $99/yr | yes, normally | 90 days |
+
+The first two need nothing from you. The third needs the secrets below.
+
+---
+
+## Route A — sideload, free, 7 days
+
+The `unsigned-ipa` job runs on every push and attaches `Jithro-unsigned.ipa` to the run.
+
+1. Actions → the run → **Artifacts** → download `Jithro-unsigned-ipa`.
+2. Sign it with your own free Apple ID:
+   - **[Sideloadly](https://sideloadly.io)** — Windows or macOS, simplest.
+   - **[AltStore](https://altstore.io)** — keeps a helper running that re-signs automatically,
+     which matters given the 7-day limit.
+3. On the phone: Settings → General → VPN & Device Management → trust your developer profile.
+
+**The 7 days is Apple's rule, not ours.** A free Apple ID signature expires and the app then
+refuses to launch until re-signed. AltStore automates the refresh; Sideloadly does not. Three
+apps at a time is also the free-account ceiling.
+
+## Route B — TestFlight, $99/yr, the real thing
+
+You need the [Apple Developer Program](https://developer.apple.com/programs/). Then:
+
+### 1. Register the app
+
+App Store Connect → Apps → **+** → New App. Bundle ID must be **`com.emperorailabs.Jithro`**
+(from `bundleIdPrefix` in `project.yml`). Register that identifier first under Certificates,
+Identifiers & Profiles → Identifiers.
+
+### 2. Create the signing material
+
+Under Certificates, Identifiers & Profiles:
+
+- an **Apple Distribution** certificate — download the `.cer`, add it to Keychain Access on a
+  Mac, then export it as a **`.p12`** with a password. The `.p12` is the certificate *and* its
+  private key; the `.cer` alone cannot sign.
+- an **App Store** provisioning profile for `com.emperorailabs.Jithro`, tied to that
+  certificate. Download the `.mobileprovision`.
+
+> Creating a distribution certificate needs a Mac once, for the Keychain export. If you have no
+> Mac at all, generate the certificate signing request with OpenSSL instead — Apple accepts a
+> plain CSR — or use [fastlane match](https://docs.fastlane.tools/actions/match/), which
+> manages the whole set from any machine.
+
+### 3. Create an App Store Connect API key
+
+Users and Access → **Integrations** → App Store Connect API → **+**. Role: **App Manager**.
+Download the `.p8` — **it is downloadable exactly once**. Note the Key ID and the Issuer ID.
+
+An API key rather than your Apple ID password: it is revocable, scoped to this one job, and
+unaffected by two-factor auth, which would otherwise make an unattended upload impossible.
+
+### 4. Add the secrets
+
+Settings → Secrets and variables → Actions → New repository secret. Base64-encode the binaries
+so they survive as text:
+
+```bash
+base64 -w0 Certificates.p12          # → APPLE_DIST_CERT_P12
+base64 -w0 Jithro.mobileprovision    # → APPLE_PROVISIONING_PROFILE
+base64 -w0 AuthKey_XXXXXXXXXX.p8     # → APP_STORE_CONNECT_KEY
+```
+
+| Secret | What it is |
+|---|---|
+| `APPLE_DIST_CERT_P12` | base64 of the `.p12` |
+| `APPLE_DIST_CERT_PASSWORD` | the password you set exporting it |
+| `APPLE_PROVISIONING_PROFILE` | base64 of the `.mobileprovision` |
+| `APPLE_TEAM_ID` | 10 characters, top-right of the developer portal |
+| `APP_STORE_CONNECT_KEY_ID` | the key's ID |
+| `APP_STORE_CONNECT_ISSUER_ID` | the issuer UUID on the same page |
+| `APP_STORE_CONNECT_KEY` | base64 of the `.p8` |
+
+Until `APPLE_DIST_CERT_P12` and `APP_STORE_CONNECT_KEY` both exist, the `testflight` job checks,
+prints a notice and stops. The rest of CI stays green.
+
+### 5. Ship
+
+The job only runs from `main`, and only on a tag or a deliberate run — so a push to a feature
+branch cannot burn a build number.
+
+```bash
+git tag v0.1.0 && git push github v0.1.0
+```
+
+or Actions → CI → **Run workflow**. Processing at Apple's end takes 5–15 minutes, then invite
+testers in App Store Connect → TestFlight.
+
+---
+
+## What will go wrong the first time
+
+**The `ios` job will probably fail, and that is the point of it.** The SwiftUI layer in
+`Jithro/` has never been type-checked — `swiftc -parse` catches syntax but not types, so this is
+its first real compile. Expect a handful of errors; expect them to be small. Three classes have
+already been found and fixed by building minimal repros, and they are the ones to look for
+first:
+
+- a mutable `@Bindable var` local captured in a `@Sendable` closure (`.task`, `.refreshable`),
+- a non-`Sendable` type inside a `Sendable` struct,
+- a ternary inside `.foregroundStyle` whose two branches are different `ShapeStyle` types.
+
+`Sources/JithroCore` already compiles and its 618 tests pass, so anything that breaks is in the
+view layer only.
+
+**Two things Apple will ask about at submission**, both already handled:
+`PrivacyInfo.xcprivacy` ships, and `NSCameraUsageDescription` is set — without the latter iOS
+terminates the app the moment the scanner opens.
+
+**Background upload is not built** (`GAPS.md`, Tier 1 #7). It was deliberately left out rather
+than written blind, because it cannot be exercised on Linux and its failure mode is a 200-page
+scan lost silently. Build it once you can run the app.

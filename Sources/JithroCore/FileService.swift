@@ -63,7 +63,17 @@ enum CitationResolver {
     }
 }
 
-struct FileService {
+/// The document-library reads a view model needs.
+///
+/// Both calls are expensive or awkward against a live server — `tree()` triggers a full
+/// storage walk, `fileData` returns raw bytes — so the screens that depend on them are
+/// exercised through this instead.
+protocol FileProviding: Sendable {
+    func tree() async throws -> [FileNode]
+    func fileData(name: String, folderName: String?) async throws -> Data
+}
+
+struct FileService: FileProviding {
     let client: APIClient
 
     /// Fetches the whole document tree.
@@ -73,8 +83,10 @@ struct FileService {
     ///   `statSync` per entry. The web client polls it every few seconds; a mobile client
     ///   should not. Refresh on appear and on pull-to-refresh only.
     func tree() async throws -> [FileNode] {
-        let request = try await client.makeRequest("GET", "/user-files")
-        return try await client.send(request, as: UserFilesResponse.self).folders
+        try await withRetry {
+            let request = try await client.makeRequest("GET", "/user-files")
+            return try await client.send(request, as: UserFilesResponse.self).folders
+        }
     }
 
     /// Downloads a document's bytes for local display.

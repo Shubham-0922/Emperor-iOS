@@ -1,24 +1,16 @@
 import SwiftUI
 
 struct ChatThreadView: View {
+    @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
 
     @State private var model: ChatViewModel?
-    @State private var draft = ""
+    /// Owns the composer's text as well as the rewrite over it — see the type's own note on
+    /// why that cannot live in a `@State` binding.
+    @State private var composer: PromptEnhancerViewModel?
     @State private var isScanning = false
     @State private var isBrowsingFiles = false
-    @State private var scanError: String?
-    @State private var openSource: OpenSource?
-    @State private var citationError: String?
-    /// Loaded lazily on the first citation tap. The whole tree is an expensive read, so it is
-    /// not fetched until something actually needs it, and then reused.
-    @State private var libraryCache: [FileNode.StoredFile] = []
-
-    private struct OpenSource: Identifiable {
-        let id = UUID()
-        let attachment: ChatAttachment
-        let mention: AnnexureMention
-    }
+    @State private var isFillingBlanks = false
 
     let chatID: String
 
@@ -34,28 +26,33 @@ struct ChatThreadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard model == nil else { return }
-            let created = ChatViewModel(chatID: chatID, service: session.chats)
-            // `preferred_model` seeds the picker only — the per-request model is what the
-            // server actually honours, so it is sent explicitly on every turn regardless.
-            created.model = ChatModel.fromPreference(session.currentUser?.preferredModel)
+            let created = ChatViewModel(
+                chatID: chatID,
+                service: session.chats,
+                files: session.files,
+                uploads: session.uploads,
+                preferredModel: session.currentUser?.preferredModel)
+            composer = PromptEnhancerViewModel(service: session.enhancer)
             model = created
             await created.load()
         }
     }
 
     private func thread(_ model: ChatViewModel) -> some View {
-        VStack(spacing: 0) {
+        @Bindable var model = model
+
+        return VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        ForEach(model.messages) { message in
+                        ForEach(model.messages, id: \.stableID) { message in
                             // Explicit labels rather than trailing closures: both of these
                             // structs carry a private @State property, so the synthesised
                             // memberwise initialiser has a parameter after this one and
                             // trailing-closure matching gets subtle. Naming it is unambiguous.
                             MessageBubble(
                                 message: message,
-                                onSelectCitation: { showSource($0, in: model) })
+                                onSelectCitation: { select($0, in: model) })
                                 .id(message.stableID)
                         }
 
@@ -72,7 +69,7 @@ struct ChatThreadView: View {
                             AnswerView(
                                 content: live,
                                 isStreaming: true,
-                                onSelectCitation: { showSource($0, in: model) })
+                                onSelectCitation: { select($0, in: model) })
                                 .id("live")
                         }
 
@@ -86,29 +83,48 @@ struct ChatThreadView: View {
                         if let busy = model.busyNotice {
                             Notice(icon: "clock", text: busy, tint: .secondary)
                         }
+
+                        // A send that failed outright. Shown in the transcript rather than as
+                        // an alert: the question is still in the composer's history above, and
+                        // the useful next act is to send it again.
+                        if let error = model.errorMessage {
+                            Notice(
+                                icon: "exclamationmark.circle",
+                                text: error,
+                                tint: .red)
+                        }
                     }
                     .padding()
                 }
                 .onChange(of: model.live?.prose) { scrollToBottom(proxy, model) }
                 .onChange(of: model.messages.count) { scrollToBottom(proxy, model) }
+                // The server refused before storing anything, so the question is handed back
+                // rather than left as a bubble for a turn that exists nowhere.
+                .onChange(of: model.restoredDraft) { _, restored in
+                    guard let restored, let composer else { return }
+                    if composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        composer.text = restored
+                    }
+                    model.restoredDraft = nil
+                }
             }
 
-            composer(model)
+            composerBar(model)
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 settingsMenu(model)
             }
         }
-        .alert("Scan failed", isPresented: .constant(scanError != nil)) {
-            Button("OK") { scanError = nil }
-        } message: {
-            Text(scanError ?? "")
-        }
         .sheet(isPresented: $isScanning) {
             DocumentScannerView { result in
                 isScanning = false
-                handleScan(result, into: model)
+                switch result {
+                case .success(let document):
+                    Task { await model.attach(document) }
+                case .failure(let error):
+                    model.reportScanFailure(error)
+                }
             }
             .ignoresSafeArea()
         }
@@ -117,14 +133,27 @@ struct ChatThreadView: View {
                 model.attachments = chosen
             }
         }
-        .sheet(item: $openSource) { source in
+        .sheet(item: $model.openSource) { source in
             SourceDocumentView(attachment: source.attachment, mention: source.mention)
         }
-        .alert("Cannot open that source", isPresented: .constant(citationError != nil)) {
-            Button("OK") { citationError = nil }
+        .alert("Scan failed", isPresented: alertBinding($model.scanError)) {
+            Button("OK") { model.scanError = nil }
         } message: {
-            Text(citationError ?? "")
+            Text(model.scanError ?? "")
         }
+        .alert("Cannot open that source", isPresented: alertBinding($model.citationError)) {
+            Button("OK") { model.citationError = nil }
+        } message: {
+            Text(model.citationError ?? "")
+        }
+    }
+
+    /// Presents an optional message as an alert, and clears it when the alert is dismissed by
+    /// any route — not only the OK button.
+    private func alertBinding(_ message: Binding<String?>) -> Binding<Bool> {
+        Binding(
+            get: { message.wrappedValue != nil },
+            set: { if !$0 { message.wrappedValue = nil } })
     }
 
     /// Mode and persona.
@@ -150,14 +179,68 @@ struct ChatThreadView: View {
                     Text(choice.label).tag(choice)
                 }
             }
+
+            Divider()
+
+            // "Search the web" rather than a switch labelled "web search": the server searches
+            // on its own when the question looks like it needs it, so this can turn searching
+            // ON but cannot turn it off. Wording that implied otherwise would be contradicted.
+            Toggle(isOn: Binding(
+                get: { model.webSearch },
+                set: { model.webSearch = $0 }
+            )) {
+                Label("Always search the web", systemImage: "globe")
+            }
         } label: {
             Label(model.model.label, systemImage: "slider.horizontal.3")
         }
         .disabled(model.isStreaming)
     }
 
-    private func composer(_ model: ChatViewModel) -> some View {
-        VStack(spacing: 8) {
+    @ViewBuilder
+    private func composerBar(_ model: ChatViewModel) -> some View {
+        if let composer {
+            composerBar(model, composer)
+        }
+    }
+
+    private func composerBar(
+        _ model: ChatViewModel, _ composer: PromptEnhancerViewModel
+    ) -> some View {
+        @Bindable var composer = composer
+
+        return VStack(spacing: 8) {
+            if let notice = composer.failureNotice {
+                // The server answers 200 with an empty body on every one of its own error
+                // paths, so without saying so a failed rewrite is a button that did nothing.
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                    Text(notice)
+                    Spacer(minLength: 0)
+                    Button("Dismiss") { composer.dismissFailure() }
+                        .font(.caption.weight(.semibold))
+                }
+                .font(.caption)
+                .foregroundStyle(theme.textSecondary)
+                .padding(.horizontal)
+                .transition(.opacity)
+            }
+
+            if composer.canUndo {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.uturn.backward")
+                    Button(PromptEnhancerViewModel.Copy.undoButton) { composer.undo() }
+                    Spacer(minLength: 0)
+                    if composer.template != nil {
+                        Button(PromptEnhancerViewModel.Copy.fillTitle) { isFillingBlanks = true }
+                            .font(.caption.weight(.semibold))
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(theme.accentText)
+                .padding(.horizontal)
+            }
+
             if !model.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -167,17 +250,19 @@ struct ChatThreadView: View {
                             } label: {
                                 HStack(spacing: 5) {
                                     Image(systemName: "doc")
-                                    Text(attachment.name.replacingOccurrences(of: "_", with: " "))
+                                    Text(DisplayText.fileName(attachment.name))
                                         .lineLimit(1)
                                     Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(theme.textSecondary)
                                 }
                                 .font(.caption)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
-                                .background(.quaternary, in: Capsule())
+                                .background(theme.surfaceElevated, in: Capsule())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                "Remove \(DisplayText.fileName(attachment.name)) from this question")
                         }
                     }
                     .padding(.horizontal)
@@ -200,11 +285,31 @@ struct ChatThreadView: View {
                     Image(systemName: "plus.circle")
                         .font(.title3)
                 }
+                .accessibilityLabel("Attach a document")
                 .disabled(model.isStreaming)
 
-                TextField("Ask about this matter…", text: $draft, axis: .vertical)
+                TextField("Ask about this matter…", text: $composer.text, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.roundedBorder)
+                    .disabled(composer.isEnhancing)
+
+                // Dictation and a thumb keyboard both produce exactly the rough prompts this
+                // rewrites, which is why it earns a place in a crowded bar on a phone.
+                Button {
+                    composer.attachments = model.attachments
+                    composer.enhance()
+                } label: {
+                    if composer.isEnhancing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "wand.and.sparkles").font(.title3)
+                    }
+                }
+                .accessibilityLabel(
+                    composer.isEnhancing
+                        ? PromptEnhancerViewModel.Copy.running
+                        : PromptEnhancerViewModel.Copy.button)
+                .disabled(!composer.canEnhance || model.isStreaming)
 
                 if model.isStreaming {
                     Button {
@@ -212,50 +317,43 @@ struct ChatThreadView: View {
                     } label: {
                         Image(systemName: "stop.circle.fill").font(.title2)
                     }
+                    .accessibilityLabel("Stop this answer")
                 } else {
                     Button {
-                        model.send(draft)
-                        draft = ""
+                        model.send(composer.text)
+                        composer.clear()
                     } label: {
                         Image(systemName: "arrow.up.circle.fill").font(.title2)
                     }
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Send")
+                    .disabled(
+                        composer.isEnhancing
+                            || composer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                .isEmpty)
                 }
             }
             .padding(.horizontal)
             .padding(.bottom, 8)
         }
-        .background(.bar)
+        .background(theme.surface)
+        .animation(.easeOut(duration: 0.15), value: composer.canUndo)
+        .animation(.easeOut(duration: 0.15), value: composer.failureNotice)
+        // Offered rather than forced: a rewrite full of blanks is still sendable as it stands,
+        // and the assistant is told by the {{LABEL}} itself what was left unspecified.
+        .onChange(of: composer.template) { _, template in
+            isFillingBlanks = template != nil
+        }
+        .sheet(isPresented: $isFillingBlanks) {
+            if let template = composer.template {
+                EnhancedPromptSheet(template: template) { answers in
+                    composer.applyFilled(answers)
+                }
+            }
+        }
     }
 
-    /// Opens the document a citation points at, at the page it names.
-    ///
-    /// Resolution is two-stage: the turn's own attachments first, which needs no network,
-    /// and only then the full library — because a citation from an earlier turn may name a
-    /// file no longer attached to the composer.
-    private func showSource(_ mention: AnnexureMention, in model: ChatViewModel) {
-        if let attachment = CitationResolver.resolve(
-            mention, attachments: model.attachments, files: libraryCache) {
-            openSource = OpenSource(attachment: attachment, mention: mention)
-            return
-        }
-
-        Task {
-            if libraryCache.isEmpty, let tree = try? await session.files.tree() {
-                libraryCache = FileService.allFiles(in: tree)
-            }
-            if let attachment = CitationResolver.resolve(
-                mention, attachments: model.attachments, files: libraryCache) {
-                openSource = OpenSource(attachment: attachment, mention: mention)
-            } else {
-                // Say which file is missing by name. A citation naming a document that is no
-                // longer in the library is exactly the case the user needs told plainly.
-                citationError = """
-                \(mention.fileName.replacingOccurrences(of: "_", with: " ")) is not in your \
-                document library any more, so its cited page cannot be opened.
-                """
-            }
-        }
+    private func select(_ mention: AnnexureMention, in model: ChatViewModel) {
+        Task { await model.showSource(mention) }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, _ model: ChatViewModel) {
@@ -265,40 +363,12 @@ struct ChatThreadView: View {
             proxy.scrollTo(target, anchor: .bottom)
         }
     }
-
-    private func handleScan(_ result: Result<ScannedDocument, Error>, into model: ChatViewModel) {
-        switch result {
-        case .failure(let error):
-            scanError = error.localizedDescription
-        case .success(let document):
-            Task {
-                do {
-                    let folder = "Scans"
-                    for try await event in session.uploads.upload(
-                        data: document.pdfData,
-                        fileName: document.suggestedName,
-                        folderName: folder
-                    ) {
-                        if case .finished(let state) = event, state.isUsable {
-                            model.attachments.append(
-                                ChatAttachment(
-                                    name: UploadService.sanitize(fileName: document.suggestedName),
-                                    folderName: folder))
-                        } else if case .finished(.failed(let reason)) = event {
-                            scanError = reason
-                        }
-                    }
-                } catch {
-                    scanError = error.localizedDescription
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Pieces
 
 private struct MessageBubble: View {
+    @Environment(\.theme) private var theme
     let message: ChatMessage
     var onSelectCitation: (AnnexureMention) -> Void = { _ in }
 
@@ -309,7 +379,7 @@ private struct MessageBubble: View {
                 Text(message.content)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
+                    .background(theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
             }
         } else {
             AnswerView(
@@ -367,30 +437,35 @@ private struct AnswerView: View {
 /// Drafts and chronologies are delivered as separate documents rather than inline prose,
 /// so they get their own surface instead of being flattened into the transcript.
 private struct ArtifactCard: View {
+    @Environment(\.theme) private var theme
     let artifact: StreamArtifact
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: artifact.kind == .canvas ? "doc.text" : "tablecells")
                 .font(.title3)
-                .foregroundStyle(.tint)
+                .foregroundStyle(theme.accentText)
             VStack(alignment: .leading, spacing: 2) {
                 Text(artifact.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                 Text(artifact.kind == .canvas ? "Document" : "Table")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textTertiary)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
+        .background(theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(artifact.kind == .canvas ? "Document" : "Table"): \(artifact.title)")
+        .accessibilityHint("Opens full screen")
     }
 }
 
@@ -409,5 +484,7 @@ private struct Notice: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 }

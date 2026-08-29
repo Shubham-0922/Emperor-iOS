@@ -1,20 +1,24 @@
 import Foundation
 import Security
 
-/// Minimal Keychain wrapper for the auth token.
+/// The real `CredentialStore`: an iOS Keychain item.
 ///
 /// The token must not live in `UserDefaults`: it is a bearer credential valid for 30 days
 /// with **no server-side revocation** — there is no logout endpoint — so anything that leaks
 /// it grants full access to the account's matters until it expires on its own.
-enum Keychain {
-    private static let service = "com.emperorailabs.jithro"
+struct Keychain: CredentialStore {
+    private let service = "com.emperorailabs.jithro"
 
-    static func set(_ value: String, for key: String) {
-        let query: [String: Any] = [
+    private func query(for key: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
         ]
+    }
+
+    func set(_ value: String, for key: String) {
+        let query = query(for: key)
         SecItemDelete(query as CFDictionary)
 
         var insert = query
@@ -25,26 +29,18 @@ enum Keychain {
         SecItemAdd(insert as CFDictionary, nil)
     }
 
-    static func get(_ key: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+    func string(for key: String) -> String? {
+        var query = query(for: key)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
         var item: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
               let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    static func remove(_ key: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-        ]
-        SecItemDelete(query as CFDictionary)
+    func remove(_ key: String) {
+        SecItemDelete(query(for: key) as CFDictionary)
     }
 }

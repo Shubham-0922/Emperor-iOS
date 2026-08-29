@@ -103,7 +103,7 @@ a Mac. So we deliberately split the app in two:
 
 - **The logic half** — reading your server's replies, handling errors, understanding
   citations, and now the screen *behaviour* too. Fully testable on Linux. This is where bugs
-  hide, and it is now covered by 95 tests.
+  hide, and it is now covered by 151 tests.
 - **The screens half** — buttons, layouts, colours. Written but not yet compiled.
 
 Bugs in the screens half are obvious the moment you run it. Bugs in the logic half are the
@@ -282,7 +282,7 @@ say "this court's portal is down", not "no case found".
    compiled.
 3. Add your Apple developer account.
 4. Run it on a real iPhone, not just the simulator — the camera needs real hardware.
-5. Set up automatic testing so the 95 tests run on every change.
+5. Set up automatic testing so the 151 tests run on every change.
 6. Separate settings for development and live, so a test build cannot talk to real client data.
 7. Make the app usable with no signal: show the last-known information with a clear "as of"
    time, never silently stale.

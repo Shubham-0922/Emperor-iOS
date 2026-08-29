@@ -1,13 +1,13 @@
 # Prompt: build the Android client
 
 Written to be pasted into a **fresh Claude Code session** started in
-`/home/dennis/Documents/Jithro_Android/`, on your local Linux machine. It assumes no prior
+`/home/dennis/Documents/JithroApps/Jithro_Android/`, on your local Linux machine. It assumes no prior
 context. Everything between the rules is the prompt.
 
 Before pasting, check the layout is in place:
 
 ```bash
-ls /home/dennis/Documents/
+ls /home/dennis/Documents/JithroApps/
 # expect: emperor-ai  Jithro_Android  Jithro_iOS
 ```
 
@@ -16,7 +16,7 @@ ls /home/dennis/Documents/
 Build **Jithro for Android** — a native Kotlin client for the Juristar legal-AI platform.
 
 You are starting fresh with no prior context. Work **in the current directory**,
-`/home/dennis/Documents/Jithro_Android/`, and initialise a git repository here.
+`/home/dennis/Documents/JithroApps/Jithro_Android/`, and initialise a git repository here.
 
 Two sibling directories are your references. **Never modify either:**
 

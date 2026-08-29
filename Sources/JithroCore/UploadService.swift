@@ -16,7 +16,32 @@ import FoundationNetworking
 /// 2. **`chunkSize` must always be sent.** With it, each chunk is written at an absolute
 ///    offset and order does not matter. Without it the server falls back to append-mode,
 ///    which corrupts any upload whose chunks do not arrive in order.
-struct UploadService {
+/// The upload path a view model drives.
+///
+/// Declared separately from `UploadService` so a screen that attaches a scan can be tested
+/// without a server: the interesting behaviour is what the *caller* does with the event
+/// sequence — attach on success, report the ingestion failure that arrives with no HTTP
+/// error — not the chunking underneath it.
+protocol UploadProviding: Sendable {
+    func upload(
+        data: Data,
+        fileName: String,
+        folderName: String,
+        chunkSize: Int
+    ) -> AsyncThrowingStream<UploadService.UploadEvent, Error>
+}
+
+extension UploadProviding {
+    func upload(
+        data: Data, fileName: String, folderName: String
+    ) -> AsyncThrowingStream<UploadService.UploadEvent, Error> {
+        upload(
+            data: data, fileName: fileName, folderName: folderName,
+            chunkSize: UploadService.chunkSize)
+    }
+}
+
+struct UploadService: UploadProviding {
     let client: APIClient
 
     /// The server's hard cap is 64 MB per request body, but the tested path is 10 MB and the
@@ -58,7 +83,9 @@ struct UploadService {
         data: Data,
         fileName: String,
         folderName: String,
-        chunkSize: Int = UploadService.chunkSize
+        // No default here: the three-argument convenience is the one on `UploadProviding`, so
+        // that both the real service and any stand-in offer exactly the same call shapes.
+        chunkSize: Int
     ) -> AsyncThrowingStream<UploadEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {

@@ -6,6 +6,7 @@ import SwiftUI
 /// not want a scrolling log in the way. But when an answer looks wrong, the first question is
 /// always "which documents did it actually read?" — and that has to be answerable.
 struct ReasoningPanel: View {
+    @Environment(\.theme) private var theme
     let snapshot: ReasoningSnapshot
     let isStreaming: Bool
     let liveStatus: String?
@@ -25,7 +26,7 @@ struct ReasoningPanel: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+            .background(theme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
             .animation(.easeInOut(duration: 0.2), value: isExpanded)
         }
     }
@@ -42,12 +43,12 @@ struct ReasoningPanel: View {
                 } else {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
 
                 Text(summary)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -55,7 +56,7 @@ struct ReasoningPanel: View {
                 if !snapshot.isEmpty {
                     Image(systemName: "chevron.down")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(theme.textTertiary)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
             }
@@ -96,7 +97,7 @@ struct ReasoningPanel: View {
                         case .note(_, let text, _):
                             Text(text)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(theme.textSecondary)
                                 .padding(.vertical, 2)
                         case .group(let group):
                             VStack(alignment: .leading, spacing: 4) {
@@ -115,7 +116,7 @@ struct ReasoningPanel: View {
                     ForEach(Array(snapshot.reasoning.enumerated()), id: \.offset) { _, sentence in
                         Text(sentence)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.textSecondary)
                             .padding(.vertical, 1)
                     }
                 }
@@ -129,7 +130,7 @@ struct ReasoningPanel: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title.uppercased())
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(theme.textTertiary)
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,18 +165,18 @@ struct ReasoningPanel: View {
         switch status {
         case .completed:
             Image(systemName: "checkmark.circle.fill")
-                .font(.caption2).foregroundStyle(.green)
+                .font(.caption2).foregroundStyle(theme.success)
         case .inProgress:
             ProgressView().controlSize(.mini)
         case .pending:
-            Image(systemName: "circle").font(.caption2).foregroundStyle(.tertiary)
+            Image(systemName: "circle").font(.caption2).foregroundStyle(theme.textTertiary)
         case .superseded:
             Image(systemName: "arrow.uturn.backward.circle")
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.caption2).foregroundStyle(theme.textTertiary)
         case .stopped:
             // Deliberately not a tick: the stream ended without confirming this came back.
             Image(systemName: "questionmark.circle")
-                .font(.caption2).foregroundStyle(.orange)
+                .font(.caption2).foregroundStyle(theme.warning)
         }
     }
 }

@@ -1,12 +1,14 @@
 import SwiftUI
 
 struct LoginView: View {
+    @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
 
     @State private var email = ""
     @State private var password = ""
     @State private var name = ""
     @State private var isRegistering = false
+    @State private var isAskingForReset = false
     @FocusState private var focused: Field?
 
     private enum Field { case name, email, password }
@@ -24,7 +26,7 @@ struct LoginView: View {
                     .font(.system(.largeTitle, design: .serif, weight: .semibold))
                 Text("For Indian litigation and corporate practice")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .multilineTextAlignment(.center)
             }
 
@@ -57,7 +59,7 @@ struct LoginView: View {
             if let error = session.signInError {
                 Text(error)
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.danger)
                     .multilineTextAlignment(.center)
                     .transition(.opacity)
             }
@@ -79,11 +81,20 @@ struct LoginView: View {
             }
             .font(.footnote)
 
+            if !isRegistering {
+                Button("Forgot your password?") { isAskingForReset = true }
+                    .font(.footnote)
+                    .foregroundStyle(theme.textSecondary)
+            }
+
             Spacer()
         }
         .padding(28)
         .animation(.default, value: session.signInError)
         .animation(.default, value: isRegistering)
+        .sheet(isPresented: $isAskingForReset) {
+            PasswordResetSheet(email: email)
+        }
     }
 
     private func submit() {

@@ -32,20 +32,66 @@ final class ChatViewModel {
     /// Set when a run finished but the server says the answer was cut short.
     private(set) var wasInterrupted = false
 
+    /// The cited document to present, once a citation tap has been resolved to a real file.
+    var openSource: SourceSelection?
+    /// A citation that could not be resolved. Kept apart from `errorMessage` because it is a
+    /// different failure with different wording, not a failed turn.
+    var citationError: String?
+    /// A scan that could not be captured, assembled or ingested.
+    var scanError: String?
+
+    /// A question the server refused to start, handed back so the composer can restore it.
+    ///
+    /// The refusal happens *before* anything is stored (`sync-server.js:7256-7276`), so leaving
+    /// the optimistic bubble in the transcript showed a turn that does not exist anywhere —
+    /// and it vanished on the next load with the user's typing gone.
+    var restoredDraft: String?
+
     let chatID: String
     var attachments: [ChatAttachment] = []
     var model: ChatModel = .default
     var role: ChatRole = .default
 
+    /// Ask the model to search the web for this turn.
+    ///
+    /// - Important: this is "search on purpose", **not** a switch. The server auto-triggers a
+    ///   web search on keywords in the message regardless of what is sent here, so turning it
+    ///   off does not guarantee no search happens — only that we did not ask. Any wording that
+    ///   promises otherwise would be a lie the server can contradict.
+    var webSearch = false
+
     private let service: any ChatProviding
+    private let files: (any FileProviding)?
+    private let uploads: (any UploadProviding)?
     private var streamTask: Task<Void, Never>?
 
-    init(chatID: String, service: any ChatProviding) {
+    /// The document tree, fetched on the first citation tap that needs it.
+    ///
+    /// `tree()` runs a full storage walk server-side, so it is not fetched until something
+    /// actually needs it — and then kept, because a transcript tends to cite repeatedly.
+    private var libraryCache: [FileNode.StoredFile] = []
+
+    /// - Parameters:
+    ///   - preferredModel: the account's `preferred_model`, which **seeds the picker only**.
+    ///     The per-request model is what the server honours, so it is sent explicitly on every
+    ///     turn regardless of this.
+    ///   - files: needed only to resolve a citation against the wider library.
+    ///   - uploads: needed only to attach a scan.
+    init(
+        chatID: String,
+        service: any ChatProviding,
+        files: (any FileProviding)? = nil,
+        uploads: (any UploadProviding)? = nil,
+        preferredModel: String? = nil
+    ) {
         self.chatID = chatID
         self.service = service
+        self.files = files
+        self.uploads = uploads
+        self.model = ChatModel.fromPreference(preferredModel)
     }
 
-    static func newChatID() -> String { UUID().uuidString }
+    nonisolated static func newChatID() -> String { UUID().uuidString }
 
     // MARK: - Loading
 
@@ -95,6 +141,11 @@ final class ChatViewModel {
                 guard let status = try? await self.service.streamStatus(chatID: self.chatID)
                 else { continue }
 
+                // Re-checked after the await: a poll already in flight when `stop()` ran would
+                // otherwise resurrect `live` and append the answer a second time — and, since
+                // history is posted back verbatim, persist the duplicate.
+                if Task.isCancelled { return }
+
                 if let content = status.content, !content.isEmpty {
                     self.live = StreamContent.parse(content)
                 }
@@ -140,10 +191,7 @@ final class ChatViewModel {
                     model: self.model,
                     role: self.role,
                     attachments: outbound,
-                    // Web search is not exposed in the UI yet. The server also auto-triggers
-                    // it on keywords in the message, so false is "don't ask for it", not
-                    // "never search".
-                    webSearch: false)
+                    webSearch: self.webSearch)
 
                 for try await event in stream {
                     switch event {
@@ -151,10 +199,13 @@ final class ChatViewModel {
                         self.status = text
                     case .busy(let notice):
                         self.busyNotice = notice
-                        // Nothing was lost and nothing was started — drop the optimistic
-                        // user bubble back into the composer's place rather than implying
-                        // a turn is running.
+                        // Nothing was started and nothing was stored. Drop the optimistic
+                        // bubble *and* give the text back, so the question is not lost.
                         self.live = nil
+                        if let last = self.messages.last, last.role == .user {
+                            self.restoredDraft = last.content
+                            self.messages.removeLast()
+                        }
                     case .content(let content):
                         self.live = content
                     case .progress(let snapshot):
@@ -182,15 +233,27 @@ final class ChatViewModel {
         if let status = try? await service.streamStatus(chatID: chatID), status.error == nil {
             wasInterrupted = status.incomplete == true
         }
+        // The server's verdict is necessary but not sufficient: `/chat` discards the provider's
+        // `status:'length'` finding (`sync-server.js:7797`), so a draft stranded mid-document is
+        // reported complete. Trust the shape of the answer as well as the server's word.
+        if live?.hasUnclosedDocumentBlock == true { wasInterrupted = true }
         await finishStreaming()
     }
 
     private func finishStreaming() async {
+        // Reentrancy guard. `stop()` and a late-arriving poll can both reach here, and without
+        // this the turn is appended twice.
+        guard isStreaming else {
+            live = nil
+            status = nil
+            return
+        }
         if let live, !live.prose.isEmpty || !live.artifacts.isEmpty {
-            // The server has already persisted this turn — both before and after generation —
-            // so there is nothing to sync back. Calling /sync here would be actively harmful:
-            // it silently drops any chat whose message count is lower than the server's.
-            messages.append(ChatMessage(role: .assistant, content: live.prose))
+            // `persistableContent`, NOT `prose`. The next `send` posts this whole array back,
+            // and the server replaces its stored messages with exactly what it receives
+            // (`sync-server.js:4250`) — so posting the stripped prose would permanently delete
+            // this turn's drafted document and every citation token from the server's copy.
+            messages.append(ChatMessage(role: .assistant, content: live.persistableContent))
         }
         live = nil
         status = nil
@@ -204,5 +267,82 @@ final class ChatViewModel {
         streamTask?.cancel()
         streamTask = nil
         Task { await finishStreaming() }
+    }
+
+    // MARK: - Citations
+
+    /// A cited document, ready to present.
+    struct SourceSelection: Identifiable {
+        let id = UUID()
+        let attachment: ChatAttachment
+        let mention: AnnexureMention
+    }
+
+    /// Opens the document a citation points at, at the page it names.
+    ///
+    /// Resolution is two-stage: the turn's own attachments first, which needs no network, and
+    /// only then the whole library — because a citation from an earlier turn may name a file
+    /// that is no longer attached to the composer.
+    func showSource(_ mention: AnnexureMention) async {
+        if resolveFromCache(mention) { return }
+
+        if libraryCache.isEmpty, let files, let tree = try? await files.tree() {
+            libraryCache = FileService.allFiles(in: tree)
+            if resolveFromCache(mention) { return }
+        }
+
+        // Name the file that is missing. A citation pointing at a document no longer in the
+        // library is exactly the case the user needs told plainly rather than as a dead tap.
+        citationError = """
+            \(DisplayText.fileName(mention.fileName)) is not in your document library any \
+            more, so its cited page cannot be opened.
+            """
+    }
+
+    private func resolveFromCache(_ mention: AnnexureMention) -> Bool {
+        guard let attachment = CitationResolver.resolve(
+            mention, attachments: attachments, files: libraryCache)
+        else { return false }
+        openSource = SourceSelection(attachment: attachment, mention: mention)
+        return true
+    }
+
+    // MARK: - Scanning
+
+    /// Uploads a freshly captured scan and attaches it to the turn.
+    ///
+    /// The attachment is added only once ingestion reports the file usable: attaching earlier
+    /// would put a name on the turn that the server cannot yet read, and the refusal that
+    /// follows is far harder to understand than a short wait.
+    func attach(_ document: ScannedDocument) async {
+        guard let uploads else { return }
+        do {
+            for try await event in uploads.upload(
+                data: document.pdfData,
+                fileName: document.suggestedName,
+                folderName: ScannedDocument.folderName
+            ) {
+                guard case .finished(let state) = event else { continue }
+                if state.isUsable {
+                    attachments.append(
+                        ChatAttachment(
+                            // The sanitised name, because that is what the server wrote to
+                            // disk — and annexure citations match on the exact on-disk name.
+                            name: UploadService.sanitize(fileName: document.suggestedName),
+                            folderName: ScannedDocument.folderName))
+                } else if case .failed(let reason) = state {
+                    // Ingestion failures arrive with no HTTP error at all, so this is the only
+                    // place they can surface.
+                    scanError = reason
+                }
+            }
+        } catch {
+            scanError = DisplayText.message(for: error)
+        }
+    }
+
+    /// Reports a capture that never produced a document — a cancelled or failed scan.
+    func reportScanFailure(_ error: Error) {
+        scanError = DisplayText.message(for: error)
     }
 }

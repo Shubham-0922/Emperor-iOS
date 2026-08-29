@@ -43,6 +43,29 @@ struct AuthService {
         return try await client.send(request, as: AuthResponse.self)
     }
 
+    private struct ForgotBody: Encodable { let email: String }
+
+    /// Asks the server to email a reset link.
+    ///
+    /// - Important: this **always succeeds**, whether or not the address has an account — the
+    ///   route returns 200 unconditionally so it never leaks which emails exist
+    ///   (`sync-server.js:10511`). So the caller must show the same message either way, and must
+    ///   not say "we found your account".
+    ///
+    ///   Two further caveats worth surfacing to the user rather than hiding:
+    ///   the link is a **web** URL (`APP_BASE_URL/reset-password?token=…`), so the reset itself
+    ///   happens in a browser; and delivery depends on SMTP, which ships **disabled**
+    ///   (`smtp_config.enabled` defaults to 0 with a NULL host, `sync-server.js:3559-3566`).
+    ///   If mail is not configured, nothing arrives and no error is raised anywhere.
+    func requestPasswordReset(email: String) async throws {
+        let request = try await client.makeRequest(
+            "POST", "/forgot-password",
+            body: ForgotBody(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()),
+            requiresAuth: false)
+        _ = try await client.send(request, as: APIErrorBody.self)
+    }
+
     /// There is no logout endpoint and no server-side revocation: signing out is discarding
     /// the token locally. A leaked token stays valid for its full 30-day life.
     func signOut() async {

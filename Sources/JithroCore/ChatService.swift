@@ -87,14 +87,25 @@ protocol ChatProviding: Sendable {
     ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error>
 }
 
-struct ChatService: ChatProviding {
+/// The conversation list, kept separate from `ChatProviding`.
+///
+/// Listing chats and running a turn are needed by different screens and faked independently,
+/// so folding `chats()` into `ChatProviding` would force every stand-in for a *turn* to
+/// implement a method about the *list*.
+protocol ChatListProviding: Sendable {
+    func chats() async throws -> [ChatSummary]
+}
+
+struct ChatService: ChatProviding, ChatListProviding {
     let client: APIClient
 
     // MARK: - History
 
     func chats() async throws -> [ChatSummary] {
-        let request = try await client.makeRequest("GET", "/chats")
-        return try await client.send(request, as: ChatListResponse.self).chats
+        try await withRetry {
+            let request = try await client.makeRequest("GET", "/chats")
+            return try await client.send(request, as: ChatListResponse.self).chats
+        }
     }
 
     func messages(chatID: String) async throws -> [ChatMessage] {

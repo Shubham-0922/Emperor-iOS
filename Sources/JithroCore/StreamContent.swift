@@ -110,6 +110,37 @@ struct StreamContent: Equatable, Sendable {
     /// True when the stored copy carries the server's interrupted-response marker.
     var wasInterrupted = false
 
+    /// True when a document block was opened and never closed.
+    ///
+    /// Meaningless while a turn is streaming — a block is legitimately open until its body
+    /// finishes arriving — so callers must consult `looksTruncated` instead, and only once the
+    /// answer is final.
+    var hasUnclosedDocumentBlock = false
+
+    /// Whether a **finished** answer shows any sign of having been cut short.
+    ///
+    /// The marker alone is not enough. `/chat`'s `onDone` (`sync-server.js:7797`) destructures
+    /// only `{content, usage}` and throws away the provider's `status`/`incomplete` verdict, so
+    /// a run that ended `status:'length'` — token budget exhausted, or the draft stranded inside
+    /// an unclosed block (`OpenRouterProvider.js:1255,1260`) — is persisted with
+    /// `incomplete:false`, carries no marker, and ends the response cleanly. `/stream-status`
+    /// then reports `done:true, incomplete:false`. Re-deriving the provider's own `unclosedBlock`
+    /// test (`OpenRouterProvider.js:170-178`) is the only way a client can catch that case.
+    var looksTruncated: Bool { wasInterrupted || hasUnclosedDocumentBlock }
+
+    /// What to send back to the server as this turn's content.
+    ///
+    /// **Not `prose`.** `POST /chat` replaces the chat's stored messages with exactly what it
+    /// receives — `setMessages` runs `DELETE FROM messages WHERE chat_id = ?` and re-inserts
+    /// (`sync-server.js:4250`) — so whatever goes back here is what survives, for the web
+    /// client too. `prose` has had the artifacts and the `<@file:MARK>` citation tokens
+    /// stripped out of it, so posting that back would permanently delete the drafted pleading
+    /// and every citation from the history on the next follow-up question.
+    ///
+    /// This matches the server's own persisted copy: `fullContent`, which keeps the artifacts
+    /// and citations but never the `<think>` blocks the provider writes alongside them.
+    var persistableContent: String = ""
+
     /// The marker the server appends to the *persisted* copy of an interrupted run
     /// (sync-server.js:2062). It is never written to the live stream, so it only shows up
     /// on history loaded from `GET /messages`.
@@ -120,6 +151,9 @@ struct StreamContent: Equatable, Sendable {
         var text = raw
 
         content.wasInterrupted = text.contains(interruptedMarker)
+        content.hasUnclosedDocumentBlock = Self.hasUnclosedDocumentBlock(text)
+        // Everything except the model's private reasoning — see `persistableContent`.
+        content.persistableContent = Self.strippingReasoning(from: raw)
 
         // Order matters: pull structured blocks out before the generic tag sweep, so their
         // bodies are captured rather than flattened into prose.
@@ -139,6 +173,35 @@ struct StreamContent: Equatable, Sendable {
         text = Self.stripDanglingTag(text)
         content.prose = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return content
+    }
+
+    /// Removes only the reasoning wrappers, leaving artifacts and citations intact.
+    private static func strippingReasoning(from raw: String) -> String {
+        var text = raw
+        _ = takeReasoning(&text)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Truncation
+
+    /// Whether any document wrapper is left open.
+    ///
+    /// Counting is safe against the closing form: `</canvas_content>` puts a `/` immediately
+    /// after the `<`, so it can never match the opening literal.
+    private static func hasUnclosedDocumentBlock(_ text: String) -> Bool {
+        ["canvas_content", "table_content"].contains { tag in
+            occurrences(of: "<\(tag)>", in: text) > occurrences(of: "</\(tag)>", in: text)
+        }
+    }
+
+    private static func occurrences(of needle: String, in haystack: String) -> Int {
+        var count = 0
+        var index = haystack.startIndex
+        while let found = haystack.range(of: needle, range: index..<haystack.endIndex) {
+            count += 1
+            index = found.upperBound
+        }
+        return count
     }
 
     // MARK: - Extractors

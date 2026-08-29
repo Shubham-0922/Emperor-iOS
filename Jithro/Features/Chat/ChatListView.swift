@@ -1,31 +1,24 @@
 import SwiftUI
 
 struct ChatListView: View {
+    @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
 
-    @State private var chats: [ChatSummary] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var newChatID: String?
+    @State private var model: ChatListViewModel?
+    /// One navigation path rather than a `for:` destination plus an `item:` destination.
+    /// Registering two destinations for the same type — which `String` was — makes SwiftUI warn
+    /// about a duplicate and lets one shadow the other.
+    @State private var path: [String] = []
+    @State private var isShowingSettings = false
+    @State private var isShowingDrafts = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
-                if isLoading && chats.isEmpty {
-                    ProgressView()
-                } else if chats.isEmpty {
-                    ContentUnavailableView(
-                        "No conversations yet",
-                        systemImage: "text.document",
-                        description: Text("Start one, or bring in a paperbook to ask about."))
+                if let model {
+                    content(model)
                 } else {
-                    List(chats) { chat in
-                        NavigationLink(value: chat.id) {
-                            row(for: chat)
-                        }
-                    }
-                    .listStyle(.plain)
-                    .refreshable { await load() }
+                    ProgressView()
                 }
             }
             .navigationTitle("Jithro")
@@ -35,33 +28,60 @@ struct ChatListView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        newChatID = ChatViewModel.newChatID()
+                        path.append(ChatListViewModel.newChatID())
                     } label: {
                         Label("New chat", systemImage: "square.and.pencil")
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        if let user = session.currentUser {
-                            Text(user.email ?? user.name ?? "Signed in")
-                        }
-                        Button("Sign out", role: .destructive) {
-                            Task { await session.signOut() }
-                        }
+                    Button {
+                        isShowingSettings = true
                     } label: {
-                        Image(systemName: "person.crop.circle")
+                        Label("Settings", systemImage: "person.crop.circle")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    // A draft is the product of a chat, so this is where someone comes looking
+                    // for one — without having to remember which conversation produced it.
+                    Button {
+                        isShowingDrafts = true
+                    } label: {
+                        Label("Your drafts", systemImage: "doc.text")
                     }
                 }
             }
-            .navigationDestination(item: $newChatID) { chatID in
-                ChatThreadView(chatID: chatID)
+            .sheet(isPresented: $isShowingSettings) {
+                SettingsView()
             }
-            .alert("Something went wrong", isPresented: .constant(errorMessage != nil)) {
-                Button("OK") { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
+            .sheet(isPresented: $isShowingDrafts) {
+                DraftHistoryView()
             }
-            .task { await load() }
+            .task {
+                guard model == nil else { return }
+                let created = ChatListViewModel(
+                    service: session.chats, cache: session.cache)
+                model = created
+                await created.load()
+            }
+        }
+    }
+
+    private func content(_ model: ChatListViewModel) -> some View {
+        ListStateView(presentation: model.presentation, retry: { await model.load() }) {
+            List(model.chats) { chat in
+                NavigationLink(value: chat.id) {
+                    row(for: chat)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(theme.canvas)
+            .refreshable { await model.load() }
+        } empty: {
+            ContentUnavailableView(
+                "No conversations yet",
+                systemImage: "doc.text",
+                description: Text("Start one, or bring in a paperbook to ask about."))
         }
     }
 
@@ -73,25 +93,15 @@ struct ChatListView: View {
             if let preview = chat.lastPreview, !preview.isEmpty {
                 Text(preview)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
             if let updated = chat.updatedAt {
                 Text(updated, format: .relative(presentation: .named))
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(theme.textTertiary)
             }
         }
         .padding(.vertical, 4)
-    }
-
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            chats = try await session.chats.chats()
-        } catch {
-            errorMessage = (error as? APIError)?.errorDescription ?? error.localizedDescription
-        }
     }
 }

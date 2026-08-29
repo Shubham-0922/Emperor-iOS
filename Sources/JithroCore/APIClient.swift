@@ -9,13 +9,12 @@ struct APIConfig: Sendable {
     /// Public host. The app must use the `/api` prefix: a set of routes is registered only in
     /// bare form on port 3001, and the Vite proxy strips `/api` before forwarding, so the
     /// prefixed form is the only one that reaches every route.
+    ///
+    /// Which host this is comes from `APIEnvironment`; nothing here hard-codes one.
     var baseURL: URL
     /// The server allows 600s for a chat run and 900s for uploads. A default 60s timeout
     /// would abort long drafts mid-answer.
     var requestTimeout: TimeInterval = 600
-
-    static let production = APIConfig(
-        baseURL: URL(string: "https://dev.emperorailabs.com/api")!)
 }
 
 /// Who we are, as far as this API is concerned.
@@ -37,6 +36,9 @@ enum APIError: LocalizedError, Equatable {
     case server(status: Int, message: String)
     case transport(String)
     case decoding(String)
+    /// The platform is down on purpose. Distinct from a server error because it is neither the
+    /// user's fault nor a bug, and the operator wrote a message worth showing.
+    case maintenance(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -45,8 +47,18 @@ enum APIError: LocalizedError, Equatable {
         case .server(_, let message): return message
         case .transport(let message): return message
         case .decoding(let message): return "Unexpected response from the server. \(message)"
+        case .maintenance(let message): return message
         }
     }
+}
+
+/// The body the server sends while maintenance is on (`sync-server.js:6250-6260`).
+struct MaintenanceBody: Codable, Sendable {
+    var maintenance: Bool?
+    var error: String?
+    /// What the operator wrote. Worth showing verbatim — it usually says how long.
+    var message: String?
+    var since: String?
 }
 
 /// Thin HTTP layer over the Juristar backend.
@@ -60,7 +72,7 @@ actor APIClient {
     private let session: URLSession
     private let decoder = JSONDecoder()
 
-    init(config: APIConfig = .production, session: URLSession? = nil) {
+    init(config: APIConfig = .current, session: URLSession? = nil) {
         self.config = config
         if let session {
             self.session = session
@@ -79,6 +91,14 @@ actor APIClient {
 
     func setCredentials(_ credentials: Credentials?) {
         self.credentials = credentials
+    }
+
+    /// Called when the server rejects our identity. `Session` uses it to sign out, so an expired
+    /// token leads somewhere instead of leaving every screen dead.
+    private var onAuthenticationLost: (@Sendable () -> Void)?
+
+    func setAuthenticationLostHandler(_ handler: @escaping @Sendable () -> Void) {
+        onAuthenticationLost = handler
     }
 
     func currentCredentials() -> Credentials? { credentials }
@@ -160,9 +180,26 @@ actor APIClient {
     /// the body is the reliable signal.
     private func throwIfError(data: Data, response: HTTPURLResponse) throws {
         guard !(200..<300).contains(response.statusCode) else { return }
+
+        // A planned outage, not a fault. Every route can answer this — none of the app's paths
+        // are on the maintenance allowlist — so it is recognised here rather than per screen.
+        if response.statusCode == 503,
+           let notice = try? decoder.decode(MaintenanceBody.self, from: data),
+           notice.maintenance == true {
+            let text = [notice.message, notice.error]
+                .compactMap { $0 }
+                .first { !$0.isEmpty }
+            throw APIError.maintenance(
+                message: text ?? "Jithro is down for maintenance. Please try again shortly.")
+        }
+
         let body = try? decoder.decode(APIErrorBody.self, from: data)
         let message = body?.error ?? "The server returned status \(response.statusCode)."
         if response.statusCode == 401 {
+            // The session is over. Told once, here, so every screen does not have to notice
+            // independently — and so `requiresReauthentication` is acted on rather than merely
+            // computed.
+            onAuthenticationLost?()
             throw APIError.invalidCredentials
         }
         throw APIError.server(status: response.statusCode, message: message)

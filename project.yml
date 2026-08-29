@@ -19,6 +19,17 @@ settings:
     # intermittent streaming glitches.
     SWIFT_STRICT_CONCURRENCY: complete
     DEVELOPMENT_TEAM: "" # set this to your Apple Developer team id before archiving
+  configs:
+    # Which backend the build talks to. Read via the Info.plist key `JithroEnvironment` and
+    # resolved by `APIConfig.resolveEnvironment`.
+    #
+    # Setting this to `development` in a Release configuration does NOT take effect — the
+    # resolver forces production, because the development host is a public tunnel with no
+    # Access policy in front of real client matters. Changing this value cannot expose it.
+    Debug:
+      JITHRO_ENVIRONMENT: development
+    Release:
+      JITHRO_ENVIRONMENT: production
 
 targets:
   Jithro:
@@ -33,6 +44,8 @@ targets:
       path: Jithro/Resources/Info.plist
       properties:
         CFBundleDisplayName: Jithro
+        # Consumed by `APIConfig.resolvedEnvironment`; driven by the per-config build setting.
+        JithroEnvironment: $(JITHRO_ENVIRONMENT)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

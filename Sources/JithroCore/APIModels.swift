@@ -48,11 +48,56 @@ enum WireDate {
         guard let millis else { return nil }
         return Date(timeIntervalSince1970: millis / 1000)
     }
+
+    // MARK: - Court days
+
+    /// The timezone every date in this product means.
+    ///
+    /// Hearing dates, filing dates and the cause list are days in an Indian court. The web
+    /// client filters the cause list on `Asia/Kolkata` deliberately rather than on the viewer's
+    /// zone (`src/lib/datetime.js:51-57`), because "today" means India's today even when the
+    /// advocate is not. Bucketing these against `Calendar.current` shows the wrong day's
+    /// hearings to anyone travelling, with no error anywhere.
+    nonisolated(unsafe) static let india = TimeZone(identifier: "Asia/Kolkata")
+        ?? TimeZone(secondsFromGMT: 19800) ?? .gmt
+
+    nonisolated(unsafe) private static let day: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = india
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Parses a bare `YYYY-MM-DD` as that day in India.
+    ///
+    /// Deliberately separate from `parse`: this returns midnight IST, which is the only
+    /// reading of a court date that does not drift by a day.
+    static func parseDay(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        return day.date(from: String(raw.prefix(10)))
+    }
+
+    /// The `YYYY-MM-DD` key for an instant, in India — the same bucketing the server uses.
+    static func dayKey(_ date: Date) -> String { day.string(from: date) }
+
+    /// Today's key, in India.
+    static func todayKey(now: Date = Date()) -> String { dayKey(now) }
+
+    /// Any encoding this API emits, tried widest-first.
+    ///
+    /// A single `JSONDecoder.dateDecodingStrategy` cannot cover this: one `GET /case` response
+    /// carries ISO8601-with-milliseconds (`cases`, `case_items`), zoneless SQLite
+    /// `CURRENT_TIMESTAMP` (`case_events`, whose INSERT omits the column so the DDL default
+    /// fires) **and** bare `YYYY-MM-DD` date columns, all in the same payload.
+    static func parseAny(_ raw: String?) -> Date? {
+        parse(raw) ?? parseDay(raw)
+    }
 }
 
 // MARK: - Auth
 
-struct User: Codable, Equatable, Identifiable {
+struct User: Codable, Equatable, Identifiable, Sendable {
     let id: Int
     var email: String?
     var name: String?
@@ -89,7 +134,7 @@ struct APIErrorBody: Codable {
 
 // MARK: - Chats
 
-struct ChatSummary: Codable, Equatable, Identifiable {
+struct ChatSummary: Codable, Equatable, Identifiable, Sendable {
     let id: String
     var title: String?
     var role: String?
@@ -211,11 +256,11 @@ struct StreamStatus: Codable {
 
 /// `GET /user-files` returns a recursive tree whose nodes are discriminated by `type`, with
 /// files and folders mixed at every level — including the top.
-indirect enum FileNode: Codable, Equatable, Identifiable {
+indirect enum FileNode: Codable, Equatable, Identifiable, Sendable {
     case folder(Folder)
     case file(StoredFile)
 
-    struct Folder: Codable, Equatable {
+    struct Folder: Codable, Equatable, Sendable {
         var name: String
         var path: String
         var created: String?
@@ -223,7 +268,7 @@ indirect enum FileNode: Codable, Equatable, Identifiable {
         var files: [FileNode]?
     }
 
-    struct StoredFile: Codable, Equatable {
+    struct StoredFile: Codable, Equatable, Sendable {
         var name: String
         var path: String
         var size: Int?
@@ -271,7 +316,7 @@ indirect enum FileNode: Codable, Equatable, Identifiable {
     }
 }
 
-struct IngestProgress: Codable, Equatable {
+struct IngestProgress: Codable, Equatable, Sendable {
     var stage: String?
     var pagesDone: Int?
     var pagesTotal: Int?
