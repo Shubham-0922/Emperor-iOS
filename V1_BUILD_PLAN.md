@@ -1,4 +1,4 @@
-# Jithro iOS — Status, Platform Analysis, and the v1 Build Plan
+# Emperor iOS — Status, Platform Analysis, and the v1 Build Plan
 
 Written 2026-08-26. Supersedes the planning half of `ROADMAP.md`; §1 of that file remains a
 readable narrative, but where the two disagree **this document is the later verification** and
@@ -45,8 +45,8 @@ worse than none.
 
 Two gates, both in CI:
 
-- `swift test` — full semantic verification of `Sources/JithroCore`.
-- `swiftc -parse` over `Jithro/**/*.swift` — syntax-only, but it runs without the iOS SDK and
+- `swift test` — full semantic verification of `Sources/EmperorCore`.
+- `swiftc -parse` over `Emperor/**/*.swift` — syntax-only, but it runs without the iOS SDK and
   catches every unbalanced brace and malformed builder body. It does **not** type-check.
 
 The gap between them is real and was demonstrated twice: two genuine compile errors
@@ -120,18 +120,18 @@ does not keep, so each is left out with the reason recorded in source:
 | Buildable on a Mac | **Unverified — never compiled** |
 | Backend endpoints consumed | **10 of 169** |
 | CI | **None** |
-| Git | 11 commits, origin `/srv/git/Jithro.git`, working tree dirty |
+| Git | 11 commits, origin `/srv/git/Emperor.git`, working tree dirty |
 
 ## A.2 Architecture
 
 Two layers, one rule: *a view holds no logic worth testing.*
 
-- **`Sources/JithroCore/`** — Foundation-only. No UIKit, no SwiftUI, no Security framework.
+- **`Sources/EmperorCore/`** — Foundation-only. No UIKit, no SwiftUI, no Security framework.
   Compiles and tests on Linux, so wire-format edge cases are pinned by tests rather than
   discovered on a device.
-- **`Jithro/`** — what genuinely needs UIKit, SwiftUI, WebKit, PDFKit, VisionKit or Keychain.
+- **`Emperor/`** — what genuinely needs UIKit, SwiftUI, WebKit, PDFKit, VisionKit or Keychain.
 
-`project.yml` compiles `Sources/JithroCore` directly into the app target, so tested code and
+`project.yml` compiles `Sources/EmperorCore` directly into the app target, so tested code and
 shipped code are the same bytes.
 
 Five protocol seams let every screen run with no server: `ChatProviding`, `ChatListProviding`,
@@ -188,7 +188,7 @@ Five protocol seams let every screen run with no server: `ChatProviding`, `ChatL
 | `LoginView.swift` | 100 | SwiftUI |
 | `DocumentScannerView.swift` | 73 | VisionKit |
 | `Keychain.swift` | 46 | Security |
-| `JithroApp.swift` | 31 | SwiftUI |
+| `EmperorApp.swift` | 31 | SwiftUI |
 
 ## A.5 Tests — 151 across 13 suites
 
@@ -246,7 +246,7 @@ plan progress.
 1. **The SwiftUI layer has never been compiled.** No iOS SDK on the build machine.
 2. **No feature has ever run against the live server from the app.** Every wire claim is
    derived from reading platform source and pinned against a fake.
-3. `xcodegen` is not installed; `Jithro.xcodeproj` has never been generated.
+3. `xcodegen` is not installed; `Emperor.xcodeproj` has never been generated.
 4. No device or simulator run. VisionKit, WKWebView, PDFKit and Keychain have never executed.
 5. The base URL is hard-coded with no environment switch.
 

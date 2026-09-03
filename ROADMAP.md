@@ -1,8 +1,8 @@
-# Jithro (iOS) — Status Report and v1 Plan
+# Emperor (iOS) — Status Report and v1 Plan
 
 **Date:** 2026-08-25
 **Platform analysed:** `/var/www/emperor-ai` @ `d046f317`
-**iOS client:** `/var/www/jithro-ios` (app name: **Jithro**)
+**iOS client:** `/var/www/emperor-ios` (app name: **Emperor**)
 
 Everything below was read from source and, where possible, checked against the live server
 and the production database. Row counts are real. Claims carry `file:line` citations so you
@@ -21,16 +21,16 @@ can verify rather than trust.
 | Test runtime | ~0.4s |
 | Lines of core logic | ~6,250 |
 | Buildable here | Core only (no iOS SDK on Linux) |
-| Buildable on your Mac | Yes — `xcodegen generate && open Jithro.xcodeproj` |
+| Buildable on your Mac | Yes — `xcodegen generate && open Emperor.xcodeproj` |
 
 The project is split so the risky half can be proven without a Mac:
 
-- **`Sources/JithroCore/`** — Foundation-only. No UIKit, no SwiftUI. Compiles and tests on
+- **`Sources/EmperorCore/`** — Foundation-only. No UIKit, no SwiftUI. Compiles and tests on
   Linux, so every wire-format edge case is pinned by a test rather than discovered on device.
-- **`Jithro/`** — the SwiftUI layer. Written but **not compile-verified**, because this box
+- **`Emperor/`** — the SwiftUI layer. Written but **not compile-verified**, because this box
   has a Swift compiler and no iOS SDK.
 
-The Xcode app target compiles `Sources/JithroCore` directly (`project.yml`), so the tested
+The Xcode app target compiles `Sources/EmperorCore` directly (`project.yml`), so the tested
 code and the shipped code are the same bytes. No second copy to drift.
 
 ## 1.2 Core — what each file does
@@ -78,7 +78,7 @@ What is left needs UIKit, SwiftUI or the Security framework, and nothing else.
 
 | File | Purpose |
 |---|---|
-| `JithroApp.swift` | Entry point, root routing on auth state. |
+| `EmperorApp.swift` | Entry point, root routing on auth state. |
 | `Keychain.swift` | The real `CredentialStore`: `WhenUnlockedThisDeviceOnly`, never iCloud. |
 | `LoginView.swift` | Sign in / register. |
 | `ChatListView.swift` | Conversation list. |

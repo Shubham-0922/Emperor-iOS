@@ -1,10 +1,9 @@
-# Jithro
+# Emperor
 
-A native SwiftUI iOS client for the **Juristar** platform (`/var/www/emperor-ai`).
+A native SwiftUI iOS client for the **Emperor** platform (`/var/www/emperor-ai`).
 
-**Jithro** is the name of this app. **Juristar** is the name of the backend platform and
-the website it belongs to — those are unchanged, and nothing outside this repository was
-renamed.
+**Emperor** names the whole product: this app, the Android client, and the web platform.
+Emperor was the platform's earlier name and survives only in older comments.
 
 v1 scope: **chat with your documents** and **document capture + upload**.
 
@@ -12,19 +11,19 @@ v1 scope: **chat with your documents** and **document capture + upload**.
 
 | Path | What it is |
 |---|---|
-| `Sources/JithroCore/` | Pure-logic core: stream parsing, wire models, HTTP layer. Foundation-only, no UI framework. |
-| `Jithro/` | The SwiftUI app: session, views, view models, document scanner. |
-| `Tests/JithroCoreTests/` | Tests for the core. Runs on Linux and macOS. |
+| `Sources/EmperorCore/` | Pure-logic core: stream parsing, wire models, HTTP layer. Foundation-only, no UI framework. |
+| `Emperor/` | The SwiftUI app: session, views, view models, document scanner. |
+| `Tests/EmperorCoreTests/` | Tests for the core. Runs on Linux and macOS. |
 | `project.yml` | XcodeGen spec. The `.xcodeproj` is generated, not committed. |
 
-The app target compiles `Sources/JithroCore` directly, so the code under test is
+The app target compiles `Sources/EmperorCore` directly, so the code under test is
 byte-for-byte the code that ships — there is no second copy to drift.
 
 ## Brand
 
 The app icon is generated from the landing page's `logo.svg` — the same mark the website uses.
-The source SVG is kept at `Jithro/Resources/logo.svg`, and the rendered icon at
-`Jithro/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png` (1024x1024, RGB, no
+The source SVG is kept at `Emperor/Resources/logo.svg`, and the rendered icon at
+`Emperor/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png` (1024x1024, RGB, no
 alpha channel — the App Store rejects icons with transparency).
 
 To regenerate after a logo change: render the SVG to PNG, trim the surrounding whitespace,
@@ -35,7 +34,7 @@ and centre the mark on a square white canvas at about 66% fill.
 ```bash
 brew install xcodegen
 xcodegen generate
-open Jithro.xcodeproj
+open Emperor.xcodeproj
 ```
 
 Set `DEVELOPMENT_TEAM` in `project.yml` before archiving.

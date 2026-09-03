@@ -1,4 +1,4 @@
-# Jithro iOS — what is missing
+# Emperor iOS — what is missing
 
 **Updated after closing Tier 1 item 6 and most of Tier 2.** Struck-through items are done; the
 rest stand. 618 tests.
@@ -164,7 +164,7 @@ In order, first thing to last:
    file reaches the target)*.
 2. **Type-check the SwiftUI layer.** Still the largest unknown, and it is a known unknown:
    `swiftc -parse` catches every syntax error but does **not** type-check, so this is the first
-   real compile the `Jithro/` directory has ever had. Expect errors; expect them to be small.
+   real compile the `Emperor/` directory has ever had. Expect errors; expect them to be small.
    Three classes have already been found and fixed by hand-built repros rather than by eye —
    a mutable `@Bindable` local captured in a `@Sendable` closure, a non-`Sendable`
    `UserDefaults` inside a `Sendable` struct, and ternaries whose two branches were different

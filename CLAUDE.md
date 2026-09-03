@@ -1,7 +1,8 @@
-# Jithro — working notes
+# Emperor — working notes
 
-**Jithro** is this iOS app. **Juristar** (a.k.a. Emperor AI) is the backend platform it talks
-to. Only the app was renamed; the platform and website keep their names.
+**Emperor** is the whole product — this app, the Android client, and the web platform. Emperor
+was the platform's earlier name; `emperor-ai/WORK-LOG.md:8` records the change. Where an old
+comment still says Emperor, it means this same system.
 
 ## Where the platform reference lives
 
@@ -13,7 +14,7 @@ Expected local layout:
 
 ```
 <your projects dir>/
-  jithro-ios/     ← this repo
+  emperor-ios/     ← this repo
   emperor-ai/     ← platform source, reference only. Never edit.
 ```
 
@@ -50,11 +51,11 @@ surface is `src/tools/ToolWorkspace.jsx`, rendering through `src/tools/renderers
 
 ## Repository
 
-Jithro is its own repository, independent of the platform. Origin is a bare repo on the
-server at `/srv/git/Jithro.git`, matching the convention `EmperorAI.git` uses.
+Emperor is its own repository, independent of the platform. Origin is a bare repo on the
+server at `/srv/git/Emperor.git`, matching the convention `EmperorAI.git` uses.
 
 ```bash
-git clone root@<server>:/srv/git/Jithro.git jithro-ios
+git clone root@<server>:/srv/git/Emperor.git emperor-ios
 ```
 
 Push back with `git push`. The platform lives in a separate repo and must never be committed
@@ -64,11 +65,11 @@ here — the `emperor-ai/` copy beside this one is read-only reference.
 
 Development happens on Linux; a Mac is used only for what genuinely cannot be done without
 one — compiling the SwiftUI layer, the simulator, signing, and submission. So **push as much
-as possible into `Sources/JithroCore/`**, which builds and tests here.
+as possible into `Sources/EmperorCore/`**, which builds and tests here.
 
 ```bash
 sudo apt install swiftlang     # Swift 6.1.3 on Ubuntu; no iOS SDK, but the core builds
-cd jithro-ios && swift test    # 618 tests
+cd emperor-ios && swift test    # 618 tests
 ```
 
 View models live in the core for this reason — turn state, recovery and error handling are
@@ -107,7 +108,7 @@ that makes no sense against the current source, `rm -rf .build` before investiga
 
 ## How to work on this repo
 
-- **Put logic in `Sources/JithroCore/`.** It is Foundation-only — no UIKit, no SwiftUI — so it
+- **Put logic in `Sources/EmperorCore/`.** It is Foundation-only — no UIKit, no SwiftUI — so it
   compiles and tests anywhere, including Linux and CI. `swift test` runs 618 tests in a few
   seconds. Anything that could plausibly live there should.
 - **A view should hold no logic worth testing.** Everything a screen does other than lay itself
@@ -115,11 +116,11 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   model in the core. Where that needs a service, the service declares a protocol next to itself
   (`ChatProviding`, `ChatListProviding`, `FileProviding`, `UploadProviding`, `CredentialStore`)
   and the view model takes the protocol, so the screen can be driven with no server and no
-  device. `Tests/JithroCoreTests/Fakes.swift` holds the stand-ins.
-- **The SwiftUI layer in `Jithro/` needs Xcode.** It was authored on a Linux box with no iOS
+  device. `Tests/EmperorCoreTests/Fakes.swift` holds the stand-ins.
+- **The SwiftUI layer in `Emperor/` needs Xcode.** It was authored on a Linux box with no iOS
   SDK, so **none of it has ever been type-checked**. Keeping it thin is the point: what remains
   there is what genuinely needs UIKit, SwiftUI or the Security framework.
-- **`swiftc -parse $(find Jithro -name '*.swift')` is the standing gate for that layer.** It
+- **`swiftc -parse $(find Emperor -name '*.swift')` is the standing gate for that layer.** It
   runs without the iOS SDK and catches every syntax error, and it is in CI. It does **not**
   type-check — two real compile errors (a `@Sendable` closure capturing a `@Bindable` local, a
   non-`Sendable` `UserDefaults` in a `Sendable` struct) parsed cleanly and were caught only by
@@ -127,7 +128,7 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   build a minimal repro with mock types and compile it; do not reason about it by eye.
 - **The Xcode project is generated**, not committed: `xcodegen generate`. Add files by editing
   `project.yml`.
-- The app target compiles `Sources/JithroCore` directly, so the tested code and the shipped
+- The app target compiles `Sources/EmperorCore` directly, so the tested code and the shipped
   code are the same bytes.
 
 ## Backend gotchas that bite silently

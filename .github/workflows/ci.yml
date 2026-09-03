@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The tested half. `Sources/JithroCore` is Foundation-only by design, so the whole wire
+  # The tested half. `Sources/EmperorCore` is Foundation-only by design, so the whole wire
   # format, every view model and all error handling is verifiable without a Mac or an iOS SDK.
   core:
     name: Core tests (Linux)
@@ -41,8 +41,8 @@ jobs:
 
       - name: Parse the app layer
         run: |
-          files=$(find Jithro -name '*.swift')
-          test -n "$files" || { echo "no Swift files found under Jithro/"; exit 1; }
+          files=$(find Emperor -name '*.swift')
+          test -n "$files" || { echo "no Swift files found under Emperor/"; exit 1; }
           echo "$files" | sed 's/^/  /'
           swiftc -parse $files
 
@@ -66,13 +66,13 @@ jobs:
 
       - name: Every Swift file reached the target
         run: |
-          expected=$(find Sources/JithroCore Jithro -name '*.swift' | wc -l)
-          actual=$(grep -c '\.swift .*sourcecode' Jithro.xcodeproj/project.pbxproj)
+          expected=$(find Sources/EmperorCore Emperor -name '*.swift' | wc -l)
+          actual=$(grep -c '\.swift .*sourcecode' Emperor.xcodeproj/project.pbxproj)
           echo "expected $expected, target has $actual"
           test "$expected" -eq "$actual"
 
       - name: The privacy manifest ships
-        run: grep -q 'PrivacyInfo.xcprivacy' Jithro.xcodeproj/project.pbxproj
+        run: grep -q 'PrivacyInfo.xcprivacy' Emperor.xcodeproj/project.pbxproj
 
   # The real thing. Everything above is a proxy for this, and this is the only job that
   # type-checks the SwiftUI layer against the actual SDK.
@@ -110,8 +110,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build \
-            -project Jithro.xcodeproj \
-            -scheme Jithro \
+            -project Emperor.xcodeproj \
+            -scheme Emperor \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
@@ -152,11 +152,11 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild archive \
-            -project Jithro.xcodeproj \
-            -scheme Jithro \
+            -project Emperor.xcodeproj \
+            -scheme Emperor \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath build/Jithro.xcarchive \
+            -archivePath build/Emperor.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -168,17 +168,17 @@ jobs:
       - name: Wrap the app as an .ipa
         run: |
           set -euo pipefail
-          app="build/Jithro.xcarchive/Products/Applications/Jithro.app"
+          app="build/Emperor.xcarchive/Products/Applications/Emperor.app"
           test -d "$app" || { echo "no .app in the archive — the build produced nothing"; exit 1; }
           mkdir -p build/Payload
           cp -R "$app" build/Payload/
-          (cd build && zip -qry Jithro-unsigned.ipa Payload)
-          ls -lh build/Jithro-unsigned.ipa
+          (cd build && zip -qry Emperor-unsigned.ipa Payload)
+          ls -lh build/Emperor-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Jithro-unsigned-ipa
-          path: build/Jithro-unsigned.ipa
+          name: Emperor-unsigned-ipa
+          path: build/Emperor-unsigned.ipa
           # Long enough to still be there next week, short enough not to hoard binaries.
           retention-days: 30
 
@@ -252,7 +252,7 @@ jobs:
 
           profiles=~/Library/MobileDevice/Provisioning\ Profiles
           mkdir -p "$profiles"
-          echo "$PROFILE" | base64 --decode > "$profiles/jithro.mobileprovision"
+          echo "$PROFILE" | base64 --decode > "$profiles/emperor.mobileprovision"
 
       - name: Generate the project
         if: steps.gate.outputs.ready == 'true'
@@ -265,11 +265,11 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild archive \
-            -project Jithro.xcodeproj \
-            -scheme Jithro \
+            -project Emperor.xcodeproj \
+            -scheme Emperor \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath build/Jithro.xcarchive \
+            -archivePath build/Emperor.xcarchive \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             | xcbeautify --renderer github-actions
@@ -292,7 +292,7 @@ jobs:
           </plist>
           PLIST
           xcodebuild -exportArchive \
-            -archivePath build/Jithro.xcarchive \
+            -archivePath build/Emperor.xcarchive \
             -exportPath build/export \
             -exportOptionsPlist build/ExportOptions.plist
 
@@ -311,13 +311,13 @@ jobs:
           echo "$KEY" | base64 --decode > ~/private_keys/AuthKey_$KEY_ID.p8
           xcrun altool --upload-app \
             --type ios \
-            --file build/export/Jithro.ipa \
+            --file build/export/Emperor.ipa \
             --apiKey "$KEY_ID" \
             --apiIssuer "$ISSUER_ID"
 
       - uses: actions/upload-artifact@v4
         if: steps.gate.outputs.ready == 'true'
         with:
-          name: Jithro-signed-ipa
-          path: build/export/Jithro.ipa
+          name: Emperor-signed-ipa
+          path: build/export/Emperor.ipa
           retention-days: 30

@@ -11,13 +11,13 @@ import PackageDescription
 // The Xcode app target compiles these same files directly (see project.yml), so nothing
 // here needs `public` access.
 let package = Package(
-    name: "JithroCore",
+    name: "EmperorCore",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "JithroCore", targets: ["JithroCore"]),
+        .library(name: "EmperorCore", targets: ["EmperorCore"]),
     ],
     targets: [
-        .target(name: "JithroCore"),
-        .testTarget(name: "JithroCoreTests", dependencies: ["JithroCore"]),
+        .target(name: "EmperorCore"),
+        .testTarget(name: "EmperorCoreTests", dependencies: ["EmperorCore"]),
     ]
 )

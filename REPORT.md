@@ -1,20 +1,21 @@
-# Jithro — Where We Are, and What's Left
+# Emperor — Where We Are, and What's Left
 
 **A plain-English report**
 Date: 25 August 2026
 
 ---
 
-## What Jithro is
+## What Emperor is
 
-**Jithro** is the iPhone and iPad app we are building for your platform.
+**Emperor** is the iPhone and iPad app we are building for your platform.
 
-**Juristar** is the platform itself — the website, the servers, the AI. That name has not
-changed. Jithro is simply the app that sits in a lawyer's pocket and talks to it.
+**Emperor** is also the platform itself — the website, the servers, the AI. The platform used to
+be called Emperor; app and platform now share one name. This app is the part that sits in a
+lawyer's pocket and talks to the rest.
 
 The app uses the same logo as your landing page.
 
-**The idea in one sentence:** your platform today is something a lawyer sits down at. Jithro is
+**The idea in one sentence:** your platform today is something a lawyer sits down at. Emperor is
 something a lawyer carries — it answers *"what do I have tomorrow?"*, *"what happened on my
 cases?"*, *"what does this document say?"* — from a car, a corridor, or a courtroom.
 
@@ -55,7 +56,7 @@ Files still being processed are shown as unavailable rather than pretending to b
 
 **Citations you can tap.** This is the one worth dwelling on, because it is your product's
 whole promise. When the AI says *"the sale completed on 4 March 2019"*, it attaches an
-invisible marker naming the document and the page. Jithro reads those markers and turns them
+invisible marker naming the document and the page. Emperor reads those markers and turns them
 into little tappable chips under the answer. Tap one and the actual PDF opens **at that exact
 page**. The claim "every line names a page you can open" becomes literally true, in the hand.
 

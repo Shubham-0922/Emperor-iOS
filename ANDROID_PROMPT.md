@@ -13,7 +13,7 @@ ls /home/dennis/Documents/JithroApps/
 
 ---
 
-Build **Jithro for Android** — a native Kotlin client for the Juristar legal-AI platform.
+Build **Emperor for Android** — a native Kotlin client for the Emperor legal-AI platform.
 
 You are starting fresh with no prior context. Work **in the current directory**,
 `/home/dennis/Documents/JithroApps/Jithro_Android/`, and initialise a git repository here.
@@ -49,7 +49,7 @@ Read these first, in order:
 2. `../Jithro_iOS/README.md` — the backend contracts that fail silently
 3. `../Jithro_iOS/ROADMAP.md` — what the platform actually is, what is broken in it, and why
    v1 is scoped the way it is
-4. `../Jithro_iOS/Sources/JithroCore/` and its tests — the behaviour, stated precisely
+4. `../Jithro_iOS/Sources/EmperorCore/` and its tests — the behaviour, stated precisely
 
 ## Ground rules
 

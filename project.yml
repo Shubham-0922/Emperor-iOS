@@ -1,10 +1,10 @@
 # Xcode project definition, consumed by XcodeGen.
 #
-#   brew install xcodegen && xcodegen generate && open Jithro.xcodeproj
+#   brew install xcodegen && xcodegen generate && open Emperor.xcodeproj
 #
 # The project file is generated rather than committed so that adding a source file is an
 # edit to this spec instead of a merge conflict in a 3,000-line pbxproj.
-name: Jithro
+name: Emperor
 options:
   bundleIdPrefix: com.emperorailabs
   deploymentTarget:
@@ -20,32 +20,32 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     DEVELOPMENT_TEAM: "" # set this to your Apple Developer team id before archiving
   configs:
-    # Which backend the build talks to. Read via the Info.plist key `JithroEnvironment` and
+    # Which backend the build talks to. Read via the Info.plist key `EmperorEnvironment` and
     # resolved by `APIConfig.resolveEnvironment`.
     #
     # Setting this to `development` in a Release configuration does NOT take effect — the
     # resolver forces production, because the development host is a public tunnel with no
     # Access policy in front of real client matters. Changing this value cannot expose it.
     Debug:
-      JITHRO_ENVIRONMENT: development
+      EMPEROR_ENVIRONMENT: development
     Release:
-      JITHRO_ENVIRONMENT: production
+      EMPEROR_ENVIRONMENT: production
 
 targets:
-  Jithro:
+  Emperor:
     type: application
     platform: iOS
     sources:
       # The pure-logic core, shared verbatim with the SPM package so `swift test` on any
       # machine exercises exactly the code the app ships.
-      - path: Sources/JithroCore
-      - path: Jithro
+      - path: Sources/EmperorCore
+      - path: Emperor
     info:
-      path: Jithro/Resources/Info.plist
+      path: Emperor/Resources/Info.plist
       properties:
-        CFBundleDisplayName: Jithro
+        CFBundleDisplayName: Emperor
         # Consumed by `APIConfig.resolvedEnvironment`; driven by the per-config build setting.
-        JithroEnvironment: $(JITHRO_ENVIRONMENT)
+        EmperorEnvironment: $(EMPEROR_ENVIRONMENT)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -54,12 +54,12 @@ targets:
         # Required: the app opens the camera to scan paperbooks. Without a purpose string
         # iOS terminates the app the moment the scanner is presented.
         NSCameraUsageDescription: >
-          Jithro uses the camera to scan paperbooks, orders and pleadings into your
+          Emperor uses the camera to scan paperbooks, orders and pleadings into your
           document library.
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.emperorailabs.jithro
+        PRODUCT_BUNDLE_IDENTIFIER: com.emperorailabs.emperor
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2" # iPhone and iPad

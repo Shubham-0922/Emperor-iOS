@@ -1,15 +1,15 @@
-# Getting Jithro onto a phone
+# Getting Emperor onto a phone
 
 Everything here runs on GitHub Actions. **No Mac is needed to build.** A Mac is only needed if
 you choose the sideload route and want to re-sign the app yourself.
 
 ## First: put the repo on GitHub
 
-Origin today is the bare repo on the server (`/srv/git/Jithro.git`), which Actions cannot see.
+Origin today is the bare repo on the server (`/srv/git/Emperor.git`), which Actions cannot see.
 Add GitHub as a second remote rather than replacing it:
 
 ```bash
-gh repo create Jithro --private --source=. --remote=github
+gh repo create Emperor --private --source=. --remote=github
 git push github main
 ```
 
@@ -33,9 +33,9 @@ The first two need nothing from you. The third needs the secrets below.
 
 ## Route A — sideload, free, 7 days
 
-The `unsigned-ipa` job runs on every push and attaches `Jithro-unsigned.ipa` to the run.
+The `unsigned-ipa` job runs on every push and attaches `Emperor-unsigned.ipa` to the run.
 
-1. Actions → the run → **Artifacts** → download `Jithro-unsigned-ipa`.
+1. Actions → the run → **Artifacts** → download `Emperor-unsigned-ipa`.
 2. Sign it with your own free Apple ID:
    - **[Sideloadly](https://sideloadly.io)** — Windows or macOS, simplest.
    - **[AltStore](https://altstore.io)** — keeps a helper running that re-signs automatically,
@@ -52,7 +52,7 @@ You need the [Apple Developer Program](https://developer.apple.com/programs/). T
 
 ### 1. Register the app
 
-App Store Connect → Apps → **+** → New App. Bundle ID must be **`com.emperorailabs.Jithro`**
+App Store Connect → Apps → **+** → New App. Bundle ID must be **`com.emperorailabs.Emperor`**
 (from `bundleIdPrefix` in `project.yml`). Register that identifier first under Certificates,
 Identifiers & Profiles → Identifiers.
 
@@ -63,7 +63,7 @@ Under Certificates, Identifiers & Profiles:
 - an **Apple Distribution** certificate — download the `.cer`, add it to Keychain Access on a
   Mac, then export it as a **`.p12`** with a password. The `.p12` is the certificate *and* its
   private key; the `.cer` alone cannot sign.
-- an **App Store** provisioning profile for `com.emperorailabs.Jithro`, tied to that
+- an **App Store** provisioning profile for `com.emperorailabs.Emperor`, tied to that
   certificate. Download the `.mobileprovision`.
 
 > Creating a distribution certificate needs a Mac once, for the Keychain export. If you have no
@@ -86,7 +86,7 @@ so they survive as text:
 
 ```bash
 base64 -w0 Certificates.p12          # → APPLE_DIST_CERT_P12
-base64 -w0 Jithro.mobileprovision    # → APPLE_PROVISIONING_PROFILE
+base64 -w0 Emperor.mobileprovision    # → APPLE_PROVISIONING_PROFILE
 base64 -w0 AuthKey_XXXXXXXXXX.p8     # → APP_STORE_CONNECT_KEY
 ```
 
@@ -120,7 +120,7 @@ testers in App Store Connect → TestFlight.
 ## What will go wrong the first time
 
 **The `ios` job will probably fail, and that is the point of it.** The SwiftUI layer in
-`Jithro/` has never been type-checked — `swiftc -parse` catches syntax but not types, so this is
+`Emperor/` has never been type-checked — `swiftc -parse` catches syntax but not types, so this is
 its first real compile. Expect a handful of errors; expect them to be small. Three classes have
 already been found and fixed by building minimal repros, and they are the ones to look for
 first:
@@ -129,7 +129,7 @@ first:
 - a non-`Sendable` type inside a `Sendable` struct,
 - a ternary inside `.foregroundStyle` whose two branches are different `ShapeStyle` types.
 
-`Sources/JithroCore` already compiles and its 618 tests pass, so anything that breaks is in the
+`Sources/EmperorCore` already compiles and its 618 tests pass, so anything that breaks is in the
 view layer only.
 
 **Two things Apple will ask about at submission**, both already handled:
