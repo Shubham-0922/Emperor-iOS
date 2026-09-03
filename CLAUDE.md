@@ -1,8 +1,8 @@
 # Emperor — working notes
 
-**Emperor** is the whole product — this app, the Android client, and the web platform. Emperor
+**Emperor** is the whole product — this app, the Android client, and the web platform. Juristar
 was the platform's earlier name; `emperor-ai/WORK-LOG.md:8` records the change. Where an old
-comment still says Emperor, it means this same system.
+comment still says Juristar, it means this same system.
 
 ## Where the platform reference lives
 

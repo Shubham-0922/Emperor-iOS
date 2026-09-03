@@ -3,7 +3,7 @@
 A native SwiftUI iOS client for the **Emperor** platform (`/var/www/emperor-ai`).
 
 **Emperor** names the whole product: this app, the Android client, and the web platform.
-Emperor was the platform's earlier name and survives only in older comments.
+Juristar was the platform's earlier name and survives only in older comments.
 
 v1 scope: **chat with your documents** and **document capture + upload**.
 

@@ -10,7 +10,7 @@ Date: 25 August 2026
 **Emperor** is the iPhone and iPad app we are building for your platform.
 
 **Emperor** is also the platform itself — the website, the servers, the AI. The platform used to
-be called Emperor; app and platform now share one name. This app is the part that sits in a
+be called Juristar; app and platform now share one name. This app is the part that sits in a
 lawyer's pocket and talks to the rest.
 
 The app uses the same logo as your landing page.
