@@ -162,24 +162,19 @@ jobs:
       # rolled. `xcodebuild test` will not take a generic destination the way `build` does, so
       # the only durable answer is to look the device up at run time and pass its UDID.
       #
-      # Sorted so the newest iPhone wins, and the whole list is printed — when this does fail,
-      # the first question is always "what was actually available".
+      # The last listed iPhone wins, and the whole list is printed — when this does fail, the
+      # first question is always what the runner actually had.
+      #
+      # Deliberately shell rather than an embedded script: this step's first version inlined
+      # Python, whose unindented lines silently terminated the YAML block scalar and made the
+      # whole workflow unparseable. A one-liner cannot do that.
       - name: Pick a simulator
         id: sim
         run: |
           set -euo pipefail
           xcrun simctl list devices available
-          udid=$(xcrun simctl list devices available --json \
-            | python3 -c "
-import json, sys
-runtimes = json.load(sys.stdin)['devices']
-phones = [(runtime, device) for runtime, devices in runtimes.items()
-          for device in devices if device['name'].startswith('iPhone')]
-if not phones:
-    sys.exit('no iPhone simulator is available on this runner')
-runtime, device = sorted(phones, key=lambda pair: pair[0])[-1]
-print(device['udid'])
-")
+          udid=$(xcrun simctl list devices available | grep -oE 'iPhone[^(]*\(([0-9A-F-]{36})\)' | tail -1 | grep -oE '[0-9A-F-]{36}')
+          test -n "$udid" || { echo "no iPhone simulator on this runner"; exit 1; }
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
           echo "using simulator $udid"
 
