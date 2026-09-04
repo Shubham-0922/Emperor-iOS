@@ -35,6 +35,26 @@ The first two need nothing from you. The third needs the secrets below.
 
 The `unsigned-ipa` job runs on every push and attaches `Emperor-unsigned.ipa` to the run.
 
+> ### Read this before sending it to anyone
+>
+> **This build talks to the development server, and that is deliberate.** It is archived from
+> the *Debug* configuration, because `APIConfig.resolveEnvironment` forces a Release build to
+> `backend.emperorailabs.com` — which **does not resolve**. Production is not stood up yet. A
+> Release `.ipa` would install, launch, and then fail every request at DNS, which is
+> indistinguishable from a broken app.
+>
+> Two consequences, both real:
+>
+> 1. **The dev host is public and unauthenticated in places.** Whoever installs this holds a
+>    session against a server that exposes some per-user data to anyone who can reach it. Only
+>    send it to someone already entitled to see what is on that server.
+> 2. **A debug build is debuggable.** Anyone with USB access to the phone can read the app's
+>    data. Fine for an internal test; not a build to leave on a device long-term.
+>
+> **The day production exists, change `-configuration Debug` back to `Release`** in the
+> `unsigned-ipa` job and this note stops applying. The Android client ships its internal APK
+> the same way, for the same reason.
+
 1. Actions → the run → **Artifacts** → download `Emperor-unsigned-ipa`.
 2. Sign it with your own free Apple ID:
    - **[Sideloadly](https://sideloadly.io)** — Windows or macOS, simplest.
