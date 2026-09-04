@@ -8,7 +8,6 @@ struct LibraryView: View {
     @Environment(Session.self) private var session
 
     @State private var model: LibraryViewModel?
-    @State private var isShowingAuctions = false
 
     var body: some View {
         NavigationStack {
@@ -20,22 +19,10 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Library")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    // Filed here rather than given a tab: like the bare acts, auction notices
-                    // are public reference material rather than the user's own matters — which
-                    // is what this tab is for. Five tabs is also the ceiling before iOS
-                    // collapses the bar into a "More" list.
-                    Button {
-                        isShowingAuctions = true
-                    } label: {
-                        Label(AuctionListViewModel.Copy.title, systemImage: "hammer")
-                    }
-                }
-            }
-            .sheet(isPresented: $isShowingAuctions) {
-                AuctionListView()
-            }
+            // Liquidations used to hang off this toolbar, because five tabs was the ceiling and
+            // there was nowhere else for it. There is now: `MoreView` lists it as a peer of the
+            // Library, which is where `src/shell/Sidebar.jsx` has it. Leaving both would also
+            // have meant opening a sheet from inside a sheet.
             .task {
                 guard model == nil else { return }
                 let created = LibraryViewModel(service: session.library)
