@@ -13,10 +13,22 @@ APK. iOS has 618 passing core tests and a UI layer that has never reached a comp
 
 ---
 
-## Phase 0 — Make it compile
+## Phase 0 — Make it compile ✅ DONE, 2026-09-04
 
-**Nothing in this document counts until this passes.** Four files, two causes, both confirmed
-by reading the source on 2026-09-04.
+**It compiles.** Pushed to [`Emperor-AI-Labs/Emperor-iOS`](https://github.com/Emperor-AI-Labs/Emperor-iOS)
+(private), all five CI jobs green, and `Emperor-unsigned.ipa` builds — 1.2 MB, because this app
+has no third-party dependencies at all.
+
+Six errors across four pushes, and the distribution was the surprise: **the two the compiler
+found first were in the core, not the views.** Full account in [GAPS.md](GAPS.md) Tier 5 #2.
+The one lesson worth carrying into every phase below: **`swift test` passing on Linux says
+nothing about `@Observable`**, because the macro is only applied under `#if canImport(Darwin)`
+and is therefore never expanded or checked here. Anything touching a view model's stored
+properties needs a real build.
+
+The original diagnosis, kept for the record:
+
+Four files, two causes, both confirmed by reading the source on 2026-09-04.
 
 | # | Error | Files |
 |---|---|---|

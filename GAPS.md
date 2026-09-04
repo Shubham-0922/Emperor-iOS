@@ -162,13 +162,32 @@ In order, first thing to last:
 
 1. **`xcodegen generate`** ✅ *(verified on Linux — the spec is known good and every source
    file reaches the target)*.
-2. **Type-check the SwiftUI layer.** Still the largest unknown, and it is a known unknown:
-   `swiftc -parse` catches every syntax error but does **not** type-check, so this is the first
-   real compile the `Emperor/` directory has ever had. Expect errors; expect them to be small.
-   Three classes have already been found and fixed by hand-built repros rather than by eye —
-   a mutable `@Bindable` local captured in a `@Sendable` closure, a non-`Sendable`
-   `UserDefaults` inside a `Sendable` struct, and ternaries whose two branches were different
-   `ShapeStyle` types. Look for those first.
+2. ~~**Type-check the SwiftUI layer.**~~ ✅ **ANSWERED — 2026-09-04. It compiles.**
+
+   No Mac was needed in the end; GitHub Actions was. CI had never run because origin was a
+   bare repo on the server, so the `ios` job was config nobody had executed. Pushed to
+   `Emperor-AI-Labs/Emperor-iOS` and ran it. **All five jobs are green and the unsigned
+   `.ipa` builds** (1.2 MB, against Android's 26 MB — this app carries no third-party
+   dependencies at all).
+
+   Four errors in total, and the shape of them is worth keeping:
+
+   - **Three were in the SwiftUI layer and were found by reading, before the first run.**
+     `import EmperorCore` in three files (the app target compiles both directories into one
+     module, so there is no such module), and `ComplianceEventSheet` using `theme` without
+     declaring `@Environment(\.theme)`.
+   - **The only two the compiler found first were in the core, not the views** — the opposite
+     of what this section predicted. `OCRViewModel.pollTask` guarded the `@ObservationIgnored`
+     *attribute* alone inside `#if canImport(Darwin)`, leaving the declaration below the
+     `#endif`; the enclosing `@Observable` expansion cannot cross that. **Linux structurally
+     cannot see this class of error**, because the macro is never applied there — so `swift
+     test` passing 618 says nothing about it.
+   - **One real type error in the views**: `DraftHistoryView` passed one closure to
+     `ListStateView`, which takes two.
+
+   The three classes previously found by repro — a `@Bindable` local in a `@Sendable` closure,
+   a non-`Sendable` `UserDefaults` in a `Sendable` struct, mismatched `ShapeStyle` ternaries —
+   **did not recur**. Static scans for all three came back clean and the compiler agreed.
 3. **Build the background-upload path** (Tier 1 #7). It is deliberately left undone rather than
    written blind: it cannot be exercised at all on Linux, and the failure mode is a 200-page
    scan lost silently. Write it where it can be run.
