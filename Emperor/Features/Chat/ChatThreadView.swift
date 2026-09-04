@@ -11,6 +11,7 @@ struct ChatThreadView: View {
     @State private var isScanning = false
     @State private var isBrowsingFiles = false
     @State private var isFillingBlanks = false
+    @State private var isReporting = false
 
     let chatID: String
     /// An opening message to send as soon as the thread is ready.
@@ -212,8 +213,25 @@ struct ChatThreadView: View {
             )) {
                 Label("Always search the web", systemImage: "globe")
             }
+
+            Divider()
+
+            // Also offered here, not only on the bubble. The prose has
+            // `.textSelection(.enabled)`, so a long press inside it starts a *selection* and
+            // raises the system text menu rather than the bubble's context menu — which would
+            // leave Report unreachable across most of the answer. It also belongs here on the
+            // merits: the report carries a conversation id, not a message id, so it was never
+            // really a per-message action.
+            Button(role: .destructive) {
+                isReporting = true
+            } label: {
+                Label("Report an answer", systemImage: "flag")
+            }
         } label: {
             Label(model.model.label, systemImage: "slider.horizontal.3")
+        }
+        .sheet(isPresented: $isReporting) {
+            ReportAnswerSheet(chatID: chatID)
         }
         .disabled(model.isStreaming)
     }
