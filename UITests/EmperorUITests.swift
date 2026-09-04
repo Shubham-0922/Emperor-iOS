@@ -102,6 +102,7 @@ final class EmperorUITests: XCTestCase {
             ("Library", "Library"),
             ("Projects", "Projects"),
             ("All tools", "Tools"),
+            ("File tools", "File tools"),
             ("Translate", "Translate"),
             ("Liquidations", "Liquidations"),
             ("Settings", "Settings"),

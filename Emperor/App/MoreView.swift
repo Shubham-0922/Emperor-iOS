@@ -30,7 +30,7 @@ struct MoreView: View {
 
     /// The rows, in the platform's own order.
     private enum Destination: String, Identifiable {
-        case calendar, library, projects, tools, translate, liquidations, settings
+        case calendar, library, projects, tools, fileTools, translate, liquidations, settings
 
         var id: String { rawValue }
 
@@ -40,6 +40,7 @@ struct MoreView: View {
             case .library: return "Library"
             case .projects: return "Projects"
             case .tools: return "All tools"
+            case .fileTools: return "File tools"
             case .translate: return "Translate"
             case .liquidations: return "Liquidations"
             case .settings: return "Settings"
@@ -56,6 +57,7 @@ struct MoreView: View {
             // one the scrapers keep for a team.
             case .projects: return "folder.badge.person.crop"
             case .tools: return "wrench.and.screwdriver"
+            case .fileTools: return "scissors"
             case .translate: return "character.bubble"
             case .liquidations: return "hammer"
             case .settings: return "gearshape"
@@ -78,6 +80,7 @@ struct MoreView: View {
 
                 Section {
                     row(.tools)
+                    row(.fileTools)
                     row(.translate)
                     row(.liquidations)
                 } header: {
@@ -102,6 +105,7 @@ struct MoreView: View {
                 case .library: LibraryView()
                 case .projects: ProjectListView()
                 case .tools: ToolsListView()
+                case .fileTools: PDFToolsView()
                 case .translate: OCRView()
                 case .liquidations: AuctionListView()
                 case .settings: SettingsView()
