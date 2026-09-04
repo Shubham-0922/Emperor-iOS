@@ -337,6 +337,15 @@ Before this port, all three were matching different sources — iOS the `s2-*` s
 `--ex-*` and Fredoka, or the decision is made deliberately that the mobile clients follow the
 marketing brand and the web app is the one that moves. It should not stay accidental.
 
+## Two corrections made along the way
+
+- `send()` had no guard on having read the history, so a failed load followed by a reply would
+  have replaced the server-side conversation with one message. `historyIsIntact` now gates it.
+  Found while building the edit flow, which made truncation explicit and the gap obvious.
+- `ArtifactView.Coordinator` conformed to `WKNavigationDelegate` without `@MainActor`, so its
+  navigation block only *nearly* matched the requirement and would never have run — leaving
+  model-authored markup free to navigate the web view.
+
 ## Small corrections
 
 - **`FolderName.sanitized` walks `Character`s, not UTF-16 code units.**
@@ -389,19 +398,22 @@ P1  Report an answer .................. ✅ done      store requirement met
 P2  Tool registry (29) ................ ✅ done      all 29, prompts pinned
 P7  MCA Registry ...................... ✅ done      63 tests, fully offline
 P6  Projects (read-only) .............. ✅ done
+P3  Edit-and-re-answer, export as PDF . ✅ done      + a data-loss guard
+P5  PDF split / merge / compress ...... ✅ done      last Tier 2 item
 ────────────────────────────────────────────────────────────────────────
-P3  Chat parity — edit-and-re-answer, export an answer as PDF     2 days
-P5  PDF tools — split / merge / compress (last Tier 2)            2 days
 P4  Background upload ................. needs a device to verify  2 days
 P9  check-duplicates, preferred model, office preview             3 days
 ```
+
+**Tier 2 is closed.** Everything the plan named as portable has been ported. What remains is
+one item that cannot be verified without a device and three conveniences.
 
 ### State as of 2026-09-04
 
 | | |
 |---|---|
-| Tests | **751** core, 0 failures — up from 618 |
-| Simulator | **13 UI + app tests**, green. The app has now been run |
+| Tests | **792** core, 0 failures — up from 618 |
+| Simulator | **15 UI + app tests**, green. The app has now been run |
 | CI | 7 jobs, all green; `Emperor-unsigned.ipa` on every push |
 | Repo | [Emperor-AI-Labs/Emperor-iOS](https://github.com/Emperor-AI-Labs/Emperor-iOS), private |
 
