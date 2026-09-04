@@ -156,13 +156,31 @@ jobs:
       - name: Generate the project
         run: xcodegen generate
 
+      # **Debug, not Release, and that is load-bearing.**
+      #
+      # `APIConfig.resolveEnvironment` forces any non-debug build to `PRODUCTION`, deliberately,
+      # so the public dev tunnel cannot be shipped by accident. But
+      # `backend.emperorailabs.com` **does not resolve** — production is not stood up yet. A
+      # Release archive therefore installs and then fails every single request at DNS, which
+      # looks exactly like a broken app.
+      #
+      # So this build is Debug on purpose, which resolves to `dev.emperorailabs.com` and
+      # actually works. The safety guard is untouched: Debug is *allowed* to reach dev, and a
+      # Release build still cannot. The Android client shipped its internal APK the same way and
+      # for the same reason.
+      #
+      # Two consequences, both real, and both in docs/RELEASING.md: the dev host is public and
+      # unauthenticated in places, so only send this to someone already entitled to that data;
+      # and a debug build is debuggable, so it is not one to leave on a device long-term.
+      #
+      # **Switch this to Release the day production exists.**
       - name: Archive for a device, unsigned
         run: |
           set -o pipefail
           xcodebuild archive \
             -project Emperor.xcodeproj \
             -scheme Emperor \
-            -configuration Release \
+            -configuration Debug \
             -destination 'generic/platform=iOS' \
             -archivePath build/Emperor.xcarchive \
             CODE_SIGNING_ALLOWED=NO \

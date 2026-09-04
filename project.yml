@@ -44,6 +44,11 @@ targets:
       path: Emperor/Resources/Info.plist
       properties:
         CFBundleDisplayName: Emperor
+        # Without these two the generated plist keeps Xcode's defaults and ships "1.0 (1)"
+        # regardless of what `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` say below —
+        # which is what the first .ipa did. Settings alone do not reach the plist.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Consumed by `APIConfig.resolvedEnvironment`; driven by the per-config build setting.
         EmperorEnvironment: $(EMPEROR_ENVIRONMENT)
         UILaunchScreen: {}
