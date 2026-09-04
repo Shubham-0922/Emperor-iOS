@@ -716,6 +716,11 @@ final class AuctionListViewModelTests: XCTestCase {
         await withAuctions { fake, model in
             fake.watchlists = [AuctionWatchlist(id: "awl_1", cin: "U27100MH2009PLC190000")]
             await model.load()
+            // Explicit, because `load()` no longer fetches watchlists — the feature is held
+            // back behind an unauthenticated route and holding the UI while still calling it
+            // on every load would defeat the point. The behaviour is still worth pinning: it
+            // is what the screen will do again the day the route takes a token.
+            await model.reloadWatchlists()
 
             await model.watch(cin: "u27100mh2009plc190000")
 

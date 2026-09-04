@@ -7,13 +7,20 @@ import SwiftUI
 /// nothing at all (`NotificationModels.destination`).
 ///
 /// Unlike every other list in this app, these are not the user's own matters: the feed is public
-/// market data, global and unscoped. That is why the only personal state here is a watchlist.
+/// market data, global and unscoped.
+///
+/// - Important: **watchlists are built and held back, not missing.** `/auction-watchlists`
+///   takes a `userId` from the query or body with no token check (`sync-server.js:10368` and
+///   `:10378`), so an unauthenticated caller can both read *and write* any account's list. A
+///   watchlist states which companies a firm is tracking, which is litigation strategy rather
+///   than a preference. The service, the view model and their tests all stand; only the reach
+///   from here is withdrawn, so the feature ships the day the route takes a token. The Android
+///   client made the same call — see `Jithro_Android/BACKEND_REQUESTS.md` item 3.
 struct AuctionListView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
 
     @State private var model: AuctionListViewModel?
-    @State private var isShowingWatchlist = false
 
     var body: some View {
         NavigationStack {
@@ -99,19 +106,6 @@ struct AuctionListView: View {
             ToolbarItem(placement: .primaryAction) {
                 filterMenu(model)
             }
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    isShowingWatchlist = true
-                } label: {
-                    Label("Watching", systemImage: "eye")
-                }
-                .accessibilityLabel(
-                    model.watchlists.isEmpty
-                        ? "Watchlist" : "Watchlist, \(model.watchlists.count) watches")
-            }
-        }
-        .sheet(isPresented: $isShowingWatchlist) {
-            AuctionWatchlistSheet(model: model)
         }
         // One alert, not two: SwiftUI presents a single alert per view, so a separate error
         // alert and confirmation alert would leave one of them permanently silent.
@@ -240,69 +234,3 @@ struct AuctionListView: View {
     }
 }
 
-/// The standing watches: a company by CIN, or a keyword over the debtor name and the asset
-/// description. A match creates the `auction` notification this whole feature hangs off.
-private struct AuctionWatchlistSheet: View {
-    @Environment(\.theme) private var theme
-    @Environment(\.dismiss) private var dismiss
-
-    let model: AuctionListViewModel
-    @State private var keyword = ""
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    TextField("Keyword — a sector, an asset type, a company name", text: $keyword)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Watch this keyword") {
-                        let entered = keyword
-                        keyword = ""
-                        Task { await model.watch(keyword: entered) }
-                    }
-                    .disabled(
-                        keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || model.isWorking)
-                } header: {
-                    SectionHeader(title: "Add a watch")
-                } footer: {
-                    Text("Matched against the corporate debtor and the nature of the assets on every new notice.")
-                        .font(.caption2)
-                }
-
-                if !model.watchlists.isEmpty {
-                    Section {
-                        ForEach(model.watchlists) { watch in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(watch.displayLabel)
-                                    .font(.subheadline)
-                                Text(watch.kindLabel)
-                                    .font(.caption2)
-                                    .foregroundStyle(theme.textTertiary)
-                            }
-                            .swipeActions {
-                                Button("Stop watching", role: .destructive) {
-                                    Task { await model.unwatch(watch) }
-                                }
-                            }
-                        }
-                    } header: {
-                        SectionHeader(title: "Watching")
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(theme.canvas)
-            .navigationTitle("Watchlist")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .task { await model.reloadWatchlists() }
-        }
-    }
-}

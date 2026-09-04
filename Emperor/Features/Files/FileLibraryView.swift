@@ -18,8 +18,6 @@ struct FileLibraryView: View {
     @State private var isImporting = false
     @State private var renaming: FileNode.StoredFile?
     @State private var renameText = ""
-    @State private var deleting: FileNode.StoredFile?
-    @State private var deletingFolder: String?
     @State private var isNamingFolder = false
     @State private var newFolderName = ""
 
@@ -192,46 +190,6 @@ struct FileLibraryView: View {
         } message: {
             Text(folderNameHint)
         }
-        .confirmationDialog(
-            deleting.map { "Delete \(DisplayText.fileName($0.name))?" } ?? "",
-            isPresented: Binding(
-                get: { deleting != nil },
-                set: { if !$0 { deleting = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let file = deleting {
-                    Task { await model.delete(file) }
-                }
-                deleting = nil
-            }
-            Button("Cancel", role: .cancel) { deleting = nil }
-        } message: {
-            Text("This also removes its extracted text, so the assistant can no longer read it. It cannot be undone.")
-        }
-        .confirmationDialog(
-            deletingFolder.map { "Delete \(DisplayText.fileName($0))?" } ?? "",
-            isPresented: Binding(
-                get: { deletingFolder != nil },
-                set: { if !$0 { deletingFolder = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete folder", role: .destructive) {
-                if let folder = deletingFolder {
-                    Task { await model.deleteFolder(named: folder) }
-                }
-                deletingFolder = nil
-            }
-            Button("Cancel", role: .cancel) { deletingFolder = nil }
-        } message: {
-            // The count, not a vague "and its contents": `delete-folder` is recursive, has no
-            // undo, and the folder may be collapsed so its size is not on screen.
-            if let folder = deletingFolder {
-                Text(folderDeletionWarning(count: model.fileCount(inFolder: folder)))
-            }
-        }
     }
 
     /// What the folder will really be called, warned about only when it differs.
@@ -244,17 +202,6 @@ struct FileLibraryView: View {
         return "This will be saved as \(actual)."
     }
 
-    private func folderDeletionWarning(count: Int) -> String {
-        switch count {
-        case 0:
-            return "This folder has no documents in it. It cannot be undone."
-        case 1:
-            return "The 1 document inside is deleted too. It cannot be undone."
-        default:
-            return "All \(count) documents inside are deleted too. It cannot be undone."
-        }
-    }
-
     private func list(_ model: FileLibraryViewModel) -> some View {
         List {
             ForEach(model.grouped) { group in
@@ -263,7 +210,7 @@ struct FileLibraryView: View {
                         row(for: file, in: model)
                     }
                 } header: {
-                    sectionHeader(group, in: model)
+                    sectionHeader(group)
                 }
             }
         }
@@ -292,28 +239,11 @@ struct FileLibraryView: View {
         .animation(.easeOut(duration: 0.15), value: model.actionNotice)
     }
 
-    @ViewBuilder
-    private func sectionHeader(
-        _ group: FileLibraryViewModel.FolderGroup, in model: FileLibraryViewModel
-    ) -> some View {
-        if model.canManage, !group.folder.isEmpty {
-            HStack {
-                Text(group.title)
-                Spacer()
-                Menu {
-                    Button(role: .destructive) {
-                        deletingFolder = group.folder
-                    } label: {
-                        Label("Delete folder", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .accessibilityLabel("Actions for \(group.title)")
-            }
-        } else {
-            Text(group.title)
-        }
+    /// - Note: this header carried an overflow menu whose only item was "Delete folder".
+    ///   With deletion held back it has nothing to offer, so it is a plain label again —
+    ///   `rename-folder` is not a route this client calls.
+    private func sectionHeader(_ group: FileLibraryViewModel.FolderGroup) -> some View {
+        Text(group.title)
     }
 
     private func row(for file: FileNode.StoredFile, in model: FileLibraryViewModel) -> some View {
@@ -346,12 +276,6 @@ struct FileLibraryView: View {
         .disabled(!file.isReadable)
         .swipeActions(edge: .trailing) {
             if model.canManage {
-                // Destructive and no undo — so it goes through a confirmation, not a swipe.
-                Button(role: .destructive) {
-                    deleting = file
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
                 Button {
                     renaming = file
                     renameText = file.name
@@ -389,11 +313,6 @@ struct FileLibraryView: View {
                     Label(
                         file.favorite == true ? "Remove star" : "Star",
                         systemImage: file.favorite == true ? "star.slash" : "star")
-                }
-                Button(role: .destructive) {
-                    deleting = file
-                } label: {
-                    Label("Delete", systemImage: "trash")
                 }
             }
         }

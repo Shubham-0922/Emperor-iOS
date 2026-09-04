@@ -141,15 +141,8 @@ struct AuctionDetailView: View {
                 LabeledContent("Notice number", value: reference)
                     .font(.caption)
             }
-            if let cin = model.watchableCIN {
-                Button {
-                    Task { await model.watchCompany() }
-                } label: {
-                    Label("Watch this company", systemImage: "eye")
-                }
-                .disabled(model.isWorking)
-                .accessibilityHint("Notifies you when a new auction notice names \(cin)")
-            }
+            // "Watch this company" belonged here and is held back — `/auction-watchlists`
+            // writes on an unauthenticated `userId`. See `AuctionListView`.
         }
     }
 

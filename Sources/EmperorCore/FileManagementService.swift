@@ -24,13 +24,25 @@ struct FileOperationResult: Equatable, Sendable {
 /// Kept apart from `FileProviding` because the read side is what most screens need and these
 /// are all destructive — a screen that only lists files should not be handed a `delete`.
 protocol FileManaging: Sendable {
+    /// - Warning: **held back — no caller in the app.** `/delete-file` takes `userId` from the
+    ///   request body with no token check (`sync-server.js:11306`), so anyone who can reach the
+    ///   host can delete anyone's document, and its extracted text with it. Note the contrast:
+    ///   `rename-file` and `favorite-file` on the *same* screen do this correctly, preferring
+    ///   the token via `resolveUploadUser` (`:314-318`) — the delete routes were simply never
+    ///   given the same treatment.
     func delete(name: String, folderName: String?) async throws
     func rename(
         name: String, in folderName: String?, to newName: String
     ) async throws -> FileOperationResult
+    /// - Note: implemented, tested and never wired to a screen. Moving is left to the web.
     func move(name: String, from folderName: String?, to destination: String?) async throws
     func setFavorite(_ favorite: Bool, name: String, folderName: String?) async throws -> Bool
     func createFolder(named path: String) async throws
+    /// - Warning: **held back — no caller in the app.** Unauthenticated like `/delete-file`
+    ///   (`sync-server.js:11372`) and worse: `fs.rmSync(folderPath, { recursive: true })` at
+    ///   `:11405`, after clearing the folder out of `document_page_index`,
+    ///   `document_knowledge`, `document_fts` and `document_favorites`. A whole matter,
+    ///   index and all, with no undo and no authorisation.
     func deleteFolder(named path: String) async throws
 }
 

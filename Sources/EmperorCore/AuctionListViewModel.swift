@@ -164,7 +164,9 @@ final class AuctionListViewModel {
         }
 
         await loadFacetsIfNeeded()
-        await loadWatchlistsIfNeeded()
+        // `loadWatchlistsIfNeeded()` deliberately not called — see the note on the watchlist
+        // section below. Holding the UI back but still fetching on every load would leave the
+        // route being hit for a feature the user cannot reach.
     }
 
     /// Appends the next page.
@@ -218,7 +220,20 @@ final class AuctionListViewModel {
         facets = (try? await service.facets()) ?? .empty
     }
 
-    // MARK: - Watchlists
+    // MARK: - Watchlists (built, tested, and held back)
+    //
+    // Nothing below has a caller in the app. `/auction-watchlists` reads its `userId` from the
+    // query on GET and from the body on POST, with no token check either way
+    // (`sync-server.js:10368`, `:10378`), so any caller can read *and write* any account's
+    // watchlist. A watchlist names the companies a firm is tracking — litigation strategy, not
+    // a preference.
+    //
+    // Kept rather than deleted, and kept under test, because the client side is correct and
+    // the fix is three lines of `requireAuth` on the server. Re-adding the toolbar item and
+    // the sheet is the whole of the work when that lands.
+    //
+    // **Do not wire these up without checking the route first.** The Android client reached
+    // the same conclusion independently — `Jithro_Android/BACKEND_REQUESTS.md` item 3.
 
     private var hasLoadedWatchlists = false
 
