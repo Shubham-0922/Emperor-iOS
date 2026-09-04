@@ -11,11 +11,16 @@ struct EmperorApp: App {
 
     init() {
         #if DEBUG
-        // The gate is a one-per-install decision, so without this every UI test would spend its
-        // first assertion dismissing it. `-UITestDisclaimer` opts back in, to test the gate.
-        if UITestSupport.isActive,
-           !ProcessInfo.processInfo.arguments.contains("-UITestDisclaimer") {
-            Disclaimer.acknowledge(Preferences())
+        if UITestSupport.isActive {
+            // Both directions have to be set, not just one. `UserDefaults` survives between
+            // launches of the same simulator, so a run that acknowledged the gate leaves it
+            // acknowledged for every run after it — which is exactly how the gate test first
+            // failed, having been made to pass by whichever test ran before it.
+            //
+            // The gate is a one-per-install decision, so it is pre-acknowledged by default,
+            // and `-UITestDisclaimer` actively clears it to test the gate itself.
+            let wantsGate = ProcessInfo.processInfo.arguments.contains("-UITestDisclaimer")
+            Preferences().setBool(!wantsGate, for: Disclaimer.key)
         }
         #endif
     }
