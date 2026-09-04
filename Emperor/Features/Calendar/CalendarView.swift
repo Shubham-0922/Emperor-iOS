@@ -168,6 +168,7 @@ private struct ComplianceEventSheet: View {
     let day: String
     let onSave: (ComplianceDraft) async -> Void
 
+    @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""

@@ -1,5 +1,4 @@
 import SwiftUI
-import EmperorCore
 
 /// Everything the assistant has drafted, across every conversation.
 ///

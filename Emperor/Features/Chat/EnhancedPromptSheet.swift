@@ -1,5 +1,4 @@
 import SwiftUI
-import EmperorCore
 
 /// Fills in the `{{PLACEHOLDER}}` blanks a rewrite left behind.
 ///

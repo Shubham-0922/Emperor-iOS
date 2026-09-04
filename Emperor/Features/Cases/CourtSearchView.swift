@@ -1,5 +1,4 @@
 import SwiftUI
-import EmperorCore
 
 /// Looks a case up at the court and pins it to the dashboard.
 ///
