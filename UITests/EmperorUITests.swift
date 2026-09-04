@@ -100,6 +100,7 @@ final class EmperorUITests: XCTestCase {
         for (row, title) in [
             ("Calendar", "Calendar"),
             ("Library", "Library"),
+            ("Projects", "Projects"),
             ("All tools", "Tools"),
             ("Translate", "Translate"),
             ("Liquidations", "Liquidations"),

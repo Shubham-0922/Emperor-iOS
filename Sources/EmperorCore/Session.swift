@@ -41,6 +41,8 @@ final class Session {
     let fileManagement: FileManagementService
     let drafts: DraftHistoryService
     let auctions: AuctionService
+    /// Hand-made matters. Read-only — see `ProjectService` for why the writes are held back.
+    let projects: ProjectService
     /// The in-app report channel for a generated answer. Both stores require one.
     let feedback: FeedbackService
 
@@ -82,6 +84,7 @@ final class Session {
         self.fileManagement = FileManagementService(client: client)
         self.drafts = DraftHistoryService(client: client)
         self.auctions = AuctionService(client: client)
+        self.projects = ProjectService(client: client)
         self.store = store
         self.cache = cache
 

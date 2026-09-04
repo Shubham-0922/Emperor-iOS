@@ -16,7 +16,6 @@ import SwiftUI
 ///   takes no money. It must stay absent.
 /// - **Filing Assembly** — a 293-page bundle where a wrong folio gets the matter rejected at the
 ///   registry should not be assembled on a phone (`GAPS.md` Tier 3).
-/// - **Projects** — routed on the web but deliberately unlinked while it is trialled.
 /// - **My Files** — `FileLibraryView` is a picker: it requires `alreadyAttached` and `onAttach`
 ///   and its confirmation action is "Attach". Giving it a browse mode is real work, not a row,
 ///   so it stays reachable from the composer until that is done.
@@ -31,7 +30,7 @@ struct MoreView: View {
 
     /// The rows, in the platform's own order.
     private enum Destination: String, Identifiable {
-        case calendar, library, tools, translate, liquidations, settings
+        case calendar, library, projects, tools, translate, liquidations, settings
 
         var id: String { rawValue }
 
@@ -39,6 +38,7 @@ struct MoreView: View {
             switch self {
             case .calendar: return "Calendar"
             case .library: return "Library"
+            case .projects: return "Projects"
             case .tools: return "All tools"
             case .translate: return "Translate"
             case .liquidations: return "Liquidations"
@@ -51,6 +51,10 @@ struct MoreView: View {
             switch self {
             case .calendar: return "calendar"
             case .library: return "books.vertical"
+            // The web's row is `folder-kanban`. A person, because that is the distinction that
+            // matters against the Cases tab: a project is a matter one user keeps by hand, not
+            // one the scrapers keep for a team.
+            case .projects: return "folder.badge.person.crop"
             case .tools: return "wrench.and.screwdriver"
             case .translate: return "character.bubble"
             case .liquidations: return "hammer"
@@ -65,6 +69,9 @@ struct MoreView: View {
                 Section {
                     row(.calendar)
                     row(.library)
+                    // Read-only while the feature is trialled on the web — no matter can be
+                    // created or edited from here. See `ProjectService`.
+                    row(.projects)
                 } header: {
                     SectionHeader(title: "Your practice")
                 }
@@ -93,6 +100,7 @@ struct MoreView: View {
                 switch chosen {
                 case .calendar: CalendarView()
                 case .library: LibraryView()
+                case .projects: ProjectListView()
                 case .tools: ToolsListView()
                 case .translate: OCRView()
                 case .liquidations: AuctionListView()
