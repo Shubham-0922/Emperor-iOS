@@ -71,6 +71,13 @@ private struct DocumentWebView: UIViewRepresentable {
         view.loadHTMLString(ArtifactDocument.html(wrapping: html), baseURL: nil)
     }
 
+    /// - Important: `@MainActor` is load-bearing, not decoration. `WKNavigationDelegate` is
+    ///   main-actor isolated under Swift 6, so an un-isolated conformance leaves the method
+    ///   *nearly* matching the optional requirement — it compiles with a warning and is then
+    ///   **never called**. The navigation block below is the only thing stopping a link in
+    ///   model-authored markup from navigating this web view, so silently not running it is a
+    ///   security failure, not a cosmetic one.
+    @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastRendered: String?
 

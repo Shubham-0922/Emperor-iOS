@@ -47,11 +47,19 @@ final class OCRViewModel {
     /// `@ObservationIgnored` so it stays a *stored* property. `@Observable` turns stored
     /// properties into MainActor-isolated computed ones, and `deinit` is nonisolated — touching
     /// a computed one there does not compile. No view observes this, so nothing is lost.
-    /// (Invisible on Linux, where the macro is not applied.)
+    ///
+    /// - Important: the attribute and the declaration must sit inside the **same** `#if` branch,
+    ///   with the plain declaration repeated in `#else`. Guarding the attribute alone and
+    ///   letting the declaration fall through below the `#endif` compiles on Linux — where the
+    ///   macro is never applied — and fails on Apple platforms with *"expansion of macro
+    ///   'ObservationIgnored()' produced an unexpected getter"*. `CourtSearchViewModel` and
+    ///   `PromptEnhancerViewModel` already use this shape; this one did not, and it was the
+    ///   only error in the first real compile of this package.
     #if canImport(Darwin)
-    @ObservationIgnored
-    #endif
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    #else
     private var pollTask: Task<Void, Never>?
+    #endif
     private var lastChangeAt = Date()
     private var lastSignature = ""
 
