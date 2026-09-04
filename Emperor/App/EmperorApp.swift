@@ -7,11 +7,37 @@ struct EmperorApp: App {
     /// caching lives there.
     /// The Keychain, and a cache whose teardown also wipes the temporary directory share
     /// sheets write PDFs into — those would otherwise outlive the session that fetched them.
-    @State private var session = Session(
-        store: Keychain(),
-        cache: ResponseCache(
-            store: FileCacheStore(directory: FileCacheStore.defaultDirectory()),
-            onClear: { ShareableFile.clear() }))
+    @State private var session = EmperorApp.makeSession()
+
+    init() {
+        #if DEBUG
+        // The gate is a one-per-install decision, so without this every UI test would spend its
+        // first assertion dismissing it. `-UITestDisclaimer` opts back in, to test the gate.
+        if UITestSupport.isActive,
+           !ProcessInfo.processInfo.arguments.contains("-UITestDisclaimer") {
+            Disclaimer.acknowledge(Preferences())
+        }
+        #endif
+    }
+
+    private static func makeSession() -> Session {
+        #if DEBUG
+        if UITestSupport.isActive {
+            // In-memory everywhere: no Keychain prompt, and no state carried between test runs.
+            // Sign-in is not faked — the tests drive the real login screen and the stub answers
+            // `/login`, so the whole authentication path is exercised.
+            return Session(
+                store: InMemoryCredentialStore(),
+                cache: ResponseCache(store: InMemoryCacheStore()),
+                urlSession: UITestSupport.makeSession())
+        }
+        #endif
+        return Session(
+            store: Keychain(),
+            cache: ResponseCache(
+                store: FileCacheStore(directory: FileCacheStore.defaultDirectory()),
+                onClear: { ShareableFile.clear() }))
+    }
 
     var body: some Scene {
         WindowGroup {

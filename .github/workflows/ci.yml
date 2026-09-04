@@ -41,8 +41,8 @@ jobs:
 
       - name: Parse the app layer
         run: |
-          files=$(find Emperor -name '*.swift')
-          test -n "$files" || { echo "no Swift files found under Emperor/"; exit 1; }
+          files=$(find Emperor AppTests UITests -name '*.swift')
+          test -n "$files" || { echo "no Swift files found"; exit 1; }
           echo "$files" | sed 's/^/  /'
           swiftc -parse $files
 
@@ -74,7 +74,9 @@ jobs:
 
       - name: Every Swift file reached the target
         run: |
-          expected=$(find Sources/EmperorCore Emperor -name '*.swift' | wc -l)
+          # Every directory any target compiles. Adding a target without adding it here makes
+          # this pass while the new files silently never reach the project.
+          expected=$(find Sources/EmperorCore Emperor AppTests UITests -name '*.swift' | wc -l)
           actual=$(grep -c '\.swift .*sourcecode' Emperor.xcodeproj/project.pbxproj)
           echo "expected $expected, target has $actual"
           test "$expected" -eq "$actual"
@@ -123,6 +125,58 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
+
+  # Boots a simulator and drives the app.
+  #
+  # Everything above this is static: `swift test` proves the logic, `xcodebuild build` proves it
+  # type-checks. Neither can see a view whose body throws on layout, a navigation link that goes
+  # nowhere, or a font that silently fell back to the system face. This is the only job that
+  # runs the thing.
+  #
+  # Split from `ios` rather than folded into it so a failure here reads as "the app misbehaves"
+  # rather than "the app does not compile" — they want different responses.
+  simulator-tests:
+    name: Simulator tests
+    runs-on: macos-15
+    needs: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate the project
+        run: xcodegen generate
+
+      # Named by OS-agnostic device rather than a pinned runtime: GitHub rolls the image every
+      # few weeks and a hardcoded `OS=18.2` fails the day they move.
+      - name: Run the app and UI tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Emperor.xcodeproj \
+            -scheme Emperor \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -resultBundlePath build/TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      # The screenshots and failure traces XCUITest captures. The first place to look when a
+      # test says a screen was blank.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-test-results
+          path: build/TestResults.xcresult
+          retention-days: 14
 
   # An .ipa you can actually put on a phone, without an Apple Developer Program membership.
   #
