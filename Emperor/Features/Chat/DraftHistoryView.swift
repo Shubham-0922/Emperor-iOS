@@ -55,15 +55,19 @@ struct DraftHistoryView: View {
             .padding(.bottom, 8)
 
             ListStateView(presentation: model.presentation, retry: { await model.load() }) {
+                list(model)
+            } empty: {
+                // Both live here, not in the content closure. `presentation.isEmpty` is
+                // `visible.isEmpty`, so a search that matches nothing satisfies
+                // `showsEmptyState` too — a branch on `showsNoSearchResults` above would
+                // never be reached.
                 if model.showsNoSearchResults {
                     ContentUnavailableView.search(text: model.query)
-                } else if model.items.isEmpty {
+                } else {
                     ContentUnavailableView(
                         model.kind.title,
                         systemImage: model.kind.systemImage,
                         description: Text(model.kind.emptyMessage))
-                } else {
-                    list(model)
                 }
             }
         }

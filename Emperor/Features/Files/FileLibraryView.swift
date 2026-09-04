@@ -108,18 +108,21 @@ struct FileLibraryView: View {
         @Bindable var bindable = model
 
         ListStateView(presentation: model.presentation, retry: { await model.load() }) {
+            list(model)
+        } empty: {
             // A query matching nothing is a third thing again: the library is not empty and
-            // the load did not fail — the search simply found no match.
+            // the load did not fail — the search simply found no match. It belongs here
+            // rather than in the content closure, because `presentation.isEmpty` is computed
+            // from the *filtered* list, so a search matching nothing already satisfies
+            // `showsEmptyState` and content is never rendered.
             if model.showsNoSearchResults {
                 ContentUnavailableView.search(text: model.query)
             } else {
-                list(model)
+                ContentUnavailableView(
+                    "No documents yet",
+                    systemImage: "folder",
+                    description: Text("Scan a paperbook to add your first document."))
             }
-        } empty: {
-            ContentUnavailableView(
-                "No documents yet",
-                systemImage: "folder",
-                description: Text("Scan a paperbook to add your first document."))
         }
         .searchable(text: $bindable.query, prompt: "Search documents and matters")
         .refreshable { await model.load() }

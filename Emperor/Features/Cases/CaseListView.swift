@@ -48,29 +48,32 @@ struct CaseListView: View {
         @Bindable var bindable = model
 
         ListStateView(presentation: model.presentation, retry: { await model.load() }) {
-            if model.showsNoSearchResults {
-                ContentUnavailableView.search(text: model.query)
-            } else {
-                List {
-                    ForEach(model.groups) { group in
-                        Section(group.title) {
-                            ForEach(group.cases) { legalCase in
-                                NavigationLink(value: legalCase.id) {
-                                    row(legalCase)
-                                }
+            List {
+                ForEach(model.groups) { group in
+                    Section(group.title) {
+                        ForEach(group.cases) { legalCase in
+                            NavigationLink(value: legalCase.id) {
+                                row(legalCase)
                             }
                         }
                     }
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-                .background(theme.canvas)
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(theme.canvas)
         } empty: {
-            ContentUnavailableView(
-                "No matters yet",
-                systemImage: "folder",
-                description: Text("Cases added on the web appear here, with their hearing dates."))
+            // `presentation.isEmpty` comes from the *filtered* list, so a search matching
+            // nothing already routes here — branching on it in the content closure above
+            // would never be reached.
+            if model.showsNoSearchResults {
+                ContentUnavailableView.search(text: model.query)
+            } else {
+                ContentUnavailableView(
+                    "No matters yet",
+                    systemImage: "folder",
+                    description: Text("Cases added on the web appear here, with their hearing dates."))
+            }
         }
         .searchable(text: $bindable.query, prompt: "Filter your matters")
         .refreshable { await model.load() }
