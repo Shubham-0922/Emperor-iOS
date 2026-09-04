@@ -84,61 +84,26 @@ jobs:
       - name: The privacy manifest ships
         run: grep -q 'PrivacyInfo.xcprivacy' Emperor.xcodeproj/project.pbxproj
 
-  # The real thing. Everything above is a proxy for this, and this is the only job that
-  # type-checks the SwiftUI layer against the actual SDK.
-  #
-  # No Apple account, no secrets, no signing. If this is green the code compiles; that is the
-  # single largest unknown in the project and it costs nothing to answer.
-  ios:
-    name: iOS build
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-
-      # The runner ships several Xcodes and its default is not always the newest. Take the
-      # highest installed rather than pinning an exact version: GitHub rolls the image every
-      # few weeks and drops old Xcodes, so a hard pin turns into a red build for a reason that
-      # has nothing to do with the code.
-      - name: Select Xcode
-        run: |
-          set -euo pipefail
-          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
-          echo "using $latest"
-          sudo xcode-select -s "$latest"
-          xcodebuild -version
-
-      - name: Install tools
-        run: brew install xcodegen xcbeautify
-
-      - name: Generate the project
-        run: xcodegen generate
-
-      # `generic/platform=iOS Simulator` rather than a named device: the runner image's device
-      # list changes between releases, and a build should not fail because "iPhone 16" was
-      # renamed.
-      - name: Build for the simulator
-        run: |
-          set -o pipefail
-          xcodebuild build \
-            -project Emperor.xcodeproj \
-            -scheme Emperor \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO \
-            | xcbeautify --renderer github-actions
-
   # Boots a simulator and drives the app.
   #
-  # Everything above this is static: `swift test` proves the logic, `xcodebuild build` proves it
-  # type-checks. Neither can see a view whose body throws on layout, a navigation link that goes
-  # nowhere, or a font that silently fell back to the system face. This is the only job that
-  # runs the thing.
+  # Everything above this is static: `swift test` proves the logic, `swiftc -parse` proves it
+  # parses. Neither can see a view whose body throws on layout, a link that navigates nowhere,
+  # or a font that silently fell back to the system face. This is the only job that runs the
+  # thing — and, since `xcodebuild test` builds before it runs, the only one that type-checks.
   #
-  # Split from `ios` rather than folded into it so a failure here reads as "the app misbehaves"
-  # rather than "the app does not compile" — they want different responses.
+  # There used to be a separate `ios` job doing `xcodebuild build`. It was deleted: it proved
+  # exactly what this job proves on its way to doing more, on a second cold runner, and it cost
+  # **460 billable minutes** — a quarter of a month — for that duplication.
   simulator-tests:
     name: Simulator tests
     runs-on: macos-15
-    needs: ios
+    # **macOS is billed at 10x on a private repo, and every job rounds up to the whole minute.**
+    # A single macOS job that runs for 40 seconds costs ten minutes of a 2,000-minute month. So
+    # these do not run on a push: the Linux jobs above cost 1x, catch most of what breaks, and
+    # run on everything. This runs when it is asked for.
+    #
+    #   Actions -> CI -> Run workflow      (or push a tag)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
 
@@ -213,7 +178,7 @@ jobs:
     name: Unsigned .ipa (sideload)
     runs-on: macos-15
     # Only after the compile is known good — an archive of code that does not build is noise.
-    needs: ios
+    needs: simulator-tests
     steps:
       - uses: actions/checkout@v4
 
@@ -291,7 +256,7 @@ jobs:
   testflight:
     name: TestFlight
     runs-on: macos-15
-    needs: ios
+    needs: simulator-tests
     # Only from the default branch, and only on a deliberate run or a tag. Every push to a
     # feature branch becoming a TestFlight build would burn your 90-day build numbers.
     if: >
