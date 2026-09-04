@@ -35,10 +35,10 @@ struct SourceDocumentView: View {
                 if let model {
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 1) {
-                            Text(model.displayName).font(.headline).lineLimit(1)
+                            Text(model.displayName).font(.brand(.headline)).lineLimit(1)
                             // The mark is how the document is referred to in the filing, so it
                             // belongs in the title bar next to the page.
-                            Text(model.subtitle).font(.caption2).foregroundStyle(theme.textSecondary)
+                            Text(model.subtitle).font(.brand(.caption2)).foregroundStyle(theme.textSecondary)
                         }
                     }
                 }
@@ -67,7 +67,7 @@ struct SourceDocumentView: View {
         } else if let text = model.textContents {
             ScrollView {
                 Text(text)
-                    .font(.callout)
+                    .font(.brand(.callout))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()

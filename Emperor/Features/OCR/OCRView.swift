@@ -33,7 +33,7 @@ struct OCRView: View {
             }
             .scrollContentBackground(.hidden)
             .background(theme.canvas)
-            .navigationTitle("Digitise")
+            .navigationTitle("Translate")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -86,7 +86,7 @@ struct OCRView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         ProgressView(value: model.progress)
                         Text(model.statusDescription)
-                            .font(.caption)
+                            .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                     }
                     .padding(.vertical, 4)
@@ -114,7 +114,7 @@ struct OCRView: View {
                     if let caveat = model.resultCaveat {
                         // status == "completed" does not mean "translated".
                         Label(caveat, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
+                            .font(.brand(.caption))
                             .foregroundStyle(theme.warning)
                     }
                     if let url = ShareableFile.url(for: result.data, named: result.fileName) {

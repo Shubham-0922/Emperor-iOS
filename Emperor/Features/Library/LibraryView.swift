@@ -219,7 +219,7 @@ struct LibraryView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(document.displayTitle)
-                    .font(.subheadline)
+                    .font(.brand(.subheadline))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(3)
                 HStack(spacing: 6) {
@@ -232,13 +232,13 @@ struct LibraryView: View {
                         Text(DisplayText.longDay(WireDate.dayKey(added)))
                     }
                 }
-                .font(.caption2)
+                .font(.brand(.caption2))
                 .foregroundStyle(theme.textTertiary)
             }
 
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
-                .font(.caption)
+                .font(.brand(.caption))
                 .foregroundStyle(theme.textTertiary)
         }
         .padding(.vertical, 4)
@@ -262,7 +262,7 @@ private struct LibraryDocumentView: View {
                 } else if let text = String(data: document.data, encoding: .utf8) {
                     ScrollView {
                         Text(text)
-                            .font(.callout)
+                            .font(.brand(.callout))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()

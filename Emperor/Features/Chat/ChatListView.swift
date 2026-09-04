@@ -88,17 +88,17 @@ struct ChatListView: View {
     private func row(for chat: ChatSummary) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(chat.displayTitle)
-                .font(.headline)
+                .font(.brand(.headline))
                 .lineLimit(1)
             if let preview = chat.lastPreview, !preview.isEmpty {
                 Text(preview)
-                    .font(.subheadline)
+                    .font(.brand(.subheadline))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
             if let updated = chat.updatedAt {
                 Text(updated, format: .relative(presentation: .named))
-                    .font(.caption)
+                    .font(.brand(.caption))
                     .foregroundStyle(theme.textTertiary)
             }
         }

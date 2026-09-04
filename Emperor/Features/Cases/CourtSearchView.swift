@@ -58,7 +58,7 @@ struct CourtSearchView: View {
             if let notice = model.notice {
                 Section {
                     Label(notice, systemImage: "checkmark.circle")
-                        .font(.footnote)
+                        .font(.brand(.footnote))
                         .foregroundStyle(theme.success)
                 }
             }
@@ -66,7 +66,7 @@ struct CourtSearchView: View {
             if let message = model.errorMessage {
                 Section {
                     Label(message, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
+                        .font(.brand(.footnote))
                         .foregroundStyle(theme.danger)
                 }
             }
@@ -165,7 +165,7 @@ struct CourtSearchView: View {
         if model.hasSearched, model.results.isEmpty, !model.isSearching {
             Section {
                 Text(model.emptyMessage)
-                    .font(.footnote)
+                    .font(.brand(.footnote))
                     .foregroundStyle(theme.textSecondary)
             }
         } else if !model.results.isEmpty {
@@ -182,12 +182,12 @@ struct CourtSearchView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(result.displayTitle)
-                .font(.callout.weight(.medium))
+                .font(.brand(.callout, weight: .medium))
                 .foregroundStyle(theme.textPrimary)
 
             if let reference = result.reference {
                 Text(reference)
-                    .font(.caption)
+                    .font(.brand(.caption))
                     .foregroundStyle(theme.textSecondary)
             }
 
@@ -197,14 +197,14 @@ struct CourtSearchView: View {
                 }
                 if let court = result.courtName, !court.isEmpty {
                     Text(court)
-                        .font(.caption2)
+                        .font(.brand(.caption2))
                         .foregroundStyle(theme.textTertiary)
                 }
             }
 
             if let warning = model.collisionWarning(for: result) {
                 Label(warning, systemImage: "exclamationmark.circle")
-                    .font(.caption2)
+                    .font(.brand(.caption2))
                     .foregroundStyle(theme.warning)
             }
 
@@ -219,7 +219,7 @@ struct CourtSearchView: View {
     ) -> some View {
         if model.isSaved(result) {
             Label(CourtSearchViewModel.Copy.savedLabel, systemImage: "checkmark.circle.fill")
-                .font(.caption.weight(.medium))
+                .font(.brand(.caption, weight: .medium))
                 .foregroundStyle(theme.success)
         } else {
             Button {
@@ -233,7 +233,7 @@ struct CourtSearchView: View {
                     }
                     Text(CourtSearchViewModel.Copy.saveButton)
                 }
-                .font(.caption.weight(.medium))
+                .font(.brand(.caption, weight: .medium))
             }
             .buttonStyle(.borderless)
             // Saving re-scrapes the court before it answers, so one at a time.

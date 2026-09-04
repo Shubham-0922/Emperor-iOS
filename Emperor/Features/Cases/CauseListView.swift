@@ -26,7 +26,7 @@ struct CauseListView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("Today")
+            .navigationTitle("Home")
             .navigationDestination(for: String.self) { caseID in
                 CaseDetailView(caseID: caseID)
             }
@@ -127,10 +127,10 @@ struct CauseListView: View {
                 } label: {
                     VStack(spacing: 1) {
                         Text(DisplayText.longDay(model.selectedDay))
-                            .font(.subheadline.weight(.semibold))
+                            .font(.brand(.subheadline, weight: .semibold))
                         // On every state, including the empty one.
                         Text(CauseListViewModel.Copy.subtitle)
-                            .font(.caption2)
+                            .font(.brand(.caption2))
                             .foregroundStyle(theme.textTertiary)
                     }
                 }
@@ -181,17 +181,17 @@ struct CauseListView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let itemNo = listing.itemNo {
                     Text(itemNo)
-                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .font(.brand(.caption, weight: .semibold).monospacedDigit())
                         .foregroundStyle(theme.textSecondary)
                         .frame(minWidth: 22, alignment: .trailing)
                 }
                 Text(listing.displayTitle)
-                    .font(.headline)
+                    .font(.brand(.headline))
                     .lineLimit(2)
             }
 
             if let court = listing.courtName {
-                Text(court).font(.subheadline).foregroundStyle(theme.textSecondary)
+                Text(court).font(.brand(.subheadline)).foregroundStyle(theme.textSecondary)
             }
 
             HStack(spacing: 6) {
@@ -203,7 +203,7 @@ struct CauseListView: View {
                     Text(bench).lineLimit(1)
                 }
             }
-            .font(.caption)
+            .font(.brand(.caption))
             .foregroundStyle(theme.textTertiary)
 
             // No hearing time is shown because the feed has none. The marketing dashboard

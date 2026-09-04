@@ -104,7 +104,7 @@ struct MoreView: View {
                 Label(item.title, systemImage: item.symbol)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.brand(.footnote, weight: .semibold))
                     .foregroundStyle(theme.textTertiary)
             }
             .contentShape(Rectangle())

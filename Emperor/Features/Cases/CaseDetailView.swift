@@ -128,7 +128,7 @@ struct CaseDetailView: View {
 
             // Said plainly, because it decides whether the dates above are worth trusting.
             Text(model.syncDescription)
-                .font(.caption)
+                .font(.brand(.caption))
                 .foregroundStyle(model.isCourtSynced ? theme.textSecondary : theme.warning)
         }
     }
@@ -186,14 +186,14 @@ struct CaseDetailView: View {
                 ForEach(model.timeline) { event in
                     VStack(alignment: .leading, spacing: 3) {
                         if let title = event.title, !title.isEmpty {
-                            Text(title).font(.subheadline.weight(.semibold))
+                            Text(title).font(.brand(.subheadline, weight: .semibold))
                         }
                         if let body = event.body, !body.isEmpty {
-                            Text(body).font(.subheadline)
+                            Text(body).font(.brand(.subheadline))
                         }
                         if let date = event.eventDate {
                             Text(DisplayText.relative(date))
-                                .font(.caption2)
+                                .font(.brand(.caption2))
                                 .foregroundStyle(theme.textTertiary)
                         }
                     }
@@ -222,21 +222,21 @@ struct CaseDetailView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Text(item.title ?? "—")
-                    .font(.subheadline)
+                    .font(.brand(.subheadline))
                     .lineLimit(2)
                 if item.isCourtOwned {
                     Image(systemName: "building.columns")
-                        .font(.caption2)
+                        .font(.brand(.caption2))
                         .foregroundStyle(theme.accentText)
                         .accessibilityLabel("From court")
                 }
             }
             if let subtitle = item.subtitle, !subtitle.isEmpty {
-                Text(subtitle).font(.caption).foregroundStyle(theme.textSecondary)
+                Text(subtitle).font(.brand(.caption)).foregroundStyle(theme.textSecondary)
             }
             if let date = item.itemDate {
                 Text(DisplayText.longDay(WireDate.dayKey(date)))
-                    .font(.caption2)
+                    .font(.brand(.caption2))
                     .foregroundStyle(theme.textTertiary)
             }
         }

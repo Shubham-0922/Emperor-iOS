@@ -29,7 +29,7 @@ struct CalendarView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("Diary")
+            .navigationTitle("Calendar")
             .navigationDestination(for: String.self) { caseID in
                 CaseDetailView(caseID: caseID)
             }
@@ -113,9 +113,9 @@ struct CalendarView: View {
                 .foregroundStyle(theme.accentText)
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(legalCase.displayTitle).font(.subheadline).lineLimit(2)
+                Text(legalCase.displayTitle).font(.brand(.subheadline)).lineLimit(2)
                 if let court = legalCase.courtName {
-                    Text(court).font(.caption).foregroundStyle(theme.textSecondary)
+                    Text(court).font(.brand(.caption)).foregroundStyle(theme.textSecondary)
                 }
             }
         }
@@ -135,7 +135,7 @@ struct CalendarView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title ?? "—")
-                    .font(.subheadline)
+                    .font(.brand(.subheadline))
                     .strikethrough(event.isDone)
                     .foregroundStyle(event.isDone ? theme.textSecondary : theme.textPrimary)
                     .lineLimit(2)
@@ -146,10 +146,10 @@ struct CalendarView: View {
                         Text(DisplayText.longDay(due))
                     }
                 }
-                .font(.caption2)
+                .font(.brand(.caption2))
                 .foregroundStyle(theme.textTertiary)
                 if let notes = event.notes, !notes.isEmpty {
-                    Text(notes).font(.caption).foregroundStyle(theme.textSecondary).lineLimit(2)
+                    Text(notes).font(.brand(.caption)).foregroundStyle(theme.textSecondary).lineLimit(2)
                 }
             }
         }

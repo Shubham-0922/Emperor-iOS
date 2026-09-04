@@ -25,7 +25,7 @@ struct DisclaimerGateView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
 
                     Text(Disclaimer.body)
-                        .font(.callout)
+                        .font(.brand(.callout))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 28)
@@ -49,7 +49,7 @@ struct DisclaimerReferenceView: View {
     var body: some View {
         ScrollView {
             Text(Disclaimer.body)
-                .font(.callout)
+                .font(.brand(.callout))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }

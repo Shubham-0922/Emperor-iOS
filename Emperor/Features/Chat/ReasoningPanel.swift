@@ -42,12 +42,12 @@ struct ReasoningPanel: View {
                     ProgressView().controlSize(.mini)
                 } else {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textSecondary)
                 }
 
                 Text(summary)
-                    .font(.caption)
+                    .font(.brand(.caption))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(1)
 
@@ -55,7 +55,7 @@ struct ReasoningPanel: View {
 
                 if !snapshot.isEmpty {
                     Image(systemName: "chevron.down")
-                        .font(.caption2)
+                        .font(.brand(.caption2))
                         .foregroundStyle(theme.textTertiary)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
@@ -96,7 +96,7 @@ struct ReasoningPanel: View {
                         switch entry {
                         case .note(_, let text, _):
                             Text(text)
-                                .font(.caption)
+                                .font(.brand(.caption))
                                 .foregroundStyle(theme.textSecondary)
                                 .padding(.vertical, 2)
                         case .group(let group):
@@ -115,7 +115,7 @@ struct ReasoningPanel: View {
                 section("Reasoning") {
                     ForEach(Array(snapshot.reasoning.enumerated()), id: \.offset) { _, sentence in
                         Text(sentence)
-                            .font(.caption)
+                            .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                             .padding(.vertical, 1)
                     }
@@ -129,7 +129,7 @@ struct ReasoningPanel: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
+                .font(.brand(.caption2, weight: .semibold))
                 .foregroundStyle(theme.textTertiary)
             content()
         }
@@ -151,7 +151,7 @@ struct ReasoningPanel: View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             statusIcon(step.status)
             Text(step.label)
-                .font(.caption)
+                .font(.brand(.caption))
                 // A superseded call is struck through: it really happened, but its results
                 // were thrown away, and it must not read as work the answer rests on.
                 .strikethrough(step.status == .superseded)
@@ -165,18 +165,18 @@ struct ReasoningPanel: View {
         switch status {
         case .completed:
             Image(systemName: "checkmark.circle.fill")
-                .font(.caption2).foregroundStyle(theme.success)
+                .font(.brand(.caption2)).foregroundStyle(theme.success)
         case .inProgress:
             ProgressView().controlSize(.mini)
         case .pending:
-            Image(systemName: "circle").font(.caption2).foregroundStyle(theme.textTertiary)
+            Image(systemName: "circle").font(.brand(.caption2)).foregroundStyle(theme.textTertiary)
         case .superseded:
             Image(systemName: "arrow.uturn.backward.circle")
-                .font(.caption2).foregroundStyle(theme.textTertiary)
+                .font(.brand(.caption2)).foregroundStyle(theme.textTertiary)
         case .stopped:
             // Deliberately not a tick: the stream ended without confirming this came back.
             Image(systemName: "questionmark.circle")
-                .font(.caption2).foregroundStyle(theme.warning)
+                .font(.brand(.caption2)).foregroundStyle(theme.warning)
         }
     }
 }

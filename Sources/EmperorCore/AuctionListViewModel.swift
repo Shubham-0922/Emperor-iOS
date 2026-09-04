@@ -18,7 +18,7 @@ final class AuctionListViewModel {
     /// Framing copy. Kept in one place so the list, the detail screen and the empty state cannot
     /// drift apart about what this feed is and is not.
     enum Copy {
-        static let title = "Liquidation auctions"
+        static let title = "Liquidations"
         static let subtitle = "IBBI e-auction notices"
         /// The safety sentence, in the register of `CauseListViewModel.Copy.confirmWithCourt`.
         ///

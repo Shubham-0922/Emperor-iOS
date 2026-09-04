@@ -218,9 +218,9 @@ struct ChatThreadView: View {
                     Text(notice)
                     Spacer(minLength: 0)
                     Button("Dismiss") { composer.dismissFailure() }
-                        .font(.caption.weight(.semibold))
+                        .font(.brand(.caption, weight: .semibold))
                 }
-                .font(.caption)
+                .font(.brand(.caption))
                 .foregroundStyle(theme.textSecondary)
                 .padding(.horizontal)
                 .transition(.opacity)
@@ -233,10 +233,10 @@ struct ChatThreadView: View {
                     Spacer(minLength: 0)
                     if composer.template != nil {
                         Button(PromptEnhancerViewModel.Copy.fillTitle) { isFillingBlanks = true }
-                            .font(.caption.weight(.semibold))
+                            .font(.brand(.caption, weight: .semibold))
                     }
                 }
-                .font(.caption)
+                .font(.brand(.caption))
                 .foregroundStyle(theme.accentText)
                 .padding(.horizontal)
             }
@@ -255,7 +255,7 @@ struct ChatThreadView: View {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundStyle(theme.textSecondary)
                                 }
-                                .font(.caption)
+                                .font(.brand(.caption))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
                                 .background(theme.surfaceElevated, in: Capsule())
@@ -283,7 +283,7 @@ struct ChatThreadView: View {
                     }
                 } label: {
                     Image(systemName: "plus.circle")
-                        .font(.title3)
+                        .font(.brand(.title3))
                 }
                 .accessibilityLabel("Attach a document")
                 .disabled(model.isStreaming)
@@ -302,7 +302,7 @@ struct ChatThreadView: View {
                     if composer.isEnhancing {
                         ProgressView().controlSize(.small)
                     } else {
-                        Image(systemName: "wand.and.sparkles").font(.title3)
+                        Image(systemName: "wand.and.sparkles").font(.brand(.title3))
                     }
                 }
                 .accessibilityLabel(
@@ -315,7 +315,7 @@ struct ChatThreadView: View {
                     Button {
                         model.stop()
                     } label: {
-                        Image(systemName: "stop.circle.fill").font(.title2)
+                        Image(systemName: "stop.circle.fill").font(.brand(.title2))
                     }
                     .accessibilityLabel("Stop this answer")
                 } else {
@@ -323,7 +323,7 @@ struct ChatThreadView: View {
                         model.send(composer.text)
                         composer.clear()
                     } label: {
-                        Image(systemName: "arrow.up.circle.fill").font(.title2)
+                        Image(systemName: "arrow.up.circle.fill").font(.brand(.title2))
                     }
                     .accessibilityLabel("Send")
                     .disabled(
@@ -443,19 +443,19 @@ private struct ArtifactCard: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: artifact.kind == .canvas ? "doc.text" : "tablecells")
-                .font(.title3)
+                .font(.brand(.title3))
                 .foregroundStyle(theme.accentText)
             VStack(alignment: .leading, spacing: 2) {
                 Text(artifact.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.brand(.subheadline, weight: .semibold))
                     .lineLimit(2)
                 Text(artifact.kind == .canvas ? "Document" : "Table")
-                    .font(.caption)
+                    .font(.brand(.caption))
                     .foregroundStyle(theme.textSecondary)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
-                .font(.caption)
+                .font(.brand(.caption))
                 .foregroundStyle(theme.textTertiary)
         }
         .padding(12)
@@ -479,7 +479,7 @@ private struct Notice: View {
             Image(systemName: icon)
             Text(text)
         }
-        .font(.footnote)
+        .font(.brand(.footnote))
         .foregroundStyle(tint)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

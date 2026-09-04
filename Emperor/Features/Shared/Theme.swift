@@ -131,7 +131,7 @@ struct StatusPill: View {
             }
             Text(text)
         }
-        .font(.caption2.weight(.semibold))
+        .font(.brand(.caption2, weight: .semibold))
         .foregroundStyle(foreground)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
@@ -162,12 +162,12 @@ struct SectionHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
-                .font(.subheadline.weight(.bold))
+                .font(.brand(.subheadline, weight: .bold))
                 .foregroundStyle(theme.textPrimary)
             Spacer(minLength: 8)
             if let detail {
                 Text(detail)
-                    .font(.caption)
+                    .font(.brand(.caption))
                     .foregroundStyle(theme.textTertiary)
             }
         }
@@ -183,7 +183,7 @@ struct PrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(.brand(.subheadline, weight: .semibold))
             .foregroundStyle(theme.onAccent)
             .padding(.horizontal, 18)
             .padding(.vertical, 11)

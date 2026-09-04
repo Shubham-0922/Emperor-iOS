@@ -120,7 +120,7 @@ struct DraftHistoryView: View {
                         .lineLimit(2)
                         .foregroundStyle(theme.textPrimary)
                     Text(item.sourceLabel)
-                        .font(.caption2)
+                        .font(.brand(.caption2))
                         .foregroundStyle(theme.textTertiary)
                         .lineLimit(1)
                 }

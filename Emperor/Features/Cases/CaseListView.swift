@@ -17,7 +17,7 @@ struct CaseListView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("Matters")
+            .navigationTitle("Cases")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -82,7 +82,7 @@ struct CaseListView: View {
     private func row(_ legalCase: LegalCase) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(legalCase.displayTitle)
-                .font(.headline)
+                .font(.brand(.headline))
                 .lineLimit(2)
 
             HStack(spacing: 6) {
@@ -94,7 +94,7 @@ struct CaseListView: View {
                     Text(court).lineLimit(1)
                 }
             }
-            .font(.subheadline)
+            .font(.brand(.subheadline))
             .foregroundStyle(theme.textSecondary)
 
             HStack(spacing: 8) {
@@ -110,11 +110,11 @@ struct CaseListView: View {
                         text: "From court", tone: .accent, systemImage: "building.columns")
                 }
             }
-            .font(.caption)
+            .font(.brand(.caption))
             .foregroundStyle(theme.textTertiary)
 
             if let stage = legalCase.stage ?? legalCase.status {
-                Text(stage).font(.caption2).foregroundStyle(theme.textTertiary)
+                Text(stage).font(.brand(.caption2)).foregroundStyle(theme.textTertiary)
             }
         }
         .padding(.vertical, 3)

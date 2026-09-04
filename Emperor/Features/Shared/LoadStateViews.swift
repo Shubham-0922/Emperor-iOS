@@ -74,10 +74,10 @@ struct StaleBanner: View {
             Spacer(minLength: 0)
             if failure.isRetryable, let retry {
                 Button("Retry") { Task { await retry() } }
-                    .font(.caption.weight(.semibold))
+                    .font(.brand(.caption, weight: .semibold))
             }
         }
-        .font(.caption)
+        .font(.brand(.caption))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -96,7 +96,7 @@ struct CachedStamp: View {
             Text("As of \(cachedAt, format: .relative(presentation: .named))")
             Spacer(minLength: 0)
         }
-        .font(.caption)
+        .font(.brand(.caption))
         .foregroundStyle(theme.textSecondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

@@ -123,7 +123,7 @@ struct CitationStrip: View {
                                 Text(pages).foregroundStyle(theme.textSecondary)
                             }
                         }
-                        .font(.caption2)
+                        .font(.brand(.caption2))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(theme.surfaceElevated, in: Capsule())

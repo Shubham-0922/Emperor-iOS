@@ -66,7 +66,7 @@ struct NotificationsView: View {
                 // is complete.
                 if model.mayHaveOlderUnreachable {
                     Text("Showing the most recent \(NotificationService.maximumLimit). Older updates are not available here.")
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -121,13 +121,13 @@ struct NotificationsView: View {
                         .lineLimit(2)
                     if let body = notification.body, !body.isEmpty {
                         Text(body)
-                            .font(.caption)
+                            .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                             .lineLimit(3)
                     }
                     if let created = notification.createdAt {
                         Text(DisplayText.relative(created))
-                            .font(.caption2)
+                            .font(.brand(.caption2))
                             .foregroundStyle(theme.textTertiary)
                     }
                 }

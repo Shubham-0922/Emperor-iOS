@@ -47,6 +47,15 @@ targets:
         # Consumed by `APIConfig.resolvedEnvironment`; driven by the per-config build setting.
         EmperorEnvironment: $(EMPEROR_ENVIRONMENT)
         UILaunchScreen: {}
+        # `--font-brand` in `emperor-ai/src/ui/theme.css`. Bundled rather than fetched: the web
+        # pulls it from Google Fonts by `@import`, which an app cannot do.
+        #
+        # One file, because it is a **variable** font carrying all five weights as named
+        # instances. Its default instance is Light and its family name is "Fredoka Light", so
+        # `UIFont(name: "Fredoka")` gets Light or nothing — always address a named instance
+        # (`Fredoka-Regular`, `-Medium`, `-SemiBold`, `-Bold`). See `BrandFont`.
+        UIAppFonts:
+          - Fredoka.ttf
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

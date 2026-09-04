@@ -29,7 +29,7 @@ struct PasswordResetSheet: View {
                     Section {
                         Label {
                             Text(Session.passwordResetNotice)
-                                .font(.callout)
+                                .font(.brand(.callout))
                         } icon: {
                             Image(systemName: "envelope")
                                 .foregroundStyle(theme.accentText)
@@ -53,7 +53,7 @@ struct PasswordResetSheet: View {
                 if let error = session.signInError {
                     Section {
                         Text(error)
-                            .font(.footnote)
+                            .font(.brand(.footnote))
                             .foregroundStyle(theme.danger)
                     }
                 }

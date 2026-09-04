@@ -77,7 +77,7 @@ struct AuctionListView: View {
                     // On the content state as well as the empty one. Every figure above was
                     // parsed out of a PDF by a scraper, and the notice is the only authority.
                     Text(AuctionListViewModel.Copy.confirmWithNotice)
-                        .font(.caption2)
+                        .font(.brand(.caption2))
                         .foregroundStyle(theme.textTertiary)
                 }
             }
@@ -170,12 +170,12 @@ struct AuctionListView: View {
     private func row(_ notice: AuctionNotice, _ model: AuctionListViewModel) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(notice.displayDebtor)
-                .font(.headline)
+                .font(.brand(.headline))
                 .lineLimit(2)
 
             if let assets = notice.natureOfAssets, !assets.isEmpty {
                 Text(assets)
-                    .font(.subheadline)
+                    .font(.brand(.subheadline))
                     .foregroundStyle(theme.textSecondary)
                     .lineLimit(2)
             }
@@ -185,11 +185,11 @@ struct AuctionListView: View {
                 // silently omitted — its absence is stated.
                 if let reserve = notice.reservePriceText {
                     Label(reserve, systemImage: "indianrupeesign.circle")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.brand(.subheadline, weight: .semibold))
                         .foregroundStyle(theme.textPrimary)
                 } else {
                     Text("Reserve price not published")
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textTertiary)
                 }
             }
@@ -203,7 +203,7 @@ struct AuctionListView: View {
                     Text(platform).lineLimit(1)
                 }
             }
-            .font(.caption)
+            .font(.brand(.caption))
             .foregroundStyle(theme.textTertiary)
 
             HStack(spacing: 6) {

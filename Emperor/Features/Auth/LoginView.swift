@@ -25,7 +25,7 @@ struct LoginView: View {
                 Text("Emperor")
                     .font(.system(.largeTitle, design: .serif, weight: .semibold))
                 Text("For Indian litigation and corporate practice")
-                    .font(.subheadline)
+                    .font(.brand(.subheadline))
                     .foregroundStyle(theme.textSecondary)
                     .multilineTextAlignment(.center)
             }
@@ -58,7 +58,7 @@ struct LoginView: View {
 
             if let error = session.signInError {
                 Text(error)
-                    .font(.footnote)
+                    .font(.brand(.footnote))
                     .foregroundStyle(theme.danger)
                     .multilineTextAlignment(.center)
                     .transition(.opacity)
@@ -79,11 +79,11 @@ struct LoginView: View {
             Button(isRegistering ? "I already have an account" : "Create an account") {
                 withAnimation { isRegistering.toggle() }
             }
-            .font(.footnote)
+            .font(.brand(.footnote))
 
             if !isRegistering {
                 Button("Forgot your password?") { isAskingForReset = true }
-                    .font(.footnote)
+                    .font(.brand(.footnote))
                     .foregroundStyle(theme.textSecondary)
             }
 

@@ -82,26 +82,26 @@ struct AuctionDetailView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(theme.warning)
                     Text(warning)
-                        .font(.footnote)
+                        .font(.brand(.footnote))
                         .foregroundStyle(theme.textPrimary)
                 }
                 ForEach(model.amendments) { amendment in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(amendment.type.label)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.brand(.subheadline, weight: .semibold))
                         if let issued = amendment.dateIssuedRaw {
                             Text("Issued \(DisplayText.longDay(issued))")
-                                .font(.caption)
+                                .font(.brand(.caption))
                                 .foregroundStyle(theme.textSecondary)
                         }
                         if let reserve = amendment.reservePriceText {
                             Text("Reserve price \(reserve)")
-                                .font(.caption)
+                                .font(.brand(.caption))
                                 .foregroundStyle(theme.textSecondary)
                         }
                         if let day = amendment.auctionDayKey {
                             Text("Auction \(DisplayText.longDay(day))")
-                                .font(.caption)
+                                .font(.brand(.caption))
                                 .foregroundStyle(theme.textSecondary)
                         }
                     }
@@ -117,7 +117,7 @@ struct AuctionDetailView: View {
         Section {
             VStack(alignment: .leading, spacing: 6) {
                 Text(notice.displayDebtor)
-                    .font(.title3.weight(.semibold))
+                    .font(.brand(.title3, weight: .semibold))
                 HStack(spacing: 6) {
                     StatusPill(text: notice.type.label, tone: .accent)
                     StatusPill(
@@ -128,7 +128,7 @@ struct AuctionDetailView: View {
                     // Text, not a link. The earlier notice can only be addressed by its unique
                     // number, and that lookup is unreachable through this API.
                     Text(explanation)
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textSecondary)
                 }
             }
@@ -139,7 +139,7 @@ struct AuctionDetailView: View {
             }
             if let reference = notice.displayReference {
                 LabeledContent("Notice number", value: reference)
-                    .font(.caption)
+                    .font(.brand(.caption))
             }
             // "Watch this company" belonged here and is held back — `/auction-watchlists`
             // writes on an unauthenticated `userId`. See `AuctionListView`.
@@ -175,7 +175,7 @@ struct AuctionDetailView: View {
         if notice.natureOfAssets?.isEmpty == false || notice.assetLocation?.isEmpty == false {
             Section("Assets") {
                 if let nature = notice.natureOfAssets, !nature.isEmpty {
-                    Text(nature).font(.subheadline)
+                    Text(nature).font(.brand(.subheadline))
                 }
                 if let location = notice.assetLocation, !location.isEmpty {
                     LabeledContent("Location", value: location)
@@ -223,14 +223,14 @@ struct AuctionDetailView: View {
             }
             if notice.documentURL == nil {
                 Text("No notice document is linked from this row.")
-                    .font(.caption)
+                    .font(.brand(.caption))
                     .foregroundStyle(theme.textTertiary)
             }
         } header: {
             SectionHeader(title: "Documents")
         } footer: {
             Text(AuctionListViewModel.Copy.confirmWithNotice)
-                .font(.caption2)
+                .font(.brand(.caption2))
         }
     }
 
@@ -242,7 +242,7 @@ struct AuctionDetailView: View {
                     Image(systemName: "doc.badge.ellipsis")
                         .foregroundStyle(theme.textSecondary)
                     Text(caveat)
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textSecondary)
                 }
             } header: {

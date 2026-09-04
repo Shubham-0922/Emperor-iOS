@@ -25,7 +25,7 @@ struct EnhancedPromptSheet: View {
                     ForEach(template.labels, id: \.self) { label in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(prompt(for: label))
-                                .font(.caption)
+                                .font(.brand(.caption))
                                 .foregroundStyle(theme.textSecondary)
                             TextField("", text: binding(for: label), axis: .vertical)
                                 .lineLimit(1...3)
@@ -44,7 +44,7 @@ struct EnhancedPromptSheet: View {
 
                 Section("Your question will read") {
                     Text(preview)
-                        .font(.callout)
+                        .font(.brand(.callout))
                         .foregroundStyle(theme.textPrimary)
                         .textSelection(.enabled)
                 }

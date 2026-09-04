@@ -132,7 +132,7 @@ struct FileLibraryView: View {
                     Text(model.uploadProgress < 1
                          ? "Uploading…"
                          : "Reading the document…")
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textSecondary)
                     ProgressView(value: model.uploadProgress)
                 }
@@ -220,7 +220,7 @@ struct FileLibraryView: View {
         .overlay(alignment: .bottom) {
             if let notice = model.actionNotice {
                 Text(notice)
-                    .font(.footnote)
+                    .font(.brand(.footnote))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
                     .background(theme.surfaceElevated, in: Capsule())
@@ -265,7 +265,7 @@ struct FileLibraryView: View {
 
                 if file.favorite == true {
                     Image(systemName: "star.fill")
-                        .font(.caption)
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.warning)
                 }
             }
@@ -324,24 +324,24 @@ struct FileLibraryView: View {
         case .ready:
             if let size = file.size {
                 Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
-                    .font(.caption2)
+                    .font(.brand(.caption2))
                     .foregroundStyle(theme.textTertiary)
             }
         case .scanned:
             // Worth saying plainly: this is usable, just by a different route.
             Label("Scanned — read as images", systemImage: "eye")
-                .font(.caption2)
+                .font(.brand(.caption2))
                 .foregroundStyle(theme.textSecondary)
         case .inProgress(let message):
             Label(message, systemImage: "clock")
-                .font(.caption2)
+                .font(.brand(.caption2))
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
         case .failed(let reason):
             Label(
                 reason.replacingOccurrences(of: "ERROR: ", with: ""),
                 systemImage: "exclamationmark.triangle")
-                .font(.caption2)
+                .font(.brand(.caption2))
                 .foregroundStyle(theme.danger)
                 .lineLimit(2)
         }
