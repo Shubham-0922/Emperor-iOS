@@ -41,6 +41,8 @@ final class Session {
     let fileManagement: FileManagementService
     let drafts: DraftHistoryService
     let auctions: AuctionService
+    /// The in-app report channel for a generated answer. Both stores require one.
+    let feedback: FeedbackService
 
     let cache: ResponseCache
 
@@ -75,6 +77,7 @@ final class Session {
         self.calendar = CalendarService(client: client)
         self.library = LibraryService(client: client)
         self.enhancer = EnhancerService(client: client)
+        self.feedback = FeedbackService(client: client)
         self.courtSearch = CourtSearchService(client: client)
         self.fileManagement = FileManagementService(client: client)
         self.drafts = DraftHistoryService(client: client)

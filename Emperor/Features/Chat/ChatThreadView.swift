@@ -52,6 +52,7 @@ struct ChatThreadView: View {
                             // trailing-closure matching gets subtle. Naming it is unambiguous.
                             MessageBubble(
                                 message: message,
+                                chatID: chatID,
                                 onSelectCitation: { select($0, in: model) })
                                 .id(message.stableID)
                         }
@@ -370,7 +371,10 @@ struct ChatThreadView: View {
 private struct MessageBubble: View {
     @Environment(\.theme) private var theme
     let message: ChatMessage
+    var chatID: String?
     var onSelectCitation: (AnnexureMention) -> Void = { _ in }
+
+    @State private var isReporting = false
 
     var body: some View {
         if message.role == .user {
@@ -386,6 +390,26 @@ private struct MessageBubble: View {
                 content: StreamContent.parse(message.content),
                 isStreaming: false,
                 onSelectCitation: onSelectCitation)
+                // On the answer only. Reporting your own question would file a complaint about
+                // something the model did not write.
+                .contextMenu {
+                    Button {
+                        // The parsed prose, not the raw content: the stored message still
+                        // carries `<think>` and `<usage>` tags, and pasting those into an email
+                        // to a client would be its own kind of bad day.
+                        UIPasteboard.general.string = StreamContent.parse(message.content).prose
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    Button(role: .destructive) {
+                        isReporting = true
+                    } label: {
+                        Label("Report this answer", systemImage: "flag")
+                    }
+                }
+                .sheet(isPresented: $isReporting) {
+                    ReportAnswerSheet(chatID: chatID)
+                }
         }
     }
 }
