@@ -382,18 +382,33 @@ imported at `sync-server.js:35` and never called.
 ## Ordering
 
 ```
-P0  Compile ........................... blocks everything          1 day + iterations
-P1  Report an answer .................. store requirement          0.5 day
-P2  Tool registry (29) ...............  largest win, 0 backend     3–5 days
-P3  Chat parity (edit, export) ........                            2 days
-P5  PDF tools ........................  last Tier 2                2 days
-P7  MCA Registry .....................  mechanical                 1–2 days
-P6  Projects (read-only) .............                             2 days
-────────────────────────────────────── Linux-verifiable to here
-P4  Background upload ................  needs a Mac                2 days
-P9  check-duplicates, preferred model, office preview              3 days
-P8  Settle the three refusals ........  a decision, not a task     —
+P0  Compile ........................... ✅ done      it builds; .ipa ships
+P8  Settle the three refusals ......... ✅ done      held, as Android does
+PU  Match the web app's UI/UX ......... ✅ mostly    palette, font, navigation
+P1  Report an answer .................. ✅ done      store requirement met
+P2  Tool registry (29) ................ ✅ done      all 29, prompts pinned
+P7  MCA Registry ...................... ✅ done      63 tests, fully offline
+P6  Projects (read-only) .............. ✅ done
+────────────────────────────────────────────────────────────────────────
+P3  Chat parity — edit-and-re-answer, export an answer as PDF     2 days
+P5  PDF tools — split / merge / compress (last Tier 2)            2 days
+P4  Background upload ................. needs a device to verify  2 days
+P9  check-duplicates, preferred model, office preview             3 days
 ```
+
+### State as of 2026-09-04
+
+| | |
+|---|---|
+| Tests | **751** core, 0 failures — up from 618 |
+| Simulator | **13 UI + app tests**, green. The app has now been run |
+| CI | 7 jobs, all green; `Emperor-unsigned.ipa` on every push |
+| Repo | [Emperor-AI-Labs/Emperor-iOS](https://github.com/Emperor-AI-Labs/Emperor-iOS), private |
+
+**What still cannot be claimed.** Nobody has used this app on a phone. The simulator suite
+drives launch, sign-in, every tab, every More row, the empty states, sign-out and one tool
+end-to-end — it does not drive streaming, uploads, the camera, PDFKit, the Keychain, or a long
+press. Those paths compile and are unit-tested; they have never executed.
 
 **Roughly three weeks of client work to reach and pass Android**, of which everything except
 Phase 4 and the device half of Phases 3 and 5 is verifiable on Linux.
