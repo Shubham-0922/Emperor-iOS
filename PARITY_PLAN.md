@@ -310,6 +310,33 @@ Ordered by what actually helps on a phone.
 
 ---
 
+## Three contrast fixes the web app needs
+
+Found while porting the `--ex-*` tokens into `Palette.swift` on 2026-09-04. All three are in
+`emperor-ai/src/ui/theme.css`, all three fail WCAG AA, and iOS declines to copy them — see
+`PaletteTests.testTheThreeDeliberateDeviationsFromTheWebTokensHold`, which will start failing
+the day any of them is fixed.
+
+| # | Token | Problem | Suggested |
+|---|---|---|---|
+| 1 | `--ex-accent: #7c86c9` with `--ex-accent-ink: #ffffff` | White on it is **3.44:1** — the label on the most-tapped control in the app | Use `#5a64ad` (the theme's own light-mode accent) for filled buttons; `#7c86c9` is fine as *text* at 5.30:1 |
+| 2 | light `--ex-elevated: #ffffff` | Identical to `--ex-surface`, so a raised panel is invisible on a card | Give light its own elevated value |
+| 3 | light `--ex-success` / `--ex-warn` / `--ex-danger` | Never re-cut for light, so they inherit the dark values and land on near-white at **1.80:1**, **1.56:1**, **2.58:1** | `#2c6b49` / `#7e5f16` / `#9c2b25` clear AA and read as the same hues |
+
+Item 3 is most likely an oversight rather than a decision: the same block *does* re-cut
+`--ex-lock` and `--ex-proj-green` for exactly this reason.
+
+## Also worth settling: three products, three palettes
+
+Before this port, all three were matching different sources — iOS the `s2-*` showcase themes in
+`src/index.css` plus colours measured off the marketing hero; **Android the marketing site**
+(Plus Jakarta Sans, and a glass treatment from `--glass-rim-light`); the web app its own
+`--ex-*`. iOS now matches the web app, which is what a signed-in user actually looks at.
+
+**Android is now the odd one out**, and its typeface is the visible part. Either it adopts
+`--ex-*` and Fredoka, or the decision is made deliberately that the mobile clients follow the
+marketing brand and the web app is the one that moves. It should not stay accidental.
+
 ## Small corrections
 
 - **`FolderName.sanitized` walks `Character`s, not UTF-16 code units.**

@@ -88,10 +88,21 @@ struct PaletteColor: Equatable, Sendable {
 
 /// The app's colours, for one appearance.
 ///
-/// Taken from the platform so the two products read as one. The accent, the status colours and
-/// the surface ladder are the values the marketing dashboard actually renders (measured from
-/// `emperorailabs.com`); the navy-charcoal surfaces are the app's own `s2-dark` tokens
-/// (`src/index.css`).
+/// **Ported from the web app's own design tokens** — the `--ex-*` custom properties in
+/// `emperor-ai/src/ui/theme.css`, which `src/main.jsx` loads last and which therefore win over
+/// everything else. `:root` is dark, `:root[data-ex-theme="light"]` is light, and the file's own
+/// comment says dark is the default — the same posture both mobile clients already take.
+///
+/// This replaces an earlier palette drawn from `s2-dark`/`s2-light` in `src/index.css` and from
+/// colours measured off the marketing hero. Neither was the app's chrome: the `s*` themes are
+/// the older showcase system (`public/showcase.css`), and the marketing site is a different
+/// surface again — it is where the Android client took *its* palette, along with Plus Jakarta
+/// Sans. So all three products were matching three different sources. This one matches what a
+/// signed-in user actually looks at.
+///
+/// - Important: three values are deliberately **not** the website's, because copying them would
+///   import a contrast failure into an app read in daylight. Each is marked at its site. Where
+///   the token is sound it is used verbatim, including its hex.
 struct Palette: Sendable {
 
     // MARK: Surfaces
@@ -124,55 +135,59 @@ struct Palette: Sendable {
     var danger: PaletteColor
     var info: PaletteColor
 
-    /// Dark — the default.
-    ///
-    /// Surfaces are the platform's `s2-dark` navy-charcoal; accent and status are measured from
-    /// the dashboard in the marketing hero.
+    /// Dark — the default, and the web app's `:root`.
     static let dark = Palette(
-        canvas: PaletteColor(hex: 0x141824),
-        surface: PaletteColor(hex: 0x1E2535),
-        surfaceElevated: PaletteColor(hex: 0x252C3D),
-        surfaceAccent: PaletteColor(hex: 0x96A3FF, opacity: 0.05),
-        separator: .white(0.10),
+        canvas: PaletteColor(hex: 0x0A0B10),           // --ex-bg
+        surface: PaletteColor(hex: 0x13151D),          // --ex-surface
+        surfaceElevated: PaletteColor(hex: 0x1E222D),  // --ex-elevated
+        surfaceAccent: PaletteColor(hex: 0x7C86C9, opacity: 0.13),  // --ex-accent-soft
+        separator: PaletteColor(hex: 0x272B37),        // --ex-border
 
-        textPrimary: .white(0.94),
-        textSecondary: .white(0.66),
-        textTertiary: .white(0.44),
-        onAccent: .white(1),
+        textPrimary: PaletteColor(hex: 0xF4F6FB),      // --ex-text
+        textSecondary: PaletteColor(hex: 0xC6CDDB),    // --ex-text-soft
+        textTertiary: PaletteColor(hex: 0x949CB0),     // --ex-text-faint
+        onAccent: PaletteColor(hex: 0xFFFFFF),         // --ex-accent-ink
 
-        // The platform's dashboard fills this button with `#6070E4`, which puts a white label
-        // at 4.26:1 — below AA for body text. Darkened to the nearest value that clears 4.5:1
-        // while reading as the same indigo.
-        accent: PaletteColor(hex: 0x5A68D8),
-        accentText: PaletteColor(hex: 0xB9C1FF),
-        accentMuted: PaletteColor(hex: 0x6070E4, opacity: 0.18),
+        // **Not `--ex-accent` (`#7c86c9`).** That is the token for a filled button, and
+        // `--ex-accent-ink` on it is white — which measures **3.44:1**, below AA for the label
+        // on the app's most-tapped control. The value used instead is the website's *own*
+        // light-mode accent, which clears white at 5.44:1, so this is still its indigo rather
+        // than one invented here. `#7c86c9` is kept below, where it is sound.
+        accent: PaletteColor(hex: 0x5A64AD),
+        accentText: PaletteColor(hex: 0x7C86C9),       // --ex-accent, 5.30:1 on a card
+        accentMuted: PaletteColor(hex: 0x7C86C9, opacity: 0.28),    // --ex-accent-line
 
-        success: PaletteColor(hex: 0x4FC38F),
-        warning: PaletteColor(hex: 0xE0B45C),
-        danger: PaletteColor(hex: 0xE79485),
-        info: PaletteColor(hex: 0x7FB6DE))
+        success: PaletteColor(hex: 0x34D399),          // --ex-success
+        warning: PaletteColor(hex: 0xFBBF24),          // --ex-warn
+        danger: PaletteColor(hex: 0xF87171),           // --ex-danger
+        info: PaletteColor(hex: 0x6F9AC0))             // --ex-accent-2
 
-    /// Light.
-    ///
-    /// Not an inversion. The status hues are the platform's own light-theme values
-    /// (`s2-light`), which are darkened to hold contrast on a pale surface, and the accent is
-    /// deepened for the same reason — `#6070E4` on white is legible for a fill but not for text.
+    /// Light — the web app's `:root[data-ex-theme="light"]`.
     static let light = Palette(
-        canvas: PaletteColor(hex: 0xF4F2F6),
-        surface: PaletteColor(hex: 0xFFFFFF),
-        surfaceElevated: PaletteColor(hex: 0xFAF8FC),
-        surfaceAccent: PaletteColor(hex: 0x6070E4, opacity: 0.05),
-        separator: PaletteColor(hex: 0x3A2A36, opacity: 0.14),
+        canvas: PaletteColor(hex: 0xF6F7FB),           // --ex-bg
+        surface: PaletteColor(hex: 0xFFFFFF),          // --ex-surface
+        // **Not `--ex-elevated`.** In light the website sets it to `#ffffff`, the same as the
+        // surface — so a picker or a raised panel would be invisible on a card. The next rung
+        // of its own ladder (`--ex-surface-2`) is used, which reads as recessed rather than
+        // raised but is at least *there*.
+        surfaceElevated: PaletteColor(hex: 0xF4F6FB),
+        surfaceAccent: PaletteColor(hex: 0x5A64AD, opacity: 0.13),  // --ex-accent-soft
+        separator: PaletteColor(hex: 0xE3E7F0),        // --ex-border
 
-        textPrimary: PaletteColor(hex: 0x2E2833),
-        textSecondary: PaletteColor(hex: 0x5F5766),
-        textTertiary: PaletteColor(hex: 0x3A333E, opacity: 0.58),
-        onAccent: .white(1),
+        textPrimary: PaletteColor(hex: 0x0C0F17),      // --ex-text
+        textSecondary: PaletteColor(hex: 0x3C4560),    // --ex-text-soft
+        textTertiary: PaletteColor(hex: 0x626A83),     // --ex-text-faint
+        onAccent: PaletteColor(hex: 0xFFFFFF),         // --ex-accent-ink
 
-        accent: PaletteColor(hex: 0x4B58C8),
-        accentText: PaletteColor(hex: 0x3B47AD),
-        accentMuted: PaletteColor(hex: 0x4B58C8, opacity: 0.12),
+        accent: PaletteColor(hex: 0x5A64AD),           // --ex-accent
+        accentText: PaletteColor(hex: 0x5A64AD),       // --ex-accent, 5.44:1 on white
+        accentMuted: PaletteColor(hex: 0x5A64AD, opacity: 0.30),    // --ex-accent-line
 
+        // **The website's light theme does not re-cut these**, so they stay at their dark
+        // values and land on near-white at 1.80:1, 1.56:1 and 2.58:1 — all far below AA. That
+        // it re-cuts `--ex-lock` and `--ex-proj-green` for exactly this reason says the
+        // omission is an oversight rather than a decision. These are the previous iOS values,
+        // which clear AA, and the discrepancy is recorded in PARITY_PLAN.md as a web fix.
         success: PaletteColor(hex: 0x2C6B49),
         warning: PaletteColor(hex: 0x7E5F16),
         danger: PaletteColor(hex: 0x9C2B25),

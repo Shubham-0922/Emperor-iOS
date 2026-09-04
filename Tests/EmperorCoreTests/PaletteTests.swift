@@ -143,6 +143,39 @@ final class PaletteTests: XCTestCase {
             Palette.light.textPrimary.contrastRatio(against: Palette.light.canvas), 4.5)
     }
 
+    // MARK: - Where we deliberately differ from the website
+
+    /// The palette is ported from `emperor-ai/src/ui/theme.css`, and three values are
+    /// **deliberately not** the token's. Each was measured and each fails AA if copied, so this
+    /// pins the deviation: someone making the port "more faithful" would reintroduce a real
+    /// contrast failure, and these say so at the point of the change rather than in review.
+    func testTheThreeDeliberateDeviationsFromTheWebTokensHold() {
+        // 1. `--ex-accent: #7c86c9` is the dark fill, and `--ex-accent-ink` on it is white.
+        XCTAssertLessThan(
+            PaletteColor(hex: 0xFFFFFF).contrastRatio(against: PaletteColor(hex: 0x7C86C9)),
+            4.5,
+            "the web token still fails — if this now passes, adopt it and delete this test")
+        XCTAssertNotEqual(
+            Palette.dark.accent, PaletteColor(hex: 0x7C86C9),
+            "dark accent must stay the deeper indigo so a white button label clears AA")
+
+        // 2. Light `--ex-elevated` is `#ffffff`, identical to `--ex-surface`.
+        XCTAssertNotEqual(
+            Palette.light.surfaceElevated, Palette.light.surface,
+            "a raised panel must be distinguishable from the card under it")
+
+        // 3. The light theme never re-cuts the status hues, so they stay at their dark values.
+        for (label, webToken) in [
+            ("success", PaletteColor(hex: 0x34D399)),
+            ("warning", PaletteColor(hex: 0xFBBF24)),
+            ("danger", PaletteColor(hex: 0xF87171)),
+        ] {
+            XCTAssertLessThan(
+                webToken.contrastRatio(against: Palette.light.canvas), 4.5,
+                "\(label): the web value still fails on light — the deviation is still needed")
+        }
+    }
+
     // MARK: - Preference
 
     /// **Dark is the default.** Not "match the system" — a user who never opens Settings should
