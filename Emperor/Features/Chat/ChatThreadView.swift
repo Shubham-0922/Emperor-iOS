@@ -13,6 +13,17 @@ struct ChatThreadView: View {
     @State private var isFillingBlanks = false
 
     let chatID: String
+    /// An opening message to send as soon as the thread is ready.
+    ///
+    /// This is how a tool becomes a conversation: the form builds a prompt and hands it over.
+    /// Sent rather than pre-filled, because the user has already pressed Run and these prompts
+    /// run to tens of thousands of characters — dropping one into the composer would give them
+    /// a wall of text to scroll past rather than an answer.
+    ///
+    /// Passed directly rather than through the navigation path. Android needed a file handoff
+    /// for the same job because a 29,000-character route argument risks
+    /// `TransactionTooLargeException`; a Swift `String` held in a view is just memory.
+    var seed: String?
 
     var body: some View {
         Group {
@@ -35,6 +46,15 @@ struct ChatThreadView: View {
             composer = PromptEnhancerViewModel(service: session.enhancer)
             model = created
             await created.load()
+
+            // After `load()`, never before. `POST /chat` stores exactly the messages the
+            // request carried and deletes the rest, so sending against a thread whose history
+            // has not been read would erase it. `ChatViewModel` gates on `historyIsIntact` for
+            // this reason — a new conversation has nothing to lose, but this path must not be
+            // the one place that assumes so.
+            if let seed, !seed.isEmpty {
+                created.send(seed)
+            }
         }
     }
 

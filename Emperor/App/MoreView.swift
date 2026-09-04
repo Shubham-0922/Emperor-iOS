@@ -31,7 +31,7 @@ struct MoreView: View {
 
     /// The rows, in the platform's own order.
     private enum Destination: String, Identifiable {
-        case calendar, library, translate, liquidations, settings
+        case calendar, library, tools, translate, liquidations, settings
 
         var id: String { rawValue }
 
@@ -39,6 +39,7 @@ struct MoreView: View {
             switch self {
             case .calendar: return "Calendar"
             case .library: return "Library"
+            case .tools: return "All tools"
             case .translate: return "Translate"
             case .liquidations: return "Liquidations"
             case .settings: return "Settings"
@@ -50,6 +51,7 @@ struct MoreView: View {
             switch self {
             case .calendar: return "calendar"
             case .library: return "books.vertical"
+            case .tools: return "wrench.and.screwdriver"
             case .translate: return "character.bubble"
             case .liquidations: return "hammer"
             case .settings: return "gearshape"
@@ -68,11 +70,14 @@ struct MoreView: View {
                 }
 
                 Section {
+                    row(.tools)
                     row(.translate)
                     row(.liquidations)
                 } header: {
-                    // The platform groups these under "Tools" in its rail, and the tool registry
-                    // itself lands here when it is ported (PARITY_PLAN.md, Phase 2).
+                    // The platform groups these under "Tools" in its rail. "All tools" is not a
+                    // row the web has — there, most of the registry is reachable only by typing
+                    // `/w/<id>`. A phone has no address bar, so without it twenty-four of the
+                    // twenty-nine would be unreachable rather than merely unadvertised.
                     SectionHeader(title: "Tools")
                 }
 
@@ -88,6 +93,7 @@ struct MoreView: View {
                 switch chosen {
                 case .calendar: CalendarView()
                 case .library: LibraryView()
+                case .tools: ToolsListView()
                 case .translate: OCRView()
                 case .liquidations: AuctionListView()
                 case .settings: SettingsView()
