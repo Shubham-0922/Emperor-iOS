@@ -113,8 +113,16 @@ final class EmperorUITests: XCTestCase {
             XCTAssertEqual(app.state, .runningForeground, "the app died opening \(row)")
 
             // Each destination presents rather than pushes, so it is dismissed rather than
-            // popped. Swipe down from the nav bar, which works whether or not it has a Done.
-            app.navigationBars[title].swipeDown(velocity: .fast)
+            // popped. A coordinate drag from the nav bar to the bottom is the reliable way to
+            // dismiss a sheet: `swipeDown()` on an element often scrolls its content instead.
+            //
+            // Worth noting what this exposes — Calendar, Library and Liquidations carry no
+            // close button of their own, because they were built as tabs. Swiping is the only
+            // way out of them, which is legal on iOS but not obvious.
+            let top = app.navigationBars[title]
+                .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 1.0))
+            top.press(forDuration: 0.05, thenDragTo: bottom)
             XCTAssertTrue(app.navigationBars["More"].waitForExistence(timeout: 10))
         }
     }
@@ -150,9 +158,16 @@ final class EmperorUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
 
         app.buttons["Sign out"].firstMatch.tap()
-        // A confirmation dialog stands between the tap and the act.
-        let confirm = app.buttons["Sign out"].firstMatch
-        if confirm.waitForExistence(timeout: 3) { confirm.tap() }
+
+        // A confirmation stands between the tap and the act, and its button carries the same
+        // label — so it has to be found inside the dialog rather than by `firstMatch`, which
+        // would just hit the row again. `.confirmationDialog` surfaces as a sheet on iPhone.
+        let dialog = app.sheets.buttons["Sign out"]
+        if dialog.waitForExistence(timeout: 5) {
+            dialog.tap()
+        } else if app.alerts.buttons["Sign out"].waitForExistence(timeout: 2) {
+            app.alerts.buttons["Sign out"].tap()
+        }
 
         XCTAssertTrue(
             app.textFields["Email"].waitForExistence(timeout: 10),

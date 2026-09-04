@@ -67,58 +67,73 @@ enum UITestSupport {
         }
     }
 
-    /// The canned responses. Shapes are taken from the real routes, not invented — a fixture the
-    /// decoder rejects would make the screen blank and the failure would read as a UI bug.
+    /// The canned responses.
+    ///
+    /// Every key and every envelope here was read off the response type the service decodes
+    /// into, not invented. That is not pedantry: the first run of this suite failed every
+    /// signed-in test because `/login` omitted `success`, which `AuthResponse` declares
+    /// **non-optional**. The app behaved exactly as it would against a server that did the same
+    /// — sign-in silently did not happen — which is the whole argument for stubbing the
+    /// transport instead of the services.
+    ///
+    /// `JSONDecoder` ignores unknown keys, so an extra field is harmless and only a *missing
+    /// required* one breaks. Lists are populated only where the row model's required fields are
+    /// known for certain; elsewhere they are empty, which is always valid and still renders a
+    /// screen.
     enum Fixtures {
         static func body(for path: String) -> String {
             if isEmpty, let empty = emptyBody(for: path) { return empty }
             switch path {
+            // `success` is **not** optional on `AuthResponse`. Omitting it fails the decode and
+            // sign-in never happens.
             case "/login", "/register":
-                return #"{"token":"ui-test-token","user":{"id":1,"name":"Test Advocate","email":"test@example.com"}}"#
+                return #"{"success":true,"token":"ui-test-token","user":{"id":1,"name":"Test Advocate","email":"test@example.com"}}"#
             case "/chats":
-                return #"{"chats":[{"id":"c1","title":"Bakshi v. State","updatedAt":"2026-09-01T10:00:00.000Z"}]}"#
+                return #"{"success":true,"chats":[{"id":"c1","title":"Bakshi v. State"}]}"#
             case "/messages":
-                return #"{"messages":[]}"#
+                return #"{"success":true,"messages":[]}"#
             case "/cases":
-                return #"{"cases":[{"id":"case1","title":"Bakshi v. State of Maharashtra","court_name":"Bombay High Court","next_hearing_date":"2026-09-20"}]}"#
+                return #"{"success":true,"cases":[{"id":"case1","title":"Bakshi v. State of Maharashtra","court_name":"Bombay High Court","next_hearing_date":"2026-09-20"}]}"#
             case "/case":
-                return #"{"case":{"id":"case1","title":"Bakshi v. State of Maharashtra","court_name":"Bombay High Court"},"events":[]}"#
+                return #"{"success":true,"case":{"id":"case1","title":"Bakshi v. State of Maharashtra","court_name":"Bombay High Court"},"events":[],"items":[]}"#
+            // `listings`, not `cases`, and `CauseListing` requires both `date` and `caseID` —
+            // left empty rather than guessing their wire names.
             case "/cause-list":
-                return #"{"cases":[{"id":"case1","title":"Bakshi v. State of Maharashtra","court_name":"Bombay High Court","next_hearing_date":"2026-09-20"}]}"#
+                return #"{"success":true,"listings":[]}"#
             case "/compliance":
-                return #"{"events":[{"id":"e1","title":"File written statement","kind":"task","due_date":"2026-09-15"}]}"#
+                return #"{"success":true,"events":[{"id":"e1","title":"File written statement"}]}"#
             case "/notifications":
-                return #"{"notifications":[{"id":"n1","title":"Hearing listed","message":"Bakshi v. State is listed","is_read":0,"created_at":"2026-09-01T10:00:00.000Z"}]}"#
+                return #"{"success":true,"notifications":[{"id":"n1","title":"Hearing listed"}]}"#
             case "/notifications/unread-count":
-                return #"{"count":1}"#
+                return #"{"success":true,"count":1}"#
+            // `folders`, not `files`.
             case "/user-files":
-                return #"{"files":[{"name":"petition.pdf","folderName":"Bakshi","status":"ready","size":12345}]}"#
+                return #"{"success":true,"folders":[]}"#
             case "/library/categories":
-                return #"{"categories":[{"id":"bare-acts","label":"Bare Acts","count":42}]}"#
+                return #"{"success":true,"categories":[]}"#
+            case "/library/subfilters":
+                return #"{"success":true,"subFilters":[]}"#
             case "/library/browse":
-                return #"{"items":[{"id":"l1","title":"Code of Civil Procedure, 1908"}],"total":1}"#
+                return #"{"success":true,"items":[],"total":0}"#
             case "/auction-notices":
-                return #"{"notices":[{"id":"a1","corporate_debtor":"Bhushan Steel Ltd","auction_date":"2026-10-01"}],"total":1}"#
+                return #"{"success":true,"notices":[],"total":0}"#
             case "/auction-notices/facets":
-                return #"{"types":[],"platforms":[]}"#
+                return #"{"success":true,"types":[],"platforms":[]}"#
             case "/documents", "/tables":
-                return #"{"documents":[]}"#
+                return #"{"success":true,"documents":[],"tables":[]}"#
             default:
-                return "{}"
+                return #"{"success":true}"#
             }
         }
 
         /// `nil` means "this route has no distinct empty shape", so the normal body is used.
         private static func emptyBody(for path: String) -> String? {
             switch path {
-            case "/chats": return #"{"chats":[]}"#
-            case "/cases", "/cause-list": return #"{"cases":[]}"#
-            case "/compliance": return #"{"events":[]}"#
-            case "/notifications": return #"{"notifications":[]}"#
-            case "/notifications/unread-count": return #"{"count":0}"#
-            case "/user-files": return #"{"files":[]}"#
-            case "/library/browse": return #"{"items":[],"total":0}"#
-            case "/auction-notices": return #"{"notices":[],"total":0}"#
+            case "/chats": return #"{"success":true,"chats":[]}"#
+            case "/cases": return #"{"success":true,"cases":[]}"#
+            case "/compliance": return #"{"success":true,"events":[]}"#
+            case "/notifications": return #"{"success":true,"notifications":[]}"#
+            case "/notifications/unread-count": return #"{"success":true,"count":0}"#
             default: return nil
             }
         }
