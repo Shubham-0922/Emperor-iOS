@@ -100,6 +100,7 @@ final class EmperorUITests: XCTestCase {
         for (row, title) in [
             ("Calendar", "Calendar"),
             ("Library", "Library"),
+            ("All tools", "Tools"),
             ("Translate", "Translate"),
             ("Liquidations", "Liquidations"),
             ("Settings", "Settings"),
@@ -172,5 +173,34 @@ final class EmperorUITests: XCTestCase {
         XCTAssertTrue(
             app.textFields["Email"].waitForExistence(timeout: 10),
             "signing out did not return to the login screen")
+    }
+
+    // MARK: - Tools
+
+    /// The registry is twenty-nine screens' worth of form behind one row, and the forms are
+    /// generated from data rather than laid out by hand — so one broken field definition would
+    /// break every tool at once. This opens the list and runs one.
+    func testAToolOpensItsFormAndCanBeRun() {
+        let app = signIn(launch())
+        XCTAssertTrue(app.tabBars.buttons["More"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["More"].tap()
+        app.buttons["All tools"].tap()
+
+        XCTAssertTrue(app.navigationBars["Tools"].waitForExistence(timeout: 10))
+        // The five the web's own sidebar links, so the ones most likely to be opened.
+        for tool in ["Devil's Advocate", "Highlighter"] {
+            XCTAssertTrue(
+                app.staticTexts[tool].waitForExistence(timeout: 5), "\(tool) is not listed")
+        }
+
+        app.staticTexts["Devil's Advocate"].tap()
+        let run = app.buttons["Run"]
+        XCTAssertTrue(run.waitForExistence(timeout: 10), "the tool form did not render")
+        run.tap()
+
+        // Running starts a conversation and sends the prompt. The stub answers, so what is
+        // asserted is that the navigation happened and the app survived it.
+        XCTAssertTrue(app.navigationBars["Conversation"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.state, .runningForeground)
     }
 }
