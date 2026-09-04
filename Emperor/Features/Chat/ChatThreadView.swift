@@ -12,6 +12,8 @@ struct ChatThreadView: View {
     @State private var isBrowsingFiles = false
     @State private var isFillingBlanks = false
     @State private var isReporting = false
+    @State private var editing: ChatMessage?
+    @State private var editText = ""
 
     let chatID: String
     /// An opening message to send as soon as the thread is ready.
@@ -59,6 +61,21 @@ struct ChatThreadView: View {
         }
     }
 
+    /// Says how much a re-answer throws away.
+    ///
+    /// Singular and plural are spelled out rather than "(s)" — this is the sentence standing
+    /// between someone and losing six turns of work, and it should read like a person wrote it.
+    static func discardWarning(count: Int) -> String {
+        switch count {
+        case 0, 1:
+            return "This question will be answered again. Nothing else is affected."
+        case 2:
+            return "This question and the answer below it are replaced. That cannot be undone."
+        default:
+            return "This question and the \(count - 1) turns after it are replaced. That cannot be undone."
+        }
+    }
+
     private func thread(_ model: ChatViewModel) -> some View {
         @Bindable var model = model
 
@@ -74,6 +91,11 @@ struct ChatThreadView: View {
                             MessageBubble(
                                 message: message,
                                 chatID: chatID,
+                                canEdit: model.canEdit(message),
+                                onEdit: {
+                                    editing = message
+                                    editText = message.content
+                                },
                                 onSelectCitation: { select($0, in: model) })
                                 .id(message.stableID)
                         }
@@ -109,6 +131,16 @@ struct ChatThreadView: View {
                         // A send that failed outright. Shown in the transcript rather than as
                         // an alert: the question is still in the composer's history above, and
                         // the useful next act is to send it again.
+                        // Why the composer is disarmed. Shown next to the load failure that
+                        // caused it, because the two are one situation and separating them
+                        // would leave the user with a dead composer and no explanation.
+                        if let blocked = model.sendBlockedReason {
+                            Notice(
+                                icon: "exclamationmark.triangle",
+                                text: blocked,
+                                tint: .orange)
+                        }
+
                         if let error = model.errorMessage {
                             Notice(
                                 icon: "exclamationmark.circle",
@@ -149,6 +181,26 @@ struct ChatThreadView: View {
                 }
             }
             .ignoresSafeArea()
+        }
+        .alert("Ask this again?", isPresented: Binding(
+            get: { editing != nil },
+            set: { if !$0 { editing = nil } }
+        )) {
+            TextField("Your question", text: $editText, axis: .vertical)
+            Button("Cancel", role: .cancel) { editing = nil }
+            Button("Re-answer", role: .destructive) {
+                if let message = editing {
+                    model.edit(message, to: editText)
+                }
+                editing = nil
+            }
+        } message: {
+            // The count, not a vague "this cannot be undone". Re-answering the third of eight
+            // turns discards six, and because `POST /chat` stores exactly what it is sent they
+            // go from the server too — so the number is the whole reason to ask.
+            if let message = editing {
+                Text(Self.discardWarning(count: model.discardCount(editing: message)))
+            }
         }
         .sheet(isPresented: $isBrowsingFiles) {
             FileLibraryView(alreadyAttached: model.attachments) { chosen in
@@ -367,6 +419,7 @@ struct ChatThreadView: View {
                     .accessibilityLabel("Send")
                     .disabled(
                         composer.isEnhancing
+                            || model.sendBlockedReason != nil
                             || composer.text.trimmingCharacters(in: .whitespacesAndNewlines)
                                 .isEmpty)
                 }
@@ -410,9 +463,20 @@ private struct MessageBubble: View {
     @Environment(\.theme) private var theme
     let message: ChatMessage
     var chatID: String?
+    var canEdit = false
+    var onEdit: () -> Void = {}
     var onSelectCitation: (AnnexureMention) -> Void = { _ in }
 
     @State private var isReporting = false
+
+    /// The answer as a PDF on disk, ready to share.
+    ///
+    /// Built on demand rather than up front: laying out a page per bubble on every scroll would
+    /// cost more than the feature is worth, and most answers are never exported.
+    private func exportedPDF() -> URL? {
+        let data = AnswerPDF.render(html: StreamContent.parse(message.content).prose)
+        return ShareableFile.url(for: data, named: AnswerPDF.fileName())
+    }
 
     var body: some View {
         if message.role == .user {
@@ -422,6 +486,20 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
+                    .contextMenu {
+                        if canEdit {
+                            Button {
+                                onEdit()
+                            } label: {
+                                Label("Edit and ask again", systemImage: "pencil")
+                            }
+                        }
+                        Button {
+                            UIPasteboard.general.string = message.content
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    }
             }
         } else {
             AnswerView(
@@ -438,6 +516,11 @@ private struct MessageBubble: View {
                         UIPasteboard.general.string = StreamContent.parse(message.content).prose
                     } label: {
                         Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    if let url = exportedPDF() {
+                        ShareLink(item: url) {
+                            Label("Export as PDF", systemImage: "square.and.arrow.up")
+                        }
                     }
                     Button(role: .destructive) {
                         isReporting = true

@@ -32,6 +32,25 @@ final class ChatViewModel {
     /// Set when a run finished but the server says the answer was cut short.
     private(set) var wasInterrupted = false
 
+    /// Whether `messages` is the whole conversation, so it is safe to post back.
+    ///
+    /// **This gates sending, and it is not a nicety.** `POST /chat` replaces the chat's stored
+    /// messages with exactly the array it receives (`setMessages` deletes and re-inserts). So
+    /// if `load()` failed and left `messages` empty, a single send would post a one-message
+    /// history and the server would delete every earlier turn — silently, with no error, and
+    /// the user would only find out on the next load.
+    ///
+    /// A brand-new chat is intact by definition: there is nothing on the server to lose. That
+    /// is why `load()` marks the "Chat not found" case as intact rather than failed.
+    private(set) var historyIsIntact = true
+
+    /// Why the composer is disarmed, when it is. `nil` means it is armed.
+    var sendBlockedReason: String? {
+        historyIsIntact
+            ? nil
+            : "This conversation could not be loaded, so a reply now would replace what is stored. Pull to retry first."
+    }
+
     /// The cited document to present, once a citation tap has been resolved to a real file.
     var openSource: SourceSelection?
     /// A citation that could not be resolved. Kept apart from `errorMessage` because it is a
@@ -100,15 +119,24 @@ final class ChatViewModel {
         defer { isLoading = false }
         do {
             messages = try await service.messages(chatID: chatID)
+            historyIsIntact = true
             // A run may have continued server-side while the app was closed — generation is
             // not tied to the socket.
             await recoverInFlightRun()
         } catch let error as APIError {
             // A brand-new chat has no row yet, which this API reports as an error rather than
-            // an empty list. That is not a failure worth showing.
-            if case .server(_, let message) = error, message.contains("Chat not found") { return }
+            // an empty list. That is not a failure worth showing — and there is nothing stored
+            // to overwrite, so sending stays safe.
+            if case .server(_, let message) = error, message.contains("Chat not found") {
+                historyIsIntact = true
+                return
+            }
+            // Everything else means we do not know what the server holds. Sending now would
+            // post a partial history and delete the rest.
+            historyIsIntact = false
             errorMessage = error.errorDescription
         } catch {
+            historyIsIntact = false
             errorMessage = error.localizedDescription
         }
     }
@@ -160,9 +188,63 @@ final class ChatViewModel {
 
     // MARK: - Sending
 
+    // MARK: - Editing a question
+
+    /// How many turns editing `message` would throw away — the question itself and everything
+    /// after it.
+    ///
+    /// Returns 0 when the message is not editable, so a caller can use this as the test.
+    ///
+    /// The count is the whole point of asking. Re-answering the third of eight turns discards
+    /// six, and because `POST /chat` stores exactly what it is sent, they go from the server
+    /// too. A confirmation that says "this cannot be undone" without saying *how much* is not
+    /// a confirmation, it is a formality.
+    func discardCount(editing message: ChatMessage) -> Int {
+        guard canEdit(message), let index = indexOf(message) else { return 0 }
+        return messages.count - index
+    }
+
+    /// Whether this turn can be edited and re-answered.
+    ///
+    /// User turns only: an assistant answer is not ours to rewrite, and offering it would
+    /// suggest the model could be made to have said something it did not.
+    func canEdit(_ message: ChatMessage) -> Bool {
+        message.role == .user && !isStreaming && historyIsIntact && indexOf(message) != nil
+    }
+
+    /// Replaces a question and answers again from that point.
+    ///
+    /// Everything from the edited turn onward is dropped before sending, which is what makes
+    /// this an *edit* rather than a second question — the model must not see the original
+    /// wording or the answer it produced, or it will reconcile the two instead of starting
+    /// again.
+    ///
+    /// The truncation is local first and the send does the rest: the server replaces its stored
+    /// messages with the array it receives, so the discarded turns are gone at both ends. That
+    /// is the intended behaviour and the reason `discardCount` exists to be shown first.
+    func edit(_ message: ChatMessage, to newText: String) {
+        let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canEdit(message), !trimmed.isEmpty, let index = indexOf(message) else { return }
+
+        // Attachments travel on the message, so an edited turn keeps the documents its original
+        // asked about. Dropping them would silently change the question by more than its words.
+        attachments = ChatAttachment.list(from: messages[index].attachments)
+
+        messages.removeSubrange(index...)
+        live = nil
+        progress = ReasoningSnapshot()
+        wasInterrupted = false
+        send(trimmed)
+    }
+
+    private func indexOf(_ message: ChatMessage) -> Int? {
+        messages.firstIndex { $0.stableID == message.stableID }
+    }
+
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isStreaming else { return }
+        // `historyIsIntact` last, because it is the one that costs data rather than a no-op.
+        guard !trimmed.isEmpty, !isStreaming, historyIsIntact else { return }
 
         busyNotice = nil
         wasInterrupted = false

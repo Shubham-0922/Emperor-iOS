@@ -28,6 +28,33 @@ struct ChatAttachment: Codable, Equatable {
         }
         return .object(object)
     }
+
+    /// The reverse, for reading attachments back off a stored turn.
+    ///
+    /// Needed when a question is edited and re-answered: the documents the original asked about
+    /// have to travel with it, or the edit silently changes the question by more than its words.
+    ///
+    /// Tolerant of **both** wire shapes, because the server accepts both and a conversation may
+    /// hold turns written by the web client: a bare string is a filename at the storage root, an
+    /// object carries its folder. Anything else is skipped rather than guessed at.
+    static func list(from values: [JSONValue]?) -> [ChatAttachment] {
+        (values ?? []).compactMap { value in
+            switch value {
+            case .string(let name):
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : ChatAttachment(name: trimmed)
+            case .object(let object):
+                guard case .string(let name)? = object["name"] else { return nil }
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                var folder: String?
+                if case .string(let raw)? = object["folderName"], !raw.isEmpty { folder = raw }
+                return ChatAttachment(name: trimmed, folderName: folder)
+            default:
+                return nil
+            }
+        }
+    }
 }
 
 struct ChatRequest: Encodable {
