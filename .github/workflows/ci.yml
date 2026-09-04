@@ -61,7 +61,15 @@ jobs:
           git clone --depth 1 https://github.com/yonaskolb/XcodeGen.git /tmp/xcodegen
           swift build -c release --package-path /tmp/xcodegen
 
+      # `USER` is not a nicety. XcodeGen stamps the generated pbxproj with the current user
+      # and resolves it through the password database, which the `swift:6.1` container has no
+      # entry for — it fails with "Couldn't find current username" and nothing else. The
+      # macOS job runs the same command against the same spec without this, so a failure
+      # here was never the spec being wrong.
       - name: Generate
+        env:
+          USER: runner
+          LOGNAME: runner
         run: /tmp/xcodegen/.build/release/xcodegen generate --spec project.yml
 
       - name: Every Swift file reached the target
