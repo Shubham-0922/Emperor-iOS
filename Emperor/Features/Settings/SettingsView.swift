@@ -238,7 +238,7 @@ struct SettingsView: View {
                 .truncationMode(.middle)
                 .multilineTextAlignment(.trailing)
                 .padding(.horizontal, Spacing.sm)
-                .frame(minHeight: 36, maxWidth: .infinity, alignment: .trailing)
+                .frame(maxWidth: .infinity, minHeight: 36, alignment: .trailing)
                 .background(theme.surface2, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
