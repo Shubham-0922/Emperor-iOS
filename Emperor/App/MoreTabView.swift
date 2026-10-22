@@ -7,8 +7,9 @@ import SwiftUI
 /// `NavigationStack`; see `ToolDestination`). Under them the web sidebar's **Case tools** and
 /// **Doc tools**: the case tools are drawn as cards — they are not built in this app yet, so
 /// each is a stand-in the same way the composer's wand and mic are — and the doc tools are wired
-/// to the screens they already have (OCR, the PDF tools). The search field filters every row
-/// on the screen, as a search on a screen of destinations should.
+/// to the screens they already have (OCR, the PDF tools). **Follow Emperor** lists the
+/// company's own handles, each opening in the browser. The search field filters every row on
+/// the screen, as a search on a screen of destinations should.
 struct MoreTabView: View {
     @Environment(\.theme) private var theme
 
@@ -69,6 +70,17 @@ struct MoreTabView: View {
                         }
                     } header: {
                         SectionHeader(title: "Doc tools", detail: "PDF & document engine")
+                    }
+                    .listRowBackground(theme.surface)
+                }
+
+                if EmperorLinks.socials.contains(where: { matches($0.name) }) {
+                    Section {
+                        ForEach(EmperorLinks.socials.filter { matches($0.name) }) { social in
+                            SocialLinkRow(social: social)
+                        }
+                    } header: {
+                        SectionHeader(title: "Follow Emperor")
                     }
                     .listRowBackground(theme.surface)
                 }

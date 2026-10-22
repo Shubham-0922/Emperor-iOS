@@ -6,8 +6,10 @@ import SwiftUI
 ///
 /// What was Settings is here, row for row — role, appearance, notifications, profile, plan and
 /// usage, app lock, search, offline storage, the disclaimer — beside the Record design's own:
-/// the profile card led by the avatar, the demo-tour stand-in, the default answer mode and the
-/// Tools rows that were the More tab.
+/// the profile card led by the avatar, the demo-tour stand-in, the **Settings** row (the
+/// design's screen: the advocate profile and its save, the briefings, chambers, app & legal
+/// with About & Compliance, and delete), the default answer mode and the Tools rows that were
+/// the More tab.
 struct YouView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
@@ -29,6 +31,16 @@ struct YouView: View {
                             profile(user)
                         }
                         .accessibilityIdentifier("edit-profile")
+                    }
+                    .listRowBackground(theme.surface)
+
+                    Section {
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            IconRowLabel(title: "Settings", systemImage: "gearshape")
+                        }
+                        .accessibilityIdentifier("settings-entry")
                     }
                     .listRowBackground(theme.surface)
 
@@ -279,10 +291,9 @@ struct YouView: View {
 
 
     private var versionLine: String {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let version = info["CFBundleShortVersionString"] as? String ?? "—"
-        let build = info["CFBundleVersion"] as? String ?? "—"
-        return "Emperor \(version) (\(build))"
+        // The same read as About & Compliance and Settings's App row — one answer to "which
+        // build", wherever a bug report finds it (`AppVersion`).
+        "Emperor \(AppVersion.short) (\(AppVersion.build))"
     }
 
     private func footnote(_ text: String) -> some View {

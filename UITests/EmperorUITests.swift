@@ -1660,6 +1660,74 @@ final class EmperorUITests: XCTestCase {
             account.label.contains("Advocate, Bombay High Court"), "You did not show the title")
     }
 
+    /// You → Settings → About & Compliance: the design's screen opens from its own row and draws
+    /// what it holds — the profile's four columns with nothing to save untouched, the three
+    /// briefings — and About within it names the build, the website and the company's handles,
+    /// stepping back out of each to You.
+    func testSettingsOpensFromYouAndAboutComplianceWithinIt() {
+        let app = signedIn()
+        openYou(app)
+
+        let entry = app.buttons["settings-entry"].firstMatch
+        app.reveal(entry)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "You has no Settings row")
+        entry.tap()
+        XCTAssertTrue(
+            app.navigationBars["Settings"].waitForExistence(timeout: 10), "Settings did not open")
+
+        // The profile as the design draws it: a value in every column, and nothing to save
+        // until something is really changed. Scrolled to first — a list builds only the rows
+        // near what it shows, and the header above these is tall.
+        let name = app.descendants(matching: .any)["settings-name"].firstMatch
+        app.reveal(name)
+        XCTAssertTrue(name.waitForExistence(timeout: 10), "Settings has no name field")
+        let email = app.descendants(matching: .any)["settings-email"].firstMatch
+        XCTAssertTrue(email.exists, "Settings has no email box")
+        let save = app.buttons["settings-save"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 5), "Settings has no save")
+        XCTAssertFalse(save.isEnabled, "nothing to save yet")
+
+        // The three briefings the design names, each a switch of its own.
+        for (id, what) in [
+            ("settings-daily-cause-list", "the cause list switch"),
+            ("settings-email-briefing", "the email briefing switch"),
+            ("settings-push-notifications", "the push switch"),
+        ] {
+            let toggle = app.descendants(matching: .any)[id].firstMatch
+            app.reveal(toggle)
+            XCTAssertTrue(toggle.waitForExistence(timeout: 10), "Settings has no \(what)")
+        }
+
+        // About & Compliance, within Settings — the website and a handle that opens it.
+        let about = app.buttons["about-compliance"].firstMatch
+        app.reveal(about)
+        XCTAssertTrue(about.waitForExistence(timeout: 10), "Settings has no About row")
+        about.tap()
+        XCTAssertTrue(
+            app.navigationBars["About & Compliance"].waitForExistence(timeout: 10),
+            "About & Compliance did not open")
+        XCTAssertTrue(
+            app.staticTexts["app.emperorailabs.com"].firstMatch.waitForExistence(timeout: 5),
+            "About does not name the website")
+        let instagram = app.buttons["social-Instagram"].firstMatch
+        app.reveal(instagram)
+        XCTAssertTrue(instagram.waitForExistence(timeout: 10), "About has no Instagram handle")
+
+        // Back out: to Settings, back again to You.
+        let aboutBack = app.navigationBars["About & Compliance"].buttons.element(boundBy: 0)
+        XCTAssertTrue(aboutBack.exists, "no way back from About & Compliance")
+        aboutBack.tap()
+        XCTAssertTrue(
+            app.navigationBars["Settings"].waitForExistence(timeout: 5),
+            "did not return to Settings")
+        let settingsBack = app.navigationBars["Settings"].buttons.element(boundBy: 0)
+        XCTAssertTrue(settingsBack.exists, "no way back from Settings")
+        settingsBack.tap()
+        XCTAssertTrue(
+            app.navigationBars["Account & Profile"].waitForExistence(timeout: 5),
+            "did not return to You")
+    }
+
     /// A document handed to the app before anyone signs in waits for sign-in, then opens "Save to
     /// My Files" on its own name; choosing a folder and saving reaches the stub's upload route.
     ///

@@ -317,6 +317,33 @@ final class AccessibilityAuditTests: XCTestCase {
             }
         }
 
+        // Settings — the design's screen, from its own row near the head of You — and About &
+        // Compliance within it. Both left by Back, so nothing is saved and nothing is switched.
+        let settingsEntry = app.buttons["settings-entry"].firstMatch
+        app.reveal(settingsEntry)
+        if reached(settingsEntry, "the Settings row") {
+            settingsEntry.tap()
+            let screen = app.navigationBars["Settings"]
+            if reached(screen, "the Settings screen") {
+                let name = app.descendants(matching: .any)["settings-name"].firstMatch
+                app.reveal(name)
+                _ = name.waitForExistence(timeout: 10)
+                audit("settings", in: app, sheet: screen, inATab: true)
+
+                let about = app.buttons["about-compliance"].firstMatch
+                app.reveal(about)
+                if reached(about, "the About & Compliance row") {
+                    about.tap()
+                    let compliance = app.navigationBars["About & Compliance"]
+                    if reached(compliance, "the About & Compliance screen") {
+                        audit("about-compliance", in: app, sheet: compliance, inATab: true)
+                        goBack(from: compliance, named: "About & Compliance", to: screen)
+                    }
+                }
+                goBack(from: screen, named: "Settings", to: settings)
+            }
+        }
+
         // The app lock's section, then Storage — sections of You itself, so each is brought up
         // under You's bar and audited as it then stands (`bringUnderTheBar`).
         _ = settings.waitForExistence(timeout: 10)

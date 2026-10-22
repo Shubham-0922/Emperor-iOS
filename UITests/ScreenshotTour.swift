@@ -227,6 +227,31 @@ final class ScreenshotTour: XCTestCase {
         app.buttons["home-profile"].tap()
         guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 10) else { snap("you-missing"); return }
         snap("you")
+        // Settings, from You: the design's screen — the profile and its save, the briefings,
+        // chambers, app & legal, delete — then About & Compliance within it. Both stepped back
+        // out of before the role selector takes over.
+        let settingsEntry = app.buttons["settings-entry"].firstMatch
+        app.reveal(settingsEntry)
+        if settingsEntry.waitForExistence(timeout: 5) {
+            settingsEntry.tap()
+            if app.navigationBars["Settings"].waitForExistence(timeout: 10) {
+                snap("settings")
+                app.swipeUp()
+                snap("settings-foot")
+                let about = app.buttons["about-compliance"].firstMatch
+                app.reveal(about)
+                if about.waitForExistence(timeout: 5) {
+                    about.tap()
+                    if app.navigationBars["About & Compliance"].waitForExistence(timeout: 10) {
+                        snap("about-compliance")
+                        app.swipeUp()
+                        snap("about-compliance-socials")
+                        backOut(app)
+                    }
+                }
+                backOut(app)
+            }
+        }
         // The role selector.
         let selector = app.buttons["Role selector"].firstMatch
         if selector.waitForExistence(timeout: 5) {
