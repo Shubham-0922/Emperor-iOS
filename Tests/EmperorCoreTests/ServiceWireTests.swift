@@ -236,6 +236,45 @@ final class ServiceWireTests: XCTestCase {
         XCTAssertEqual(finished, .failed("ERROR: could not read this document"))
     }
 
+    // MARK: - Stopping a run
+
+    func testStopPostsTheChatAndTheCaller() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":true,"stopped":true,"savedBy":"run"}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "chat-9")
+
+        let sent = try XCTUnwrap(HTTPStub.lastRequest)
+        XCTAssertEqual(sent.path, "/api/chat/stop")
+        XCTAssertEqual(sent.httpMethod, "POST")
+        XCTAssertEqual(sent.header("Authorization"), "Bearer tok-abc")
+        XCTAssertEqual(sent.bodyJSON["chatId"] as? String, "chat-9")
+        XCTAssertEqual(sent.bodyJSON["userId"] as? String, "42")
+        XCTAssertEqual(sent.bodyJSON.count, 2)
+        XCTAssertEqual(reply.stopped, true)
+        XCTAssertEqual(reply.savedByKind, .run)
+    }
+
+    func testStopOfAChatThatIsNotRunningIsNotAnError() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":false}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "chat-9")
+
+        XCTAssertTrue(reply.success)
+        XCTAssertEqual(reply.running, false)
+        XCTAssertNil(reply.savedByKind)
+    }
+
+    func testStopSavedByTheRequestItself() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":true,"stopped":true,"savedBy":"stop"}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "c")
+
+        XCTAssertEqual(reply.savedByKind, .stop)
+    }
+
     // MARK: - Auth
 
     func testLoginPostsCredentialsWithoutRequiringAToken() async throws {

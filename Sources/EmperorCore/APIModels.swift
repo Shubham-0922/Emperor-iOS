@@ -369,6 +369,27 @@ struct StreamStatus: Codable {
     var startedAt: Double?
     var updatedAt: Double?
 
+    // The run's own view of itself. Present from the first moment of a run, before any answer
+    // text has been saved; a reply from an older server, or the no-checkpoint reply
+    // (`error: "No messages"`), simply leaves them nil. `startedAt` can be null there too.
+
+    /// Whether a run is going. This is the field to branch on; `active` is the older, laxer
+    /// signal that also honours a stored typing flag.
+    var running: Bool?
+    /// `starting`, then `research`, `wrapup` or `compose`.
+    var phase: String?
+    /// True once the run has produced visible answer text.
+    var writing: Bool?
+    var elapsedMs: Double?
+    /// The newest status line the run announced, and when (epoch milliseconds).
+    var status: String?
+    var statusAt: Double?
+    /// The most recent distinct status lines, oldest first.
+    var statusLines: [String]?
+    var aliveAt: Double?
+    /// Whether `content` is the live run's own text (true) or still the previous turn's answer.
+    var fromLiveRun: Bool?
+
     var startedDate: Date? { WireDate.fromEpochMillis(startedAt) }
 }
 
