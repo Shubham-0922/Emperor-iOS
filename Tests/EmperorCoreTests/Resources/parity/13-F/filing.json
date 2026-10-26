@@ -1,0 +1,587 @@
+{
+ "forumOptions": [
+  "NCLT",
+  "NCLAT",
+  "High Court",
+  "Supreme Court",
+  "District Court",
+  "Debts Recovery Tribunal (DRT)",
+  "DRAT",
+  "Consumer Commission (NCDRC / State / District)",
+  "Arbitral Tribunal",
+  "Data Protection Board of India",
+  "Competition Commission of India (CCI)",
+  "SAT (Securities Appellate Tribunal)",
+  "Registrar of Companies (RoC)",
+  "Adjudicating Officer"
+ ],
+ "marks": {
+  "parse": [
+   {
+    "input": "P-1",
+    "side": "P",
+    "number": 1
+   },
+   {
+    "input": "p-12",
+    "side": "P",
+    "number": 12
+   },
+   {
+    "input": "R-3",
+    "side": "R",
+    "number": 3
+   },
+   {
+    "input": "A-10",
+    "side": "A",
+    "number": 10
+   },
+   {
+    "input": "P1",
+    "side": "P1",
+    "number": 0
+   },
+   {
+    "input": "",
+    "side": "",
+    "number": 0
+   },
+   {
+    "input": null,
+    "side": "",
+    "number": 0
+   },
+   {
+    "input": "PX-2",
+    "side": "PX",
+    "number": 2
+   },
+   {
+    "input": "P-01",
+    "side": "P",
+    "number": 1
+   },
+   {
+    "input": "Annexure",
+    "side": "Annexure",
+    "number": 0
+   },
+   {
+    "input": "P-1a",
+    "side": "P-1a",
+    "number": 0
+   },
+   {
+    "input": " P-1",
+    "side": " P-1",
+    "number": 0
+   },
+   {
+    "input": "AB-3",
+    "side": "AB",
+    "number": 3
+   },
+   {
+    "input": "R-0",
+    "side": "R",
+    "number": 0
+   },
+   {
+    "input": "P--1",
+    "side": "P--1",
+    "number": 0
+   },
+   {
+    "input": "P-1-2",
+    "side": "P-1-2",
+    "number": 0
+   }
+  ],
+  "compare": [
+   {
+    "a": "P-1",
+    "b": "P-2",
+    "sign": -1
+   },
+   {
+    "a": "P-2",
+    "b": "P-1",
+    "sign": 1
+   },
+   {
+    "a": "P-10",
+    "b": "P-2",
+    "sign": 1
+   },
+   {
+    "a": "R-1",
+    "b": "P-5",
+    "sign": 1
+   },
+   {
+    "a": "P-5",
+    "b": "R-1",
+    "sign": -1
+   },
+   {
+    "a": "P-3",
+    "b": "P-3",
+    "sign": 0
+   },
+   {
+    "a": "p-1",
+    "b": "P-1",
+    "sign": 0
+   },
+   {
+    "a": "X",
+    "b": "P-1",
+    "sign": 1
+   },
+   {
+    "a": "P-1",
+    "b": "X",
+    "sign": -1
+   },
+   {
+    "a": "A-1",
+    "b": "a-2",
+    "sign": -1
+   },
+   {
+    "a": "Annexure",
+    "b": "Annexure",
+    "sign": 0
+   },
+   {
+    "a": "P-01",
+    "b": "P-1",
+    "sign": 0
+   },
+   {
+    "a": "",
+    "b": "P-1",
+    "sign": -1
+   }
+  ],
+  "sort": [
+   {
+    "input": [
+     "P-1",
+     "P-2",
+     "P-3"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2",
+     "P-3"
+    ],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "P-2",
+     "P-1"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-10",
+     "P-9",
+     "P-1"
+    ],
+    "sorted": [
+     "P-1",
+     "P-9",
+     "P-10"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "R-2",
+     "P-1",
+     "R-1",
+     "P-2"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2",
+     "R-1",
+     "R-2"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-1",
+     "p-1",
+     "P-1"
+    ],
+    "sorted": [
+     "P-1",
+     "p-1",
+     "P-1"
+    ],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "p-1",
+     "P-1"
+    ],
+    "sorted": [
+     "p-1",
+     "P-1"
+    ],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "X-1",
+     "Annexure",
+     "P-2"
+    ],
+    "sorted": [
+     "Annexure",
+     "P-2",
+     "X-1"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-1",
+     "R-1",
+     "P-2"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2",
+     "R-1"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-3",
+     "P-01",
+     "P-2"
+    ],
+    "sorted": [
+     "P-01",
+     "P-2",
+     "P-3"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [],
+    "sorted": [],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "P-1"
+    ],
+    "sorted": [
+     "P-1"
+    ],
+    "inOrder": true
+   }
+  ]
+ },
+ "forums": [
+  {
+   "input": "NCLT",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "NCLAT",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "High Court",
+   "normalized": "High Court"
+  },
+  {
+   "input": "Supreme Court",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "District Court",
+   "normalized": null
+  },
+  {
+   "input": "Debts Recovery Tribunal (DRT)",
+   "normalized": null
+  },
+  {
+   "input": "DRAT",
+   "normalized": null
+  },
+  {
+   "input": "Consumer Commission (NCDRC / State / District)",
+   "normalized": null
+  },
+  {
+   "input": "Arbitral Tribunal",
+   "normalized": null
+  },
+  {
+   "input": "Data Protection Board of India",
+   "normalized": null
+  },
+  {
+   "input": "Competition Commission of India (CCI)",
+   "normalized": null
+  },
+  {
+   "input": "SAT (Securities Appellate Tribunal)",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "Registrar of Companies (RoC)",
+   "normalized": null
+  },
+  {
+   "input": "Adjudicating Officer",
+   "normalized": null
+  },
+  {
+   "input": "nclt",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "NCLAT",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": " hc ",
+   "normalized": "High Court"
+  },
+  {
+   "input": "SC",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "sc ",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "Hc",
+   "normalized": "High Court"
+  },
+  {
+   "input": "s.c.",
+   "normalized": null
+  },
+  {
+   "input": "National Company Law Tribunal",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "National Company Law Tribunal, Mumbai Bench",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "National Company Law Tribunal Mumbai",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "National Company Law Appellate Tribunal",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "High Court of Delhi",
+   "normalized": "High Court"
+  },
+  {
+   "input": "IN THE HIGH COURT OF JUDICATURE AT BOMBAY",
+   "normalized": "High Court"
+  },
+  {
+   "input": "Supreme Court of India",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "supreme",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "Debts Recovery Appellate Tribunal",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "Company Law Tribunal ",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "",
+   "normalized": null
+  },
+  {
+   "input": "   ",
+   "normalized": null
+  },
+  {
+   "input": null,
+   "normalized": null
+  },
+  {
+   "input": "DRT",
+   "normalized": null
+  }
+ ],
+ "errorLists": [
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     "cover.forum is required"
+    ],
+    "warnings": []
+   },
+   "output": [
+    "cover.forum is required"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     "P-1: source file missing",
+     "P-2: append treatment needs a PDF source"
+    ]
+   },
+   "output": [
+    "P-1: source file missing",
+    "P-2: append treatment needs a PDF source"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "error": "internal error: boom"
+   },
+   "output": [
+    "internal error: boom"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": null,
+    "error": "nothing to assemble"
+   },
+   "output": [
+    "nothing to assemble"
+   ]
+  },
+  {
+   "input": {
+    "success": false
+   },
+   "output": []
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": []
+   },
+   "output": []
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     "a",
+     {
+      "message": "b"
+     },
+     {
+      "error": "c"
+     },
+     {
+      "code": "X"
+     },
+     ""
+    ]
+   },
+   "output": [
+    "a",
+    "b",
+    "c",
+    "{\"code\":\"X\"}"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     {
+      "message": ""
+     },
+     {
+      "code": "E1",
+      "detail": "d"
+     },
+     null,
+     false,
+     5
+    ]
+   },
+   "output": [
+    "{\"message\":\"\"}",
+    "{\"code\":\"E1\",\"detail\":\"d\"}",
+    "null",
+    "false",
+    "5"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "error": {
+     "message": "object error"
+    }
+   },
+   "output": [
+    "object error"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": "single string"
+   },
+   "output": [
+    "single string"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     {
+      "message": "path a/b"
+     },
+     {
+      "mark": "P-1",
+      "reason": "missing"
+     }
+    ]
+   },
+   "output": [
+    "path a/b",
+    "{\"mark\":\"P-1\",\"reason\":\"missing\"}"
+   ]
+  }
+ ]
+}
