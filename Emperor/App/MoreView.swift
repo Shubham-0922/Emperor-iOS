@@ -17,7 +17,7 @@ import SwiftUI
 ///   wrong one. So each carries its own "Done" at `.cancellationAction`, and You owns the one
 ///   sheet they are presented in.
 enum ToolDestination: String, Identifiable {
-    case deck, corporateCalendar, library, projects, tools, fileTools, ocr, translate, eAuctions
+    case deck, corporateCalendar, library, tools, fileTools, ocr, translate, eAuctions
 
     var id: String { rawValue }
 
@@ -27,7 +27,6 @@ enum ToolDestination: String, Identifiable {
         case .deck: return "Your workspace"
         case .corporateCalendar: return "Corporate Calendar"
         case .library: return "Library"
-        case .projects: return "Projects"
         case .tools: return "All tools"
         case .fileTools: return "File tools"
         case .ocr: return "OCR"
@@ -42,7 +41,6 @@ enum ToolDestination: String, Identifiable {
         case .deck: return role.systemImage
         case .corporateCalendar: return "calendar.badge.checkmark"
         case .library: return "books.vertical"
-        case .projects: return "folder.badge.person.crop"
         case .tools: return "wrench.and.screwdriver"
         case .fileTools: return "scissors"
         case .ocr: return "doc.text.viewfinder"
@@ -58,8 +56,6 @@ enum ToolDestination: String, Identifiable {
         case .deck: RoleHomeView()
         case .corporateCalendar: ComplianceCalendarView()
         case .library: LibraryView()
-        // Read-only while the feature is trialled on the web. See `ProjectService`.
-        case .projects: ProjectListView()
         case .tools: ToolsListView()
         case .fileTools: PDFToolsView()
         // One screen with an OCR | Translate switch at its head; each row opens it in its own mode.
@@ -72,10 +68,10 @@ enum ToolDestination: String, Identifiable {
 
 /// The Tools rows of You: "Your practice" and "Tools", in the platform's own order.
 ///
-/// Projects and eAuctions are hidden for now, at the product owner's request. Only the rows are
-/// gone: their screens, view models, services and tests are all still here and still built. To
-/// bring one back, add `row(.projects)` after `row(.library)`, or `row(.eAuctions)` after
-/// `row(.translate)` — and add its row to the UI tests and the screenshot tour.
+/// eAuctions is hidden for now, at the product owner's request. Only the row is gone: its screen,
+/// view model, service and tests are all still here and still built. To bring it back, add
+/// `row(.eAuctions)` after `row(.translate)` — and add its row to the UI tests and the screenshot
+/// tour. Matters (the web's projects) live on the Matters tab, under All matters.
 struct ToolsSections: View {
     @Environment(\.theme) private var theme
     @Environment(\.practice) private var practice

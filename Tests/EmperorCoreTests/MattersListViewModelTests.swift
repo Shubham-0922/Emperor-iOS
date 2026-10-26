@@ -183,6 +183,41 @@ final class MattersListViewModelTests: XCTestCase {
         }
     }
 
+    /// A row says what the web's card says: the side with the client, the court with the
+    /// reference, a far hearing in the accent, an overdue task in danger, and only the counts
+    /// the server sent.
+    func testTheRowReadsAsTheWebsCard() async {
+        var p = matter("a", name: "Bhalla v. State", area: "writ", hearing: "2026-11-30",
+                       client: "Ankit Bhalla", caseType: "CWP", number: "4412", year: "2025")
+        p.ourSide = "petitioner"
+        p.forumName = "Punjab and Haryana High Court"
+        p.priority = "high"
+        p.openTasks = 2
+        p.nextTaskDueRaw = "2026-10-11"
+        p.fileCount = 3
+        p.chatCount = 1
+        await withList([p]) { _, model in
+            let card = model.card(p)
+            XCTAssertEqual(card.area, "Writ / constitutional")
+            XCTAssertEqual(card.client, "Ankit Bhalla (Petitioner)")
+            XCTAssertEqual(card.court, "Punjab and Haryana High Court · CWP 4412/2025")
+            XCTAssertEqual(card.hearing?.text, "30 Nov 2026")
+            XCTAssertEqual(card.hearing?.tone, .accent)
+            XCTAssertEqual(card.taskDue?.text, "11 Oct 2026 · overdue")
+            XCTAssertEqual(card.taskDue?.tone, .danger)
+            XCTAssertEqual(card.counts, "3 files · 1 chat · 2 open tasks")
+            XCTAssertTrue(card.isHigh)
+            XCTAssertTrue(card.spoken.hasPrefix("Bhalla v. State. Writ / constitutional."))
+        }
+        let thin = matter("b", name: "Thin")
+        await withList([thin]) { _, model in
+            let card = model.card(thin)
+            XCTAssertNil(card.hearing)
+            XCTAssertNil(card.taskDue)
+            XCTAssertEqual(card.counts, "", "absent counts are not zero")
+        }
+    }
+
     /// An uploaded banner is fetched once per matter and version; a preset is never fetched.
     func testBannersAreFetchedOncePerVersion() async {
         var picture = matter("a", name: "A")

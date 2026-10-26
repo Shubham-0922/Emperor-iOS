@@ -266,6 +266,78 @@ final class MattersListViewModel {
         }
     }
 
+    // MARK: - A row
+
+    /// What a matter's row says — the web's `ProjectCard`, line by line.
+    struct Card: Equatable, Sendable {
+        enum Tone: String, Sendable { case danger, warn, mute, accent }
+
+        let name: String
+        /// The practice area's label, "" for none.
+        let area: String
+        let description: String
+        /// "Ankit Bhalla (Petitioner)".
+        let client: String
+        /// "Punjab and Haryana High Court · CWP 4412/2025".
+        let court: String
+        /// "14 Oct 2026 · in 2d", with its urgency; a far-off hearing is accent, not grey.
+        let hearing: (text: String, tone: Tone)?
+        /// The next open task's due date; a date gone by is overdue, in danger.
+        let taskDue: (text: String, tone: Tone)?
+        /// "3 files · 1 chat · 2 open tasks" — only the counts the server sent.
+        let counts: String
+        let isHigh: Bool
+        let status: MatterVocabulary.ProjectStatus
+
+        static func == (a: Card, b: Card) -> Bool {
+            a.name == b.name && a.area == b.area && a.description == b.description && a.client == b.client
+                && a.court == b.court && a.hearing?.text == b.hearing?.text && a.hearing?.tone == b.hearing?.tone
+                && a.taskDue?.text == b.taskDue?.text && a.taskDue?.tone == b.taskDue?.tone
+                && a.counts == b.counts && a.isHigh == b.isHigh && a.status == b.status
+        }
+
+        /// The row read aloud as one sentence.
+        var spoken: String {
+            var parts = [name]
+            if !area.isEmpty { parts.append(area) }
+            if !client.isEmpty { parts.append(client) }
+            if !court.isEmpty { parts.append(court) }
+            if let hearing { parts.append("Next hearing \(hearing.text)") }
+            if let taskDue { parts.append("Task due \(taskDue.text)") }
+            if !counts.isEmpty { parts.append(counts) }
+            if isHigh { parts.append("High priority") }
+            parts.append(status.label)
+            return parts.joined(separator: ". ")
+        }
+    }
+
+    func card(_ p: Project) -> Card {
+        let today = todayKey
+        func tone(_ t: MatterDates.HearingToneKind) -> Card.Tone { Card.Tone(rawValue: t.rawValue) ?? .mute }
+        var hearing: (String, Card.Tone)?
+        if let h = MatterDates.hearingTone(p.nextHearingDateRaw, today: today) {
+            hearing = (h.text, h.tone == .mute && h.days >= 0 ? .accent : tone(h.tone))
+        }
+        var due: (String, Card.Tone)?
+        if (p.openTasks ?? 0) > 0, let raw = p.nextTaskDueRaw, !raw.isEmpty,
+           let t = MatterDates.hearingTone(raw, today: today) {
+            due = t.days < 0
+                ? ("\(MatterDates.fmtDay(MatterRecord.dayKey(raw))) · overdue", .danger)
+                : (t.text, tone(t.tone))
+        }
+        func count(_ n: Int?, _ one: String, _ many: String) -> String? {
+            n.map { "\($0) \($0 == 1 ? one : many)" }
+        }
+        let counts = [count(p.fileCount, "file", "files"), count(p.chatCount, "chat", "chats"),
+                      count(p.openTasks, "open task", "open tasks")].compactMap { $0 }.joined(separator: " · ")
+        return Card(
+            name: p.displayName, area: MatterMeta.practiceAreaLabel(p.practiceArea),
+            description: (p.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            client: p.clientLine,
+            court: [p.courtName, p.caseRef].filter { !$0.isEmpty }.joined(separator: " · "),
+            hearing: hearing, taskDue: due, counts: counts, isHigh: p.isHighPriority, status: p.statusKey)
+    }
+
     // MARK: - Banners
 
     /// Where an uploaded banner is kept: per matter and per edit, so a new picture is fetched.
