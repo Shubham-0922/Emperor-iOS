@@ -88,7 +88,7 @@ struct MatterOverviewSection: View {
                     Button(action) { model.section = section }
                         .font(.brand(.footnote, weight: .semibold))
                         .foregroundStyle(theme.accentText)
-                        .frame(minHeight: Layout.touchTarget)
+                        .frame(minWidth: Layout.touchTarget, minHeight: Layout.touchTarget)
                         .accessibilityLabel("\(action): \(section.label)")
                 }
             }

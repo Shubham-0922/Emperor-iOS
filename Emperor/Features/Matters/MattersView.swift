@@ -291,7 +291,7 @@ struct MattersView: View {
                 if cases.cases.isEmpty, cases.state.isLoading {
                     loading
                 } else if cases.docketCases.isEmpty, hasMatters {
-                    Text("Every case you track is filed under one of your matters.")
+                    Text(cases.cases.isEmpty ? "No tracked cases yet. Add a matter to follow a case from the court." : "Every case you track is filed under one of your matters.")
                         .font(.brand(.footnote))
                         .foregroundStyle(theme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)

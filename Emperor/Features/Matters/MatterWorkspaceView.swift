@@ -181,7 +181,7 @@ private struct MatterHeaderView: View {
                     VoiceOver.announce("Copied")
                 } label: {
                     Image(systemName: "doc.on.doc")
-                        .frame(minWidth: 28, minHeight: 28)
+                        .frame(minWidth: Layout.touchTarget, minHeight: Layout.touchTarget)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
