@@ -27,17 +27,25 @@ extension UITestSupport.Fixtures {
 
     /// The first feature stub that answers this request, or `nil` for `body(for:)` to answer.
     static func packageReply(for request: URLRequest, path: String) -> StubReply? {
-        MattersStubs.reply(request, path)
-            ?? CasesStubs.reply(request, path)
-            ?? CitationStubs.reply(request, path)
-            ?? OCRBillingStubs.reply(request, path)
-            ?? LibraryStubs.reply(request, path)
-            ?? RadarStubs.reply(request, path)
-            ?? TeamStubs.reply(request, path)
-            ?? AnalysisStubs.reply(request, path)
-            ?? FilingStubs.reply(request, path)
-            ?? FileRouteStubs.reply(request, path)
-            ?? CloudStubs.reply(request, path)
+        // One closure per feature, tried in turn. A single `??` chain of eleven calls is too
+        // much for the type-checker to solve in reasonable time.
+        let answers: [(URLRequest, String) -> StubReply?] = [
+            { MattersStubs.reply($0, $1) },
+            { CasesStubs.reply($0, $1) },
+            { CitationStubs.reply($0, $1) },
+            { OCRBillingStubs.reply($0, $1) },
+            { LibraryStubs.reply($0, $1) },
+            { RadarStubs.reply($0, $1) },
+            { TeamStubs.reply($0, $1) },
+            { AnalysisStubs.reply($0, $1) },
+            { FilingStubs.reply($0, $1) },
+            { FileRouteStubs.reply($0, $1) },
+            { CloudStubs.reply($0, $1) },
+        ]
+        for answer in answers {
+            if let reply = answer(request, path) { return reply }
+        }
+        return nil
     }
 
     /// The request's body. `httpBody` is moved into a stream on its way through `URLSession`,
