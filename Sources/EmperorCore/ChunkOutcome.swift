@@ -16,6 +16,13 @@ enum ChunkOutcome: Equatable, Sendable {
     /// The server declined and will keep declining. Stop, discard, and say this.
     case refused(message: String)
 
+    /// The stored name carried by a delivered chunk's reply, if any. Whichever chunk completes
+    /// the file carries it, so every delivered body is checked, not just the last index's.
+    static func storedName(status: Int?, body: Data) -> String? {
+        guard let status, (200..<300).contains(status) else { return nil }
+        return UploadReply.storedName(from: body)
+    }
+
     static func classify(transportFailed: Bool, status: Int?, body: Data) -> ChunkOutcome {
         guard !transportFailed, let status else { return .retryLater }
         if (200..<300).contains(status) { return .delivered }

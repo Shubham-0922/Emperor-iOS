@@ -236,6 +236,97 @@ final class ServiceWireTests: XCTestCase {
         XCTAssertEqual(finished, .failed("ERROR: could not read this document"))
     }
 
+    // MARK: - Stopping a run
+
+    func testStopPostsTheChatAndTheCaller() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":true,"stopped":true,"savedBy":"run"}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "chat-9")
+
+        let sent = try XCTUnwrap(HTTPStub.lastRequest)
+        XCTAssertEqual(sent.path, "/api/chat/stop")
+        XCTAssertEqual(sent.httpMethod, "POST")
+        XCTAssertEqual(sent.header("Authorization"), "Bearer tok-abc")
+        XCTAssertEqual(sent.bodyJSON["chatId"] as? String, "chat-9")
+        XCTAssertEqual(sent.bodyJSON["userId"] as? String, "42")
+        XCTAssertEqual(sent.bodyJSON.count, 2)
+        XCTAssertEqual(reply.stopped, true)
+        XCTAssertEqual(reply.savedByKind, .run)
+    }
+
+    func testStopOfAChatThatIsNotRunningIsNotAnError() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":false}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "chat-9")
+
+        XCTAssertTrue(reply.success)
+        XCTAssertEqual(reply.running, false)
+        XCTAssertNil(reply.savedByKind)
+    }
+
+    func testStopSavedByTheRequestItself() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":true,"stopped":true,"savedBy":"stop"}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "c")
+
+        XCTAssertEqual(reply.savedByKind, .stop)
+    }
+
+    /// An image upload is converted to a PDF stored under a new name. Polling the original name
+    /// is answered "Reading document content..." forever, so the poll must use `storedName`.
+    func testConvertedUploadPollsTheStoredName() async throws {
+        let client = await makeClient()
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/upload-status")
+                ? .json(#"{"status":"ready"}"#)
+                : .json(#"{"success":true,"storedName":"scan (1).pdf","convertedFrom":"png"}"#)
+        }
+        let uploads = UploadService(client: client)
+
+        var stored: String?
+        var finished: IngestState?
+        for try await event in uploads.upload(
+            data: Data("x".utf8), fileName: "scan.png", folderName: "Scans") {
+            if case .stored(let name) = event { stored = name }
+            if case .finished(let state) = event { finished = state }
+        }
+
+        XCTAssertEqual(stored, "scan (1).pdf")
+        XCTAssertEqual(finished, .ready)
+        let poll = try XCTUnwrap(HTTPStub.seen.last { $0.path.hasSuffix("/upload-status") })
+        XCTAssertEqual(poll.queryItems["fileName"], "scan__1_.pdf")
+    }
+
+    func testUnconvertedUploadPollsTheOriginalNameAndYieldsNoStoredEvent() async throws {
+        let client = await makeClient()
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/upload-status")
+                ? .json(#"{"status":"ready"}"#)
+                : .json(#"{"success":true}"#)
+        }
+        var sawStored = false
+        for try await event in UploadService(client: client).upload(
+            data: Data("x".utf8), fileName: "Order.pdf", folderName: "Scans") {
+            if case .stored = event { sawStored = true }
+        }
+        XCTAssertFalse(sawStored)
+        let poll = try XCTUnwrap(HTTPStub.seen.last { $0.path.hasSuffix("/upload-status") })
+        XCTAssertEqual(poll.queryItems["fileName"], "Order.pdf")
+    }
+
+    func testReplyParsingIsLenient() {
+        XCTAssertEqual(
+            UploadReply.storedName(from: Data(#"{"storedName":"a.pdf","convertedFrom":"jpg"}"#.utf8)),
+            "a.pdf")
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"success":true}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"storedName":""}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"storedName":5}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data("not json".utf8)))
+    }
+
     // MARK: - Auth
 
     func testLoginPostsCredentialsWithoutRequiringAToken() async throws {

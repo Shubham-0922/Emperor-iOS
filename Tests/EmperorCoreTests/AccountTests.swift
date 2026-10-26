@@ -128,6 +128,64 @@ final class AccountTests: XCTestCase {
         XCTAssertEqual(session.standing, .noPlan)
     }
 
+    func testASuspendedAccountShowsTheReasonItWasGiven() async {
+        let (session, _) = await signedInSession()
+        HTTPStub.always(.json(#"""
+        {"success":true,"token":"t","user":{"id":42,"email":"adv@example.test","suspended":true,"suspendedReason":"  Payment dispute  "}}
+        """#))
+        await session.refreshAccount()
+        XCTAssertEqual(session.standing, .suspended)
+        XCTAssertEqual(session.suspendedReason, "Payment dispute")
+    }
+
+    func testASuspendedAccountWithoutAReasonHasNone() async {
+        let (session, _) = await signedInSession()
+        HTTPStub.always(.json(#"""
+        {"success":true,"token":"t","user":{"id":42,"email":"adv@example.test","suspended":true,"suspendedReason":null}}
+        """#))
+        await session.refreshAccount()
+        XCTAssertEqual(session.standing, .suspended)
+        XCTAssertNil(session.suspendedReason)
+    }
+
+    func testAReasonIsDroppedOnceThePauseIsLifted() async {
+        let (session, _) = await signedInSession()
+        HTTPStub.always(.json(#"""
+        {"success":true,"token":"t","user":{"id":42,"email":"adv@example.test","suspended":true,"suspendedReason":"x"}}
+        """#))
+        await session.refreshAccount()
+        HTTPStub.always(.json(#"""
+        {"success":true,"token":"t","user":{"id":42,"email":"adv@example.test","suspended":false,"suspendedReason":null}}
+        """#))
+        await session.refreshAccount()
+        XCTAssertNil(session.standing)
+        XCTAssertNil(session.suspendedReason)
+    }
+
+    func testTheUserDecodesWithAndWithoutASuspendedReason() throws {
+        let with = try JSONDecoder().decode(User.self, from: Data(
+            #"{"id":1,"suspended":true,"suspendedReason":"Review"}"#.utf8))
+        XCTAssertEqual(with.suspendedReason, "Review")
+        let without = try JSONDecoder().decode(User.self, from: Data(#"{"id":1}"#.utf8))
+        XCTAssertNil(without.suspendedReason)
+    }
+
+    /// A coded 401 says "sign in again" but is not, by itself, the end of the session.
+    func testACodedAuthRefusalDoesNotSignOut() async {
+        let (session, _) = await signedInSession()
+        HTTPStub.always(.json(
+            #"{"success":false,"code":"AUTH","error":"Please sign in again to fetch court records."}"#,
+            status: 401))
+        do {
+            _ = try await session.chats.chats()
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual((error as? APIError)?.refusal?.code, .reauthenticate)
+        }
+        await Task.yield()
+        XCTAssertEqual(session.currentUser?.id, 42)
+    }
+
     /// A different account behind the same token would put one person's work under another's
     /// name. It is not adopted.
     func testADifferentAccountIsNeverAdopted() async {

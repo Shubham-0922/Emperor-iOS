@@ -329,7 +329,11 @@ final class BackgroundUploader {
         try? FileManager.default.removeItem(
             at: store.chunkBodyURL(for: id, index: index))
 
-        guard let updated = store.recordCompletion(id: id, index: index) else { return }
+        // The reply that completes the file names where it was stored; it need not be the last
+        // index to land, so every delivered body is read.
+        let storedName = ChunkOutcome.storedName(status: statusCode, body: body)
+        guard let updated = store.recordCompletion(
+            id: id, index: index, storedName: storedName) else { return }
         if let position = inFlight.firstIndex(where: { $0.id == id }) {
             if updated.isComplete {
                 inFlight.remove(at: position)
@@ -367,7 +371,7 @@ final class BackgroundUploader {
         let id = manifest.id
         batch.markProcessing(id)
         let state = try? await UploadService(client: client).waitForIngestion(
-            fileName: manifest.fileName, folderName: manifest.folderName,
+            fileName: manifest.pollName, folderName: manifest.folderName,
             // `@Sendable` and hopping explicitly, because the poll runs off the main actor and
             // the batch lives on it.
             onProgress: { @Sendable message in

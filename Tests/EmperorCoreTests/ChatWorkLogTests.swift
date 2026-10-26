@@ -145,6 +145,15 @@ private func workingTurn() -> [ChatTurnEvent] {
     return [.progress(snapshot), .content(StreamContent.parse("Possession passed in 2019."))]
 }
 
+/// An answer as the server saves it when its run finishes.
+private func serverAnswer(_ text: String) -> ChatMessage {
+    var answer = ChatMessage(role: .assistant, content: text)
+    answer.done = true
+    answer.isTyping = false
+    answer.extra["serverRun"] = .bool(true)
+    return answer
+}
+
 /// The work log on the conversation: carried by each answer, stored the web's way, and saved
 /// only when the conversation on the server is exactly the one on screen.
 final class ChatWorkLogTests: XCTestCase {
@@ -444,6 +453,74 @@ final class ChatWorkLogTests: XCTestCase {
             await model.settleWorkLogSave()
 
             XCTAssertEqual(model.workLogSave, .skipped(.newTurnStarted))
+        }
+    }
+
+    // MARK: - The server's finished answer replaces the streamed one
+
+    /// The server finishes a draft after the last byte this client sees and saves that version.
+    /// It replaces what streamed here — or the next question would post the unfinished draft
+    /// back over it — and this turn's work log goes onto it before the save.
+    func testTheServersFinishedAnswerReplacesTheStreamedOneAndKeepsTheLog() async {
+        await withModel { fake, model in
+            fake.events = workingTurn()
+            fake.history = [
+                ChatMessage(role: .user, content: "Who has possession?", id: "q1"),
+                serverAnswer("Possession passed in 2019.\n\nINDEX OF ANNEXURES"),
+            ]
+            model.send("Who has possession?")
+            await settle(model)
+            await model.settleWorkLogSave()
+
+            XCTAssertEqual(model.messages.count, 2)
+            XCTAssertEqual(model.messages.last?.content, "Possession passed in 2019.\n\nINDEX OF ANNEXURES")
+            XCTAssertEqual(model.messages.last?.extra["serverRun"], .bool(true))
+            XCTAssertEqual(model.messages.last?.storedWorkLog?.stepCount, 2, "the log came with it")
+            XCTAssertEqual(model.workLogSave, .saved)
+            XCTAssertEqual(fake.saves.first?.transcript, model.messages)
+
+            fake.events = [.content(StreamContent.parse("No."))]
+            fake.history = []
+            model.send("Was it ever disputed?")
+            await settle(model)
+            XCTAssertEqual(fake.sent.last?[1].content, "Possession passed in 2019.\n\nINDEX OF ANNEXURES",
+                           "the finished draft is what goes back, not the streamed one")
+        }
+    }
+
+    /// A turn whose stream carried no visible text — only a document marker — still ends on
+    /// the answer the server saved, with the turn's log.
+    func testAnAnswerThatStreamedNothingVisibleIsTakenFromTheServer() async {
+        await withModel { fake, model in
+            fake.events = Array(workingTurn().prefix(1))
+            fake.history = [
+                ChatMessage(role: .user, content: "Draft the plaint", id: "q1"),
+                serverAnswer("[CANVAS_TRIGGER: Plaint]\n<canvas_content><p>Plaint</p></canvas_content>"),
+            ]
+            model.send("Draft the plaint")
+            await settle(model)
+            await model.settleWorkLogSave()
+
+            XCTAssertEqual(model.messages.count, 2)
+            XCTAssertEqual(model.messages.last?.role, .assistant)
+            XCTAssertNotNil(model.messages.last?.storedWorkLog)
+            XCTAssertTrue(model.progress.isEmpty, "the panel moved onto the answer")
+            XCTAssertEqual(model.workLogSave, .saved)
+        }
+    }
+
+    /// A saved answer to some other question is not this turn's, and is left alone.
+    func testASavedAnswerToAnotherQuestionIsNotAdopted() async {
+        await withModel { fake, model in
+            fake.events = workingTurn()
+            fake.history = [
+                ChatMessage(role: .user, content: "Something asked elsewhere", id: "w1"),
+                serverAnswer("Another answer"),
+            ]
+            model.send("Who has possession?")
+            await settle(model)
+
+            XCTAssertEqual(model.messages.map(\.content), ["Who has possession?", "Possession passed in 2019."])
         }
     }
 

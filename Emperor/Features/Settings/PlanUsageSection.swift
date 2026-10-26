@@ -100,6 +100,12 @@ struct PlanUsageSection: View {
                     .font(.brand(.footnote))
                     .foregroundStyle(theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if standing == .suspended, let reason = session.suspendedReason {
+                    Text("Reason given: \(reason)")
+                        .font(.brand(.footnote))
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         } icon: {
             Image(systemName: standing == .suspended ? "pause.circle.fill" : "exclamationmark.circle.fill")

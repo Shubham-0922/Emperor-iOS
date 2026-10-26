@@ -513,6 +513,77 @@ final class MyFilesViewModel {
         await reload()
     }
 
+    /// Every folder `folder` could be moved into: not itself, nothing inside it, and not the
+    /// folder it already sits in.
+    func folderMoveDestinations(for folder: FolderSummary) -> [FolderSummary] {
+        let parent = Self.parentPath(of: folder.path)
+        return FileBrowser.allFolders(in: tree).filter {
+            $0.path != folder.path && !$0.path.hasPrefix(folder.path + "/") && $0.path != parent
+        }
+    }
+
+    /// Whether the top level is a place this folder could go: only when it is somewhere else.
+    func canMoveToTopLevel(_ folder: FolderSummary) -> Bool {
+        !Self.parentPath(of: folder.path).isEmpty
+    }
+
+    /// Moves a folder under `destination`, or to the top level when that is nil.
+    func moveFolder(_ folder: FolderSummary, to destination: FolderSummary?) async {
+        let target = destination.map { FileBrowser.normalized($0.path) } ?? ""
+        guard target != Self.parentPath(of: folder.path), target != folder.path,
+              !target.hasPrefix(folder.path + "/") else { return }
+        await perform(on: folder.path) { manager in
+            _ = try await manager.moveFolder(at: folder.path, toParent: target)
+            return "Moved \(folder.displayName) to \(destination?.displayName ?? "the top level")."
+        }
+        // The folder's documents have new paths; only a fresh read says what the library holds.
+        await reload()
+    }
+
+    nonisolated static func parentPath(of path: String) -> String {
+        FileBrowser.normalized(path).split(separator: "/").dropLast().joined(separator: "/")
+    }
+
+    // MARK: - Reading again
+
+    /// Whether the server gave up reading this document, which is what makes "Read again" worth
+    /// offering. Failures arrive as an `ERROR:` status string.
+    nonisolated static func readingFailed(_ file: FileNode.StoredFile) -> Bool {
+        if case .failed = IngestState.classify(file.status) { return true }
+        return false
+    }
+
+    /// Asks for the document to be read again and follows it to the end, as an upload does.
+    func readAgain(_ file: FileNode.StoredFile) async {
+        let name = DisplayText.fileName(file.name)
+        await perform(on: file.path) { manager in
+            try await manager.reprocess(name: file.name, folderName: file.folderPath)
+            switch try await manager.awaitIngestion(name: file.name, folderName: file.folderPath) {
+            case .ready, .scanned:
+                return "\(name) was read again."
+            case .failed(let reason):
+                throw DocumentNotViewable(message: reason)
+            case .inProgress:
+                return "\(name) is still being read. Check back in a moment."
+            }
+        }
+        await reload()
+    }
+
+    /// Fetches a PDF's searchable copy for the share sheet.
+    func prepareSearchableCopy(_ file: FileNode.StoredFile) async {
+        await perform(on: file.path) { [weak self] manager in
+            let data = try await manager.downloadSearchable(
+                name: file.name, folderName: file.folderPath)
+            guard !data.isEmpty else {
+                throw DocumentNotViewable(message: "The searchable copy arrived empty.")
+            }
+            let stem = (file.name as NSString).deletingPathExtension
+            self?.sharing = SharedDocument(fileName: stem + "_searchable.pdf", data: data)
+            return nil
+        }
+    }
+
     // MARK: - Deleting
 
     func requestDeletion(of file: FileNode.StoredFile) {

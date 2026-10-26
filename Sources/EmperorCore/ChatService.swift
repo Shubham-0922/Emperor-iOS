@@ -173,6 +173,9 @@ enum ChatTurnEvent {
 protocol ChatProviding: Sendable {
     func messages(chatID: String) async throws -> [ChatMessage]
     func streamStatus(chatID: String) async throws -> StreamStatus
+    /// Asks the server to end the run for this chat and keep what it had written. Waits for the
+    /// answer to be saved, which can take a few seconds.
+    func stopRun(chatID: String) async throws -> StopReply
     func send(
         history: [ChatMessage],
         chatID: String,
@@ -197,7 +200,36 @@ protocol ChatProviding: Sendable {
     ) async -> WorkLogSaveOutcome
 }
 
+/// The answer to `POST /chat/stop`.
+struct StopReply: Codable, Equatable, Sendable {
+    /// What the stop saved, and who saved it.
+    enum SavedBy: String, Codable, Equatable, Sendable {
+        /// The run wrote the stopped answer itself as it wound down.
+        case run
+        /// The run did not wind down in time, so the stop request saved it.
+        case stop
+        /// Nothing could be saved.
+        case none
+    }
+
+    var success: Bool
+    /// False when no run was going for this chat: nothing to stop, and not an error.
+    var running: Bool?
+    var stopped: Bool?
+    var savedBy: String?
+    var error: String?
+
+    var savedByKind: SavedBy? { savedBy.flatMap(SavedBy.init(rawValue:)) }
+
+    /// What a stand-in without a server answers.
+    static let unsupported = StopReply(
+        success: false, running: nil, stopped: nil, savedBy: nil, error: "Stop is not supported")
+}
+
 extension ChatProviding {
+    /// A stand-in that cannot stop anything, for fakes that do not exercise stopping.
+    func stopRun(chatID: String) async throws -> StopReply { .unsupported }
+
     /// A stand-in that stores nothing, for fakes that do not exercise saving.
     func saveWorkLog(
         _ fields: [String: JSONValue],
@@ -255,6 +287,25 @@ struct ChatService: ChatProviding, ChatListProviding {
         } catch {
             throw APIError.decoding(String(describing: error))
         }
+    }
+
+    /// Stops this chat's run: `POST /chat/stop` with the chat and the caller.
+    ///
+    /// Dropping the connection does not end a run — it carries on and saves its answer — so a
+    /// Stop button has to say so explicitly. The reply arrives once the stopped answer is saved.
+    func stopRun(chatID: String) async throws -> StopReply {
+        guard let credentials = await client.currentCredentials() else {
+            throw APIError.notAuthenticated
+        }
+        let request = try await client.makeRequest(
+            "POST", "/chat/stop",
+            body: StopRequest(chatId: chatID, userId: credentials.userIDString))
+        return try await client.send(request, as: StopReply.self)
+    }
+
+    private struct StopRequest: Encodable {
+        let chatId: String
+        let userId: String
     }
 
     // MARK: - Sending a turn

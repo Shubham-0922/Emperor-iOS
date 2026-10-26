@@ -38,6 +38,13 @@ struct UploadManifest: Codable, Equatable, Sendable, Identifiable {
     /// chunk it already knew.
     private(set) var completed: Set<Int>
 
+    /// The name the server stored the document under, once a chunk reply has said. Optional so
+    /// manifests written by earlier builds still decode; absent means "the name that was sent".
+    private(set) var storedName: String?
+
+    /// The name to poll ingestion with.
+    var pollName: String { storedName ?? fileName }
+
     init(
         id: String = UUID().uuidString,
         fileName: String,
@@ -46,8 +53,10 @@ struct UploadManifest: Codable, Equatable, Sendable, Identifiable {
         chunkSize: Int,
         sourcePath: String,
         createdAt: Date,
-        completed: Set<Int> = []
+        completed: Set<Int> = [],
+        storedName: String? = nil
     ) {
+        self.storedName = storedName
         self.id = id
         self.fileName = fileName
         self.folderName = folderName
@@ -109,6 +118,11 @@ struct UploadManifest: Codable, Equatable, Sendable, Identifiable {
     mutating func markCompleted(_ index: Int) {
         guard index >= 0, index < chunkCount else { return }
         completed.insert(index)
+    }
+
+    mutating func recordStoredName(_ name: String?) {
+        guard let name, !name.isEmpty else { return }
+        storedName = name
     }
 
     /// Identifies one chunk of one upload across a process restart.

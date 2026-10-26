@@ -117,6 +117,9 @@ struct User: Codable, Equatable, Identifiable, Sendable {
     var needsPlan: Bool?
     /// Set by `/login` when an administrator has paused the account. Reading still works.
     var suspended: Bool?
+    /// Why an administrator paused the account, as the platform reports it with `/auth/session`
+    /// and `/update-profile`. Absent or empty when the account is not paused or none was given.
+    var suspendedReason: String?
     /// The mobile number given at sign-up, as the platform stores it: `+91XXXXXXXXXX`.
     var phone: String?
     /// The role the account practises as, by the web's id for it (`PractitionerRole.webID`).
@@ -127,7 +130,7 @@ struct User: Codable, Equatable, Identifiable, Sendable {
         case id, email, name, avatar, title, organization, plan, phone
         case preferredModel = "preferred_model"
         case practiceRole = "practice_role"
-        case planLabel, feeTier, needsPlan, suspended
+        case planLabel, feeTier, needsPlan, suspended, suspendedReason
     }
 }
 
@@ -368,6 +371,27 @@ struct StreamStatus: Codable {
     /// Epoch milliseconds, unlike every other date on this API.
     var startedAt: Double?
     var updatedAt: Double?
+
+    // The run's own view of itself. Present from the first moment of a run, before any answer
+    // text has been saved; a reply from an older server, or the no-checkpoint reply
+    // (`error: "No messages"`), simply leaves them nil. `startedAt` can be null there too.
+
+    /// Whether a run is going. This is the field to branch on; `active` is the older, laxer
+    /// signal that also honours a stored typing flag.
+    var running: Bool?
+    /// `starting`, then `research`, `wrapup` or `compose`.
+    var phase: String?
+    /// True once the run has produced visible answer text.
+    var writing: Bool?
+    var elapsedMs: Double?
+    /// The newest status line the run announced, and when (epoch milliseconds).
+    var status: String?
+    var statusAt: Double?
+    /// The most recent distinct status lines, oldest first.
+    var statusLines: [String]?
+    var aliveAt: Double?
+    /// Whether `content` is the live run's own text (true) or still the previous turn's answer.
+    var fromLiveRun: Bool?
 
     var startedDate: Date? { WireDate.fromEpochMillis(startedAt) }
 }
