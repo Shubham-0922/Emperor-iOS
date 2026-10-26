@@ -42,8 +42,13 @@ final class LibraryFileViewModel {
         return nil
     }
 
+    /// Asks once: a file already loaded, loading, missing or too large is not asked about again
+    /// (a failure is).
     func load(knownMissing: Bool = false) async {
-        if case .ready = content { return }
+        switch content {
+        case .idle, .failed: break
+        default: return
+        }
         if knownMissing {
             content = .missing
             return
@@ -346,6 +351,11 @@ final class LibraryJudgmentViewModel {
     func hits(inBlock index: Int) -> [JudgmentText.Hit] { hits.filter { $0.block == index } }
 
     // MARK: Copying
+
+    /// The stored text, to share — fetched only when asked for.
+    func originalText() async -> Data? {
+        try? await service.file(id: doc.id, prefer: "text")
+    }
 
     /// `<web>/library/doc/<id>#para-12`.
     func paragraphLink(_ blockID: String, apiBaseURL: URL) -> URL {
