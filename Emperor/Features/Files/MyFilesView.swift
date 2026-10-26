@@ -46,7 +46,8 @@ struct MyFilesView: View {
             Group {
                 if let model {
                     LibraryScreen(
-                        model: model, path: "", rootTitle: rootTitle, openFolders: $openFolders)
+                        model: model, path: "", rootTitle: rootTitle, openFolders: $openFolders,
+                        opening: opening)
                 } else {
                     ProgressView()
                 }
@@ -69,7 +70,7 @@ struct MyFilesView: View {
                 if let model {
                     LibraryScreen(
                         model: model, path: route.path, rootTitle: rootTitle,
-                        openFolders: $openFolders)
+                        openFolders: $openFolders, opening: opening)
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
@@ -123,6 +124,8 @@ private struct LibraryScreen: View {
     let rootTitle: String
     /// The navigation stack's path. A folder tile opens its folder by appending to it.
     @Binding var openFolders: [FolderRoute]
+    /// The document asked for from outside, with the page and the words a citation names.
+    var opening: DocumentRoute?
 
     @State private var folderQuery = ""
     @State private var previewing: Previewing?
@@ -156,6 +159,9 @@ private struct LibraryScreen: View {
     private struct Previewing: Identifiable {
         let id = UUID()
         let file: FileNode.StoredFile
+        /// The page a citation names, 1-based, and the words it quotes — only when one sent it.
+        var page: Int? = nil
+        var quote: String? = nil
     }
 
     private struct Moving: Identifiable {
@@ -245,7 +251,9 @@ private struct LibraryScreen: View {
             // the folder it is in, once that screen is showing.
             .onChange(of: model.pendingPreview, initial: true) { _, _ in
                 if let file = model.takePreview(in: path) {
-                    previewing = Previewing(file: file)
+                    // Where a citation sent it: its page, and the words to mark there.
+                    let route = opening?.path == file.path ? opening : nil
+                    previewing = Previewing(file: file, page: route?.page, quote: route?.quote)
                 }
             }
     }
@@ -304,14 +312,16 @@ private struct LibraryScreen: View {
             }
             // The viewer keeps what it opens, so the offline marks are read again once it closes.
             .sheet(item: $previewing, onDismiss: { model.refreshOfflineStatus() }) { item in
-                // No citation brought us here, so there is no mark and no page to land on —
-                // the viewer opens at the top. PDFs render directly; Word documents go through
-                // the server's conversion, which the viewer says out loud.
+                // Opened from the library, the viewer opens at the top. Sent by a citation, it
+                // opens at the cited page with the quoted words to mark. PDFs render directly;
+                // Word documents go through the server's conversion, which the viewer says out
+                // loud.
                 SourceDocumentView(
                     attachment: item.file.attachment,
                     mention: AnnexureMention(
-                        fileName: item.file.name, mark: "", startPage: nil, endPage: nil),
-                    isCitation: false)
+                        fileName: item.file.name, mark: "", startPage: item.page, endPage: nil),
+                    isCitation: item.quote != nil || item.page != nil,
+                    quote: item.quote ?? "")
             }
             .sheet(item: $moving) { item in
                 MoveDocumentSheet(
