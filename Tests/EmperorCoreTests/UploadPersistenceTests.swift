@@ -282,4 +282,30 @@ final class UploadPersistenceTests: XCTestCase {
             + MultipartChunk.trailer(boundary: "B").count
         XCTAssertEqual(written, chunkSize + overhead, "only the last chunk should be in the body")
     }
+
+    func testTheStoredNameIsPersistedAndPollsWithIt() throws {
+        let store = makeStore()
+        try store.save(makeManifest())
+        XCTAssertEqual(store.load(id: "up_1")?.pollName, "brief.pdf")
+
+        store.recordCompletion(id: "up_1", index: 1, storedName: "brief (1).pdf")
+        // A later chunk with no name must not erase it.
+        store.recordCompletion(id: "up_1", index: 2)
+
+        let reloaded = try XCTUnwrap(makeStore().load(id: "up_1"))
+        XCTAssertEqual(reloaded.storedName, "brief (1).pdf")
+        XCTAssertEqual(reloaded.pollName, "brief (1).pdf")
+    }
+
+    func testAManifestWrittenBeforeStoredNamesStillDecodes() throws {
+        let json = #"""
+        {"id":"old","fileName":"a.pdf","folderName":"F","totalBytes":5,"chunkSize":10,
+         "sourcePath":"/tmp/a","createdAt":"2026-01-01T00:00:00Z","completed":[0]}
+        """#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let manifest = try decoder.decode(UploadManifest.self, from: Data(json.utf8))
+        XCTAssertNil(manifest.storedName)
+        XCTAssertEqual(manifest.pollName, "a.pdf")
+    }
 }
