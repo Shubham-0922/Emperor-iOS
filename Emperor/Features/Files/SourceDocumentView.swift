@@ -105,7 +105,13 @@ struct SourceDocumentView: View {
         page = result.page
         if let hit = result.hit, let found = document.page(at: result.page - 1) {
             let rects = PDFQuoteHighlighter.rects(for: hit, on: found)
-            highlights = rects.isEmpty ? [:] : [result.page - 1: rects]
+            if rects.isEmpty {
+                // PDFKit gave no rectangles: the words are not marked, so the page does not
+                // say they are; the "not located" note is said instead.
+                model.quoteWasNotMarked()
+            } else {
+                highlights = [result.page - 1: rects]
+            }
         }
         if let note = model.quoteNote {
             VoiceOver.announce(note)

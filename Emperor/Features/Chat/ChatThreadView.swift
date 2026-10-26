@@ -153,6 +153,9 @@ struct ChatThreadView: View {
 
     private func thread(_ model: ChatViewModel) -> some View {
         @Bindable var model = model
+        let open = OpenCitedDocumentAction { reference in
+            openCited(reference, in: model)
+        }
 
         return VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -360,9 +363,7 @@ struct ChatThreadView: View {
         }
         // A reference naming one of the reader's documents — its Open chip, its badge in the
         // text — opens that document at the quoted words.
-        .environment(\.openCitedDocument, OpenCitedDocumentAction { reference in
-            openCited(reference, in: model)
-        })
+        .environment(\.openCitedDocument, open)
         .alert("Cannot open that source", isPresented: alertBinding($model.citationError)) {
             Button("OK") { model.citationError = nil }
         } message: {

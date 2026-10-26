@@ -21,7 +21,7 @@ struct CitationMetaLine: View {
         // never draws a line; the task runs on a view that is on screen.
         if !CitedSource.citedDocs(content).isEmpty {
             line(label: check?.label ?? placeholder, tone: check?.tone ?? .plain)
-                .task(id: content + "|" + (projectID ?? "")) {
+                .task(id: checkKey) {
                     let created = CitationCheck(
                         content: content, resolver: session.citedSources, projectID: projectID,
                         account: session.currentUser.map { String($0.id) } ?? "")
@@ -30,6 +30,9 @@ struct CitationMetaLine: View {
                 }
         }
     }
+
+    /// What a check is for: a new answer text or matter is a new check.
+    private var checkKey: String { content + "|" + (projectID ?? "") }
 
     /// What `CitationCheck` says while it checks, before it exists.
     private var placeholder: String {

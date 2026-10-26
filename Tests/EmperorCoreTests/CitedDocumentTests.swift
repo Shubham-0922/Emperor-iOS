@@ -123,6 +123,15 @@ final class CitedDocumentTests: XCTestCase {
         }
     }
 
+    func testWordsThatCannotBeMarkedAreNotClaimedAsHighlighted() async {
+        await withViewer { _, model in
+            _ = await model.findQuote(pageCount: 3) { $0 == 2 ? Self.pageText : ["nothing", "here"] }
+            model.quoteWasNotMarked()
+            XCTAssertNotNil(model.quoteNote)
+            XCTAssertEqual(model.citedNote(page: 2).isWarning, true)
+        }
+    }
+
     func testAScannedPagesPlacedWordsAreUsedWhenReady() async {
         await withViewer { fake, model in
             let boxes = Self.pageText.enumerated().map { i, w in

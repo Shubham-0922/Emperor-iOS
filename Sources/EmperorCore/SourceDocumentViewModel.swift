@@ -130,6 +130,13 @@ final class SourceDocumentViewModel {
         return finish(QuoteSearchResult(page: target, target: target, hit: nil, pending: pending))
     }
 
+    /// The words were found but the page could not place a mark on them: counted as not
+    /// located, so neither the note under the page nor VoiceOver claims they are highlighted.
+    func quoteWasNotMarked() {
+        guard let found = quoteSearch, found.hit != nil else { return }
+        _ = finish(QuoteSearchResult(page: found.page, target: found.target, hit: nil, pending: found.pending))
+    }
+
     private func finish(_ result: QuoteSearchResult) -> QuoteSearchResult {
         quoteSearch = result
         quoteNote = CitedSource.note(

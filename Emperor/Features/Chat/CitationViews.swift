@@ -232,6 +232,7 @@ struct CitationReferenceList: View {
     ) -> some View {
         let page = document.page.flatMap { $0 > 0 ? $0 : nil }
         let name = DisplayText.fileName(document.file)
+        let label: String = page.map { "Open \(name) at page \($0)" } ?? "Open \(name)"
         return Button {
             open(document)
         } label: {
@@ -240,7 +241,7 @@ struct CitationReferenceList: View {
                 systemImage: "doc.text.magnifyingglass", isSelected: false)
         }
         .buttonStyle(ChipButtonStyle(isSelected: false))
-        .accessibilityLabel(page.map { "Open \(name) at page \($0)" } ?? "Open \(name)")
+        .accessibilityLabel(label)
         .accessibilityIdentifier("cite-open-\(number)")
     }
 }
