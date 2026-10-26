@@ -1,0 +1,88 @@
+{
+ "success": true,
+ "facets": {
+  "category": "case-law",
+  "label": "Case law",
+  "courts": [
+   {
+    "value": "delhi",
+    "label": "Delhi High Court",
+    "count": 40000
+   },
+   {
+    "value": "supremecourt",
+    "label": "Supreme Court of India",
+    "count": 52000
+   }
+  ],
+  "years": [
+   {
+    "year": 2025,
+    "count": 800
+   },
+   {
+    "year": 2024,
+    "count": 12000
+   }
+  ],
+  "yearRange": {
+   "min": 1950,
+   "max": 2025
+  },
+  "docTypes": [
+   {
+    "value": "judgment",
+    "label": "Judgment",
+    "count": 271000
+   }
+  ],
+  "jurisdictions": [
+   {
+    "value": "Central",
+    "count": 10
+   }
+  ],
+  "series": [
+   {
+    "value": "All India Reporter",
+    "count": 40,
+    "yearMin": 1914,
+    "yearMax": 1990
+   },
+   {
+    "value": "SCC",
+    "count": 3
+   }
+  ],
+  "publishers": [
+   {
+    "value": "sebi",
+    "label": "SEBI",
+    "name": "Securities and Exchange Board of India",
+    "count": 900
+   }
+  ],
+  "kinds": [
+   {
+    "value": "adjudication",
+    "label": "Adjudication orders",
+    "count": 300
+   }
+  ],
+  "letters": [],
+  "sorts": [
+   {
+    "value": "date_desc",
+    "label": "Newest"
+   },
+   {
+    "value": "date_asc",
+    "label": "Oldest"
+   },
+   {
+    "value": "court",
+    "label": "Court"
+   }
+  ]
+ }
+}

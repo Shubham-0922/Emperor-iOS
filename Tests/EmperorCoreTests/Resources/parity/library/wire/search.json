@@ -1,0 +1,42 @@
+{
+ "success": true,
+ "items": [
+  {
+   "id": 257708,
+   "title": "Seethamma vs State",
+   "category": "case-law",
+   "ext": ".txt",
+   "render": "html",
+   "snippet": {
+    "text": "the court held that the bail",
+    "before": true,
+    "after": true,
+    "term": "bail"
+   }
+  },
+  {
+   "id": 257709,
+   "title": "Ram vs State",
+   "category": "case-law",
+   "ext": ".txt",
+   "render": "text",
+   "snippet": null
+  }
+ ],
+ "total": 1000,
+ "totalIsCapped": true,
+ "page": 1,
+ "pageSize": 5,
+ "sort": null,
+ "search": "bail",
+ "mode": "body",
+ "index": {
+  "available": true,
+  "ready": true,
+  "complete": false,
+  "indexed": 200000,
+  "pending": 71480,
+  "noText": 12,
+  "total": 271480
+ }
+}

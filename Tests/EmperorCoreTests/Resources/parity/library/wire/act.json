@@ -1,0 +1,81 @@
+{
+ "success": true,
+ "act": {
+  "id": 2478,
+  "title": "THE INDIAN PENAL CODE, 1860",
+  "category": "bare-acts",
+  "docType": "act",
+  "jurisdiction": "Central",
+  "year": 1860,
+  "ext": ".pdf",
+  "fileSize": 1400000,
+  "render": "pdf",
+  "aliases": [
+   "IPC"
+  ],
+  "jurisdictionInferred": false,
+  "jurisdictionSource": "title"
+ },
+ "bundleId": 2478,
+ "kind": "act",
+ "requestedId": 2479,
+ "selectedId": 2479,
+ "selectedTab": "rules",
+ "orphan": false,
+ "tabs": [
+  {
+   "key": "act",
+   "label": "The Act",
+   "count": 1,
+   "docs": [
+    {
+     "id": 2478,
+     "title": "THE INDIAN PENAL CODE, 1860",
+     "category": "bare-acts",
+     "ext": ".pdf",
+     "fileSize": 1400000,
+     "year": 1860
+    }
+   ]
+  },
+  {
+   "key": "rules",
+   "label": "Rules",
+   "count": 2,
+   "docs": [
+    {
+     "id": 2479,
+     "title": "Penal Rules, 1950",
+     "category": "bare-acts",
+     "ext": ".pdf",
+     "year": 1950,
+     "copies": [
+      3001
+     ]
+    },
+    {
+     "id": 2480,
+     "title": "Old Penal Rules (Rep., Act 5 of 1960)",
+     "category": "bare-acts",
+     "ext": ".pdf",
+     "year": 1901,
+     "repealed": true
+    }
+   ]
+  },
+  {
+   "key": "amendments",
+   "label": "Amendments",
+   "count": 1,
+   "docs": [
+    {
+     "id": 2481,
+     "title": "Indian Penal Code (Amendment) Act, 2013",
+     "category": "bare-acts",
+     "ext": ".pdf",
+     "year": 2013
+    }
+   ]
+  }
+ ]
+}

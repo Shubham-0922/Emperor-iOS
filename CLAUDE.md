@@ -45,8 +45,9 @@ The reference copy is **source only** — no `node_modules`, no `Data/`, no `chr
 
 `ChatWindow.jsx`, `ChatWindow_original.jsx`, `Canvas.jsx`, `clerkConfig.js` (its
 `supportedRoles` is **not** the wire contract), `models_registry.json`,
-`convertTemplateTags()`, `src/pages/Library.jsx`, `FeedbackWidget.jsx`, `POST /draft`,
-`/library-books/*`, `/bare-acts/*`.
+`convertTemplateTags()`, `FeedbackWidget.jsx`, `POST /draft`, `/library-books/*`,
+`/bare-acts/*`. (`src/pages/Library.jsx` is live again: it is the spec `LibraryDisplay` and the
+Library screens port, over `/library/catalogue/*`.)
 
 **Always `grep` for an importer before treating a component as specification.** The live chat
 surface is `src/tools/ToolWorkspace.jsx`, rendering through `src/tools/renderers/Markdown.jsx`.
@@ -147,8 +148,9 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   `generate-worklog-fixtures.mjs` (the work log the web stores with each answer, and a
   `/messages` body),
   `generate-phone-fixtures.mjs`, `generate-tile-fixtures.mjs` (tool tile colours and symbols),
-  `generate-cause-list-fixtures.mjs`, `generate-compliance-feed-fixture.mjs` and
-  `generate-file-date-fixtures.mjs`. When a golden test fails after a platform change,
+  `generate-cause-list-fixtures.mjs`, `generate-compliance-feed-fixture.mjs`,
+  `generate-file-date-fixtures.mjs` and `generate-library-fixtures.mjs` (the Library's titles,
+  covers, case names and Act wording). When a golden test fails after a platform change,
   regenerate; do not edit the fixture to match.
 - **The UI is seen through CI, on an iPhone and an iPad.** Every UI test and
   `UITests/ScreenshotTour.swift` (every main screen, both themes) run on both devices. The

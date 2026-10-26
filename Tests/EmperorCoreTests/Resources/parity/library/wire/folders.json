@@ -1,0 +1,57 @@
+{
+ "success": true,
+ "items": [
+  {
+   "id": 2478,
+   "title": "THE INDIAN PENAL CODE, 1860",
+   "category": "bare-acts",
+   "docType": "act",
+   "jurisdiction": "Central",
+   "year": 1860,
+   "ext": ".pdf",
+   "render": "pdf",
+   "firstLetter": "I",
+   "kind": "act",
+   "tabCounts": {
+    "act": 1,
+    "rules": 2,
+    "amendments": 25
+   },
+   "instruments": 27,
+   "hasChildren": 27,
+   "aliases": [
+    "IPC"
+   ],
+   "jurisdictionInferred": false
+  }
+ ],
+ "total": 1,
+ "page": 1,
+ "pageSize": 60,
+ "letters": [
+  {
+   "letter": "#",
+   "count": 0
+  },
+  {
+   "letter": "A",
+   "count": 3
+  },
+  {
+   "letter": "I",
+   "count": 1
+  }
+ ],
+ "jurisdictions": [
+  {
+   "value": "Central",
+   "label": "Central",
+   "count": 800
+  },
+  {
+   "value": "none",
+   "label": "Unspecified",
+   "count": 4
+  }
+ ]
+}

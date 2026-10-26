@@ -1,0 +1,3014 @@
+{
+ "order": [
+  "bare-acts",
+  "case-law",
+  "books-and-law-reports",
+  "regulator-orders",
+  "tribunals",
+  "law-commission-reports",
+  "professional-institutes",
+  "parliament-prs",
+  "legal-aid-nalsa"
+ ],
+ "coverInk": "#F6F0E1",
+ "themes": {
+  "bare-acts": {
+   "label": "Bare acts",
+   "cap": "Bare act",
+   "untitled": "Untitled Act",
+   "blurb": "Every central and state Act, with its rules, regulations and notifications.",
+   "cloth": [
+    "#6E1F2A",
+    "#7A2632",
+    "#5F1A24"
+   ]
+  },
+  "case-law": {
+   "label": "Case law",
+   "cap": "Judgment",
+   "untitled": "Untitled judgment",
+   "blurb": "Judgments of the Supreme Court and the High Courts, searchable word for word.",
+   "cloth": [
+    "#1F2E4D",
+    "#253860",
+    "#1A2742"
+   ]
+  },
+  "books-and-law-reports": {
+   "label": "Books and law reports",
+   "cap": "Book",
+   "untitled": "Untitled volume",
+   "blurb": "Commentaries, digests and bound law reports, volume by volume.",
+   "cloth": [
+    "#1F4A3A",
+    "#265643",
+    "#1A3F31",
+    "#2D4630",
+    "#1B4047"
+   ]
+  },
+  "regulator-orders": {
+   "label": "Regulator orders",
+   "cap": "Order",
+   "untitled": "Regulator order",
+   "blurb": "Orders, circulars and directions from SEBI, RBI and other regulators.",
+   "cloth": [
+    "#1D4B55",
+    "#225763",
+    "#183F48"
+   ]
+  },
+  "tribunals": {
+   "label": "Tribunals",
+   "cap": "Tribunal",
+   "untitled": "Tribunal decision",
+   "blurb": "Decisions of TDSAT and the Armed Forces Tribunal, with NHRC publications.",
+   "cloth": [
+    "#4A2747",
+    "#552D52",
+    "#3F213C"
+   ]
+  },
+  "law-commission-reports": {
+   "label": "Law Commission reports",
+   "cap": "Report",
+   "untitled": "Law Commission report",
+   "blurb": "Reports of the Law Commission of India, from the first to the latest.",
+   "cloth": [
+    "#3B3570",
+    "#443D7E",
+    "#332E62"
+   ]
+  },
+  "professional-institutes": {
+   "label": "Professional institutes",
+   "cap": "Institute",
+   "untitled": "Institute publication",
+   "blurb": "Standards and guidance from ICAI, ICSI and ICMAI.",
+   "cloth": [
+    "#33363D",
+    "#3C3F47",
+    "#2B2D33"
+   ]
+  },
+  "parliament-prs": {
+   "label": "Parliament",
+   "cap": "Parliament",
+   "untitled": "Parliamentary paper",
+   "blurb": "Bills as introduced and passed, with PRS summaries and committee reports.",
+   "cloth": [
+    "#8A3F22",
+    "#964628",
+    "#7A371D"
+   ]
+  },
+  "legal-aid-nalsa": {
+   "label": "Legal aid",
+   "cap": "Legal aid",
+   "untitled": "Legal aid report",
+   "blurb": "Reports and schemes of the National Legal Services Authority.",
+   "cloth": [
+    "#7A5A17",
+    "#86641B",
+    "#6C4F13"
+   ]
+  },
+  "nope": {
+   "label": "Library",
+   "cap": "Document",
+   "untitled": "Untitled document",
+   "blurb": "",
+   "cloth": [
+    "#3A3F5C",
+    "#424867",
+    "#33384F"
+   ]
+  }
+ },
+ "hashes": [
+  {
+   "value": "",
+   "hash": 2166136261
+  },
+  {
+   "value": "1",
+   "hash": 873244444
+  },
+  {
+   "value": 2478,
+   "hash": 345404316
+  },
+  {
+   "value": "calcutta law journal",
+   "hash": 898037809
+  },
+  {
+   "value": "Assam",
+   "hash": 1771434116
+  },
+  {
+   "value": "Jammu and Kashmir",
+   "hash": 2332930601
+  }
+ ],
+ "rows": [
+  {
+   "doc": {
+    "id": 1,
+    "category": "bare-acts",
+    "title": "INDIAN BARE ACTS Indian Evidence Act,1872 (Single Document)",
+    "year": 1872,
+    "jurisdiction": "Central",
+    "docType": "act"
+   },
+   "tidyTitle": "INDIAN BARE ACTS Indian Evidence Act,1872 (Single Document)",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "INDIAN BARE ACTS Indian Evidence Act,1872 (Single Document)",
+    "parties": null,
+    "foot": [
+     "1872"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "1872"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "INDIAN BARE ACTS Indian Evidence Act,1872 (Single Document)",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Indian Evidence Act, 1872",
+   "splitTitle": {
+    "name": "Indian Evidence Act",
+    "year": "1872"
+   },
+   "isRepealed": false,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#7A2632",
+   "captionMeta": [
+    "1872"
+   ],
+   "captionMetaSized": [
+    "1872"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "INDIAN BARE ACTS Indian Evidence Act,1872 (Single Document)",
+   "volumeLabel": null,
+   "citationLine": "INDIAN BARE ACTS Indian Evidence Act,1872 (Single Document) (Court, 1872)"
+  },
+  {
+   "doc": {
+    "id": 2,
+    "category": "bare-acts",
+    "title": "THE INDIAN PENAL CODE, 1860",
+    "year": 1860,
+    "jurisdiction": "Central",
+    "docType": "act",
+    "aliases": [
+     "IPC"
+    ]
+   },
+   "tidyTitle": "The Indian Penal Code, 1860",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "The Indian Penal Code, 1860",
+    "parties": null,
+    "foot": [
+     "1860"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "1860"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "The Indian Penal Code, 1860",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "The Indian Penal Code, 1860",
+   "splitTitle": {
+    "name": "The Indian Penal Code",
+    "year": "1860"
+   },
+   "isRepealed": false,
+   "actKicker": "IPC",
+   "actTabLabel": "The Code",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#7A2632",
+   "captionMeta": [
+    "1860"
+   ],
+   "captionMetaSized": [
+    "1860"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "The Indian Penal Code,",
+   "volumeLabel": null,
+   "citationLine": "The Indian Penal Code, 1860 (Court, 1860)"
+  },
+  {
+   "doc": {
+    "id": 3,
+    "category": "bare-acts",
+    "title": "CHHATTISGARH APPROPRIATION (No. 2) ACT, 2006",
+    "year": 2006,
+    "jurisdiction": "Chhattisgarh"
+   },
+   "tidyTitle": "CHHATTISGARH APPROPRIATION (No. 2) ACT, 2006",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Chhattisgarh",
+    "title": "CHHATTISGARH APPROPRIATION (No. 2) ACT, 2006",
+    "parties": null,
+    "foot": [
+     "2006"
+    ]
+   },
+   "docMeta": [
+    "Chhattisgarh",
+    "2006"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "CHHATTISGARH APPROPRIATION (No. 2) ACT, 2006",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Chhattisgarh Appropriation (No. 2) Act, 2006",
+   "splitTitle": {
+    "name": "Chhattisgarh Appropriation (No. 2) Act",
+    "year": "2006"
+   },
+   "isRepealed": false,
+   "actKicker": "State Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "Chhattisgarh",
+    "label": "Chhattisgarh",
+    "short": "Chhattisgarh",
+    "central": false
+   },
+   "copySource": "Chhattisgarh copy",
+   "actCloth": "#1E4D3B",
+   "captionMeta": [
+    "2006"
+   ],
+   "captionMetaSized": [
+    "2006"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "CHHATTISGARH APPROPRIATION (No. 2) ACT,",
+   "volumeLabel": null,
+   "citationLine": "CHHATTISGARH APPROPRIATION (No. 2) ACT, 2006 (Court, 2006)"
+  },
+  {
+   "doc": {
+    "id": 4,
+    "category": "bare-acts",
+    "title": "Bengal Regulation (Rep., Act 12 of 1951)",
+    "year": 1818,
+    "jurisdiction": "West Bengal"
+   },
+   "tidyTitle": "Bengal Regulation (Rep., Act 12 of 1951)",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "West Bengal",
+    "title": "Bengal Regulation (Rep., Act 12 of 1951)",
+    "parties": null,
+    "foot": [
+     "1818"
+    ]
+   },
+   "docMeta": [
+    "West Bengal",
+    "1818"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Bengal Regulation (Rep., Act 12 of 1951)",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Bengal Regulation (Rep., Act 12 of 1951)",
+   "splitTitle": {
+    "name": "Bengal Regulation (Rep., Act 12 of 1951)",
+    "year": "1818"
+   },
+   "isRepealed": true,
+   "actKicker": "State Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "West Bengal",
+    "label": "West Bengal",
+    "short": "West Bengal",
+    "central": false
+   },
+   "copySource": "West Bengal copy",
+   "actCloth": "#5B2E1F",
+   "captionMeta": [
+    "1818"
+   ],
+   "captionMetaSized": [
+    "1818"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Bengal Regulation (Rep., Act 12 of 1951)",
+   "volumeLabel": null,
+   "citationLine": "Bengal Regulation (Rep., Act 12 of 1951) (Court, 1818)"
+  },
+  {
+   "doc": {
+    "id": 5,
+    "category": "bare-acts",
+    "title": "motor vehicles act, 1988",
+    "year": 1988,
+    "jurisdiction": "Central",
+    "hasChildren": 14
+   },
+   "tidyTitle": "Motor vehicles act, 1988",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "Motor vehicles act, 1988",
+    "parties": null,
+    "foot": [
+     "1988"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "1988",
+    "14 related"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "motor vehicles act, 1988",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Motor vehicles act, 1988",
+   "splitTitle": {
+    "name": "Motor vehicles act",
+    "year": "1988"
+   },
+   "isRepealed": false,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#5F1A24",
+   "captionMeta": [
+    "1988"
+   ],
+   "captionMetaSized": [
+    "1988"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Motor vehicles act,",
+   "volumeLabel": null,
+   "citationLine": "motor vehicles act, 1988 (Court, 1988)"
+  },
+  {
+   "doc": {
+    "id": 6,
+    "category": "bare-acts",
+    "title": "Consumer Protection Act, 1986 No 68 of 1986",
+    "jurisdiction": "none",
+    "docType": "act"
+   },
+   "tidyTitle": "Consumer Protection Act, 1986 No 68 of 1986",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "none",
+    "title": "Consumer Protection Act, 1986 No 68 of 1986",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [
+    "none"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Consumer Protection Act, 1986 No 68 of 1986",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Consumer Protection Act, 1986 No 68 of 1986",
+   "splitTitle": {
+    "name": "Consumer Protection Act",
+    "year": "1986"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "none copy",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "Consumer Protection Act, 1986 No 68 of 1986",
+   "volumeLabel": null,
+   "citationLine": "Consumer Protection Act, 1986 No 68 of 1986 (Court)"
+  },
+  {
+   "doc": {
+    "id": 7,
+    "category": "bare-acts",
+    "title": "The Assam Rules 1960",
+    "docType": "rules",
+    "jurisdiction": "Assam",
+    "year": 1960
+   },
+   "tidyTitle": "The Assam Rules 1960",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Assam",
+    "title": "The Assam Rules 1960",
+    "parties": null,
+    "foot": [
+     "1960"
+    ]
+   },
+   "docMeta": [
+    "Assam",
+    "1960"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "The Assam Rules 1960",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "The Assam Rules, 1960",
+   "splitTitle": {
+    "name": "The Assam Rules",
+    "year": "1960"
+   },
+   "isRepealed": false,
+   "actKicker": "Rules",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "Assam",
+    "label": "Assam",
+    "short": "Assam",
+    "central": false
+   },
+   "copySource": "Assam copy",
+   "actCloth": "#3B3570",
+   "captionMeta": [
+    "1960"
+   ],
+   "captionMetaSized": [
+    "1960"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "The Assam Rules",
+   "volumeLabel": null,
+   "citationLine": "The Assam Rules 1960 (Court, 1960)"
+  },
+  {
+   "doc": {
+    "id": 8,
+    "category": "bare-acts",
+    "title": "Constitution Of India",
+    "jurisdiction": "Central",
+    "kind": "act"
+   },
+   "tidyTitle": "Constitution Of India",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "Constitution Of India",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [
+    "Central"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Constitution of India",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Constitution of India",
+   "splitTitle": {
+    "name": "Constitution of India",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Constitution",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#7A2632",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "Constitution Of India",
+   "volumeLabel": null,
+   "citationLine": "Constitution of India (Court)"
+  },
+  {
+   "doc": {
+    "id": 9,
+    "category": "bare-acts",
+    "title": "Bharatiya Nyaya Sanhita, 2023",
+    "year": 2023,
+    "jurisdiction": "Central",
+    "repealed": true
+   },
+   "tidyTitle": "Bharatiya Nyaya Sanhita, 2023",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "Bharatiya Nyaya Sanhita, 2023",
+    "parties": null,
+    "foot": [
+     "2023"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "2023"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Bharatiya Nyaya Sanhita, 2023",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Bharatiya Nyaya Sanhita, 2023",
+   "splitTitle": {
+    "name": "Bharatiya Nyaya Sanhita",
+    "year": "2023"
+   },
+   "isRepealed": true,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Sanhita",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#5F1A24",
+   "captionMeta": [
+    "2023"
+   ],
+   "captionMetaSized": [
+    "2023"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Bharatiya Nyaya Sanhita,",
+   "volumeLabel": null,
+   "citationLine": "Bharatiya Nyaya Sanhita, 2023 (Court, 2023)"
+  },
+  {
+   "doc": {
+    "id": 10,
+    "category": "bare-acts",
+    "title": "Amending Acts",
+    "kind": "amendments",
+    "jurisdiction": "Jammu and Kashmir"
+   },
+   "tidyTitle": "Amending Acts",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Jammu and Kashmir",
+    "title": "Amending Acts",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [
+    "Jammu and Kashmir"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Amending Acts",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Amending Acts",
+   "splitTitle": {
+    "name": "Amending Acts",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Amending Acts",
+   "actTabLabel": "Amending Acts",
+   "jurisdiction": {
+    "value": "Jammu and Kashmir",
+    "label": "Jammu and Kashmir",
+    "short": "Jammu & Kashmir",
+    "central": false
+   },
+   "copySource": "Jammu and Kashmir copy",
+   "actCloth": "#1E4D3B",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "Amending Acts",
+   "volumeLabel": null,
+   "citationLine": "Amending Acts (Court)"
+  },
+  {
+   "doc": {
+    "id": 11,
+    "category": "bare-acts",
+    "title": "Some Act omitted by Act 5 of 2001",
+    "jurisdiction": "Central",
+    "year": 1950
+   },
+   "tidyTitle": "Some Act omitted by Act 5 of 2001",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "Some Act omitted by Act 5 of 2001",
+    "parties": null,
+    "foot": [
+     "1950"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "1950"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Some Act omitted by Act 5 of 2001",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Some Act omitted by Act 5 of 2001",
+   "splitTitle": {
+    "name": "Some Act omitted by Act 5 of",
+    "year": "2001"
+   },
+   "isRepealed": true,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#5F1A24",
+   "captionMeta": [
+    "1950"
+   ],
+   "captionMetaSized": [
+    "1950"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Some Act omitted by Act 5 of 2001",
+   "volumeLabel": null,
+   "citationLine": "Some Act omitted by Act 5 of 2001 (Court, 1950)"
+  },
+  {
+   "doc": {
+    "id": 12,
+    "category": "bare-acts",
+    "title": "The Code of Civil Procedure 1908",
+    "jurisdiction": "Central",
+    "year": 1908
+   },
+   "tidyTitle": "The Code of Civil Procedure 1908",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Central",
+    "title": "The Code of Civil Procedure 1908",
+    "parties": null,
+    "foot": [
+     "1908"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "1908"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "The Code of Civil Procedure 1908",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "The Code of Civil Procedure 1908",
+   "splitTitle": {
+    "name": "The Code of Civil Procedure",
+    "year": "1908"
+   },
+   "isRepealed": false,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Code",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#7A2632",
+   "captionMeta": [
+    "1908"
+   ],
+   "captionMetaSized": [
+    "1908"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "The Code of Civil Procedure",
+   "volumeLabel": null,
+   "citationLine": "The Code of Civil Procedure 1908 (Court, 1908)"
+  },
+  {
+   "doc": {
+    "id": 20,
+    "category": "case-law",
+    "title": "Seethamma vs State Of Karnataka on 31 October, 2012",
+    "court": "supremecourt",
+    "courtLabel": "Supreme Court of India",
+    "decidedOn": "2012-10-31",
+    "year": 2012,
+    "neutralCitation": "2012 INSC 410"
+   },
+   "tidyTitle": "Seethamma vs State Of Karnataka on 31 October, 2012",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Supreme Court of India",
+    "title": null,
+    "parties": [
+     "Seethamma",
+     "State Of Karnataka on 31 October, 2012"
+    ],
+    "foot": [
+     "31 Oct 2012",
+     "2012 INSC 410"
+    ]
+   },
+   "docMeta": [
+    "Supreme Court of India",
+    "31 Oct 2012",
+    "2012 INSC 410"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Seethamma v. State of Karnataka",
+   "caseNumberText": "",
+   "court": {
+    "name": "Supreme Court of India",
+    "short": "Supreme Court",
+    "mono": "SC"
+   },
+   "actTitle": "Seethamma vs State of Karnataka on 31 October, 2012",
+   "splitTitle": {
+    "name": "Seethamma vs State of Karnataka on 31 October",
+    "year": "2012"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "31 Oct 2012"
+   ],
+   "captionMetaSized": [
+    "31 Oct 2012"
+   ],
+   "referenceLine": "31 Oct 2012",
+   "volumeTitle": "Seethamma vs State Of Karnataka on 31 October,",
+   "volumeLabel": null,
+   "citationLine": "Seethamma v. State of Karnataka, 2012 INSC 410 (Supreme Court, 31 Oct 2012)"
+  },
+  {
+   "doc": {
+    "id": 21,
+    "category": "case-law",
+    "title": "x",
+    "petitioner": "MS Anand Stores",
+    "respondent": "STATE OF KARNATAKA",
+    "court": "karnataka",
+    "courtLabel": "Karnataka High Court",
+    "decidedOn": "2019-03-04",
+    "caseType": "W.P.",
+    "caseNumber": "1234 of 2019"
+   },
+   "tidyTitle": "X",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Karnataka High Court",
+    "title": null,
+    "parties": [
+     "MS Anand Stores",
+     "STATE OF KARNATAKA"
+    ],
+    "foot": [
+     "4 Mar 2019"
+    ]
+   },
+   "docMeta": [
+    "Karnataka High Court",
+    "4 Mar 2019",
+    "W.P. 1234 of 2019"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "M/s Anand Stores v. State of Karnataka",
+   "caseNumberText": "W.P. No. 1234 of 2019",
+   "court": {
+    "name": "Karnataka High Court",
+    "short": "Karnataka HC",
+    "mono": "Kar"
+   },
+   "actTitle": "X",
+   "splitTitle": {
+    "name": "X",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "4 Mar 2019"
+   ],
+   "captionMetaSized": [
+    "4 Mar 2019"
+   ],
+   "referenceLine": "4 Mar 2019",
+   "volumeTitle": "X",
+   "volumeLabel": null,
+   "citationLine": "M/s Anand Stores v. State of Karnataka, W.P. No. 1234 of 2019 (Karnataka HC, 4 Mar 2019)"
+  },
+  {
+   "doc": {
+    "id": 22,
+    "category": "case-law",
+    "title": "VKasi v. SMKarthikeyan",
+    "court": "chennai",
+    "year": 2001,
+    "caseType": "Arising out of S.L.P. (C)",
+    "caseNumber": "4629 of 2008"
+   },
+   "tidyTitle": "VKasi v. SMKarthikeyan",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Judgment",
+    "title": null,
+    "parties": [
+     "VKasi",
+     "SMKarthikeyan"
+    ],
+    "foot": [
+     "2001"
+    ]
+   },
+   "docMeta": [
+    "2001",
+    "Arising out of S.L.P. (C) 4629 of 2008"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "V. Kasi v. S.M. Karthikeyan",
+   "caseNumberText": "Arising out of S.L.P. (C) No. 4629 of 2008",
+   "court": {
+    "name": "Madras High Court",
+    "short": "Madras HC",
+    "mono": "Mad"
+   },
+   "actTitle": "VKasi v. SMKarthikeyan",
+   "splitTitle": {
+    "name": "VKasi v. SMKarthikeyan",
+    "year": "2001"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2001"
+   ],
+   "captionMetaSized": [
+    "2001"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "VKasi v. SMKarthikeyan",
+   "volumeLabel": null,
+   "citationLine": "V. Kasi v. S.M. Karthikeyan, Arising out of S.L.P. (C) No. 4629 of 2008 (Madras HC, 2001)"
+  },
+  {
+   "doc": {
+    "id": 23,
+    "category": "case-law",
+    "title": "Kamalakar SO Keshav versus The State Of Maharashtra Through The",
+    "court": "bombay",
+    "courtLabel": "Bombay High Court",
+    "caseNumber": "No. 77 of 2020"
+   },
+   "tidyTitle": "Kamalakar SO Keshav versus The State Of Maharashtra Through The",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Bombay High Court",
+    "title": null,
+    "parties": [
+     "Kamalakar SO Keshav",
+     "The State Of Maharashtra Through The"
+    ],
+    "foot": []
+   },
+   "docMeta": [
+    "Bombay High Court",
+    "No. 77 of 2020"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Kamalakar s/o Keshav v. The State of Maharashtra…",
+   "caseNumberText": "No. No. 77 of 2020",
+   "court": {
+    "name": "Bombay High Court",
+    "short": "Bombay HC",
+    "mono": "Bom"
+   },
+   "actTitle": "Kamalakar SO Keshav versus the State of Maharashtra Through The",
+   "splitTitle": {
+    "name": "Kamalakar SO Keshav versus the State of Maharashtra Through The",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "Kamalakar SO Keshav versus The State Of Maharashtra Through The",
+   "volumeLabel": null,
+   "citationLine": "Kamalakar s/o Keshav v. The State of Maharashtra…, No. No. 77 of 2020 (Bombay HC)"
+  },
+  {
+   "doc": {
+    "id": 24,
+    "category": "case-law",
+    "title": "DrPercy Mistry vs Union of India &",
+    "court": "delhi",
+    "decidedOn": "2001-01-05",
+    "caseType": "Pune Cyber Police Station Pune City with FIR No.",
+    "caseNumber": "12"
+   },
+   "tidyTitle": "DrPercy Mistry vs Union of India &",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Judgment",
+    "title": null,
+    "parties": [
+     "DrPercy Mistry",
+     "Union of India &"
+    ],
+    "foot": [
+     "5 Jan 2001"
+    ]
+   },
+   "docMeta": [
+    "5 Jan 2001",
+    "Pune Cyber Police Station Pune City with FIR No. 12"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Dr Percy Mistry v. Union of India…",
+   "caseNumberText": "No. 12",
+   "court": {
+    "name": "Delhi High Court",
+    "short": "Delhi HC",
+    "mono": "Del"
+   },
+   "actTitle": "DrPercy Mistry vs Union of India &",
+   "splitTitle": {
+    "name": "DrPercy Mistry vs Union of India &",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "5 Jan 2001"
+   ],
+   "captionMetaSized": [
+    "5 Jan 2001"
+   ],
+   "referenceLine": "5 Jan 2001",
+   "volumeTitle": "DrPercy Mistry vs Union of India &",
+   "volumeLabel": null,
+   "citationLine": "Dr Percy Mistry v. Union of India…, No. 12 (Delhi HC, 5 Jan 2001)"
+  },
+  {
+   "doc": {
+    "id": 25,
+    "category": "case-law",
+    "title": "In Re: Some Reference",
+    "court": "orissa",
+    "courtLabel": "Orissa High Court",
+    "year": 1999
+   },
+   "tidyTitle": "In Re: Some Reference",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Orissa High Court",
+    "title": "In Re: Some Reference",
+    "parties": null,
+    "foot": [
+     "1999"
+    ]
+   },
+   "docMeta": [
+    "Orissa High Court",
+    "1999"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "In Re: Some Reference",
+   "caseNumberText": "",
+   "court": {
+    "name": "Orissa High Court",
+    "short": "Orissa HC",
+    "mono": "Ori"
+   },
+   "actTitle": "In Re: Some Reference",
+   "splitTitle": {
+    "name": "In Re: Some Reference",
+    "year": "1999"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "1999"
+   ],
+   "captionMetaSized": [
+    "1999"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "In Re: Some Reference",
+   "volumeLabel": null,
+   "citationLine": "In Re: Some Reference (Orissa HC, 1999)"
+  },
+  {
+   "doc": {
+    "id": 26,
+    "category": "case-law",
+    "title": "A. K. Gopalan v. The State of Madras",
+    "court": "scorders",
+    "courtLabel": "Supreme Court of India",
+    "decidedOn": "1950-05-19"
+   },
+   "tidyTitle": "A. K. Gopalan v. The State of Madras",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Supreme Court of India",
+    "title": null,
+    "parties": [
+     "A. K. Gopalan",
+     "The State of Madras"
+    ],
+    "foot": [
+     "19 May 1950"
+    ]
+   },
+   "docMeta": [
+    "Supreme Court of India",
+    "19 May 1950"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "A. K. Gopalan v. The State of Madras",
+   "caseNumberText": "",
+   "court": {
+    "name": "Supreme Court — daily orders",
+    "short": "SC orders",
+    "mono": "SC"
+   },
+   "actTitle": "A. K. Gopalan v. the State of Madras",
+   "splitTitle": {
+    "name": "A. K. Gopalan v. the State of Madras",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "19 May 1950"
+   ],
+   "captionMetaSized": [
+    "19 May 1950"
+   ],
+   "referenceLine": "19 May 1950",
+   "volumeTitle": "A. K. Gopalan v. The State of Madras",
+   "volumeLabel": null,
+   "citationLine": "A. K. Gopalan v. The State of Madras (SC orders, 19 May 1950)"
+  },
+  {
+   "doc": {
+    "id": 30,
+    "category": "books-and-law-reports",
+    "title": "# The **Laws** of _India_",
+    "series": "THE LAWS OF ENGLAND",
+    "volume": "12",
+    "volumeNo": 12,
+    "year": 1987,
+    "fileSize": 6500000
+   },
+   "tidyTitle": "The Laws of India",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "THE LAWS OF ENGLAND",
+    "title": "The Laws of India",
+    "parties": null,
+    "foot": [
+     "Vol. 12",
+     "1987"
+    ]
+   },
+   "docMeta": [
+    "THE LAWS OF ENGLAND, vol. 12",
+    "1987"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "# the **Laws** of _India_",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "The Laws of India",
+   "splitTitle": {
+    "name": "The Laws of India",
+    "year": "1987"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "1987",
+    "The Laws of England"
+   ],
+   "captionMetaSized": [
+    "1987",
+    "6.2 MB"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "The Laws of India",
+   "volumeLabel": {
+    "top": "Vol. 12",
+    "bottom": "1987"
+   },
+   "citationLine": "# the **Laws** of _India_ (Court, 1987)"
+  },
+  {
+   "doc": {
+    "id": 31,
+    "category": "books-and-law-reports",
+    "title": "View",
+    "series": "Calcutta Law Journal",
+    "volume": "Vol-02",
+    "year": 1904,
+    "fileSize": 120000000
+   },
+   "tidyTitle": "Calcutta Law Journal, vol. Vol-02",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Calcutta Law Journal",
+    "title": "Calcutta Law Journal, vol. Vol-02",
+    "parties": null,
+    "foot": [
+     "Vol. Vol-02",
+     "1904"
+    ]
+   },
+   "docMeta": [
+    "Calcutta Law Journal, vol. Vol-02",
+    "1904"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "View",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Calcutta Law Journal, vol. Vol-02",
+   "splitTitle": {
+    "name": "Calcutta Law Journal, vol. Vol-02",
+    "year": "1904"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "1904",
+    "Calcutta Law Journal"
+   ],
+   "captionMetaSized": [
+    "1904",
+    "114 MB"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "vol. Vol. 2",
+   "volumeLabel": {
+    "top": "Vol. 2",
+    "bottom": "1904"
+   },
+   "citationLine": "View (Court, 1904)"
+  },
+  {
+   "doc": {
+    "id": 32,
+    "category": "books-and-law-reports",
+    "title": "PDF (6.19 MB)",
+    "year": 1950
+   },
+   "tidyTitle": "Untitled volume, 1950",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Book",
+    "title": "Untitled volume, 1950",
+    "parties": null,
+    "foot": [
+     "1950"
+    ]
+   },
+   "docMeta": [
+    "1950"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Pdf (6.19 Mb)",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Untitled volume, 1950",
+   "splitTitle": {
+    "name": "Untitled volume",
+    "year": "1950"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "1950"
+   ],
+   "captionMetaSized": [
+    "1950"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Untitled volume,",
+   "volumeLabel": null,
+   "citationLine": "Pdf (6.19 Mb) (Court, 1950)"
+  },
+  {
+   "doc": {
+    "id": 33,
+    "category": "books-and-law-reports",
+    "title": "",
+    "reference": "AIR 1950 SC 27"
+   },
+   "tidyTitle": "AIR 1950 SC 27",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Book",
+    "title": "AIR 1950 SC 27",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [],
+   "isTextDoc": false,
+   "caseTitleText": "Untitled judgment",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "AIR 1950 SC 27",
+   "splitTitle": {
+    "name": "AIR 1950 SC 27",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "AIR 1950 SC 27",
+   "volumeTitle": "AIR 1950 SC 27",
+   "volumeLabel": null,
+   "citationLine": "Untitled judgment (Court)"
+  },
+  {
+   "doc": {
+    "id": 34,
+    "category": "books-and-law-reports",
+    "title": "Calcutta Law Journal, Vol-01, Issue no.-615",
+    "series": "Calcutta Law Journal",
+    "volume": "01",
+    "issue": "615",
+    "year": 1905,
+    "fileSize": 2048
+   },
+   "tidyTitle": "Calcutta Law Journal, Vol-01, Issue no.-615",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Calcutta Law Journal",
+    "title": "Calcutta Law Journal, Vol-01, Issue no.-615",
+    "parties": null,
+    "foot": [
+     "Vol. 01",
+     "1905"
+    ]
+   },
+   "docMeta": [
+    "Calcutta Law Journal, vol. 01",
+    "1905"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Calcutta Law Journal, Vol-01, Issue no.-615",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Calcutta Law Journal, Vol-01, Issue no.-615",
+   "splitTitle": {
+    "name": "Calcutta Law Journal, Vol-01, Issue no.-615",
+    "year": "1905"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "1905",
+    "Calcutta Law Journal"
+   ],
+   "captionMetaSized": [
+    "1905",
+    "2 KB"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Vol. 1, Issue 615",
+   "volumeLabel": {
+    "top": "Vol. 1",
+    "bottom": "1905"
+   },
+   "citationLine": "Calcutta Law Journal, Vol-01, Issue no.-615 (Court, 1905)"
+  },
+  {
+   "doc": {
+    "id": 35,
+    "category": "books-and-law-reports",
+    "title": "Accessible_(PDF 1.47MB)",
+    "series": "All India Reporter",
+    "volume": "xxxiv",
+    "year": 1947
+   },
+   "tidyTitle": "All India Reporter, vol. xxxiv",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "All India Reporter",
+    "title": "All India Reporter, vol. xxxiv",
+    "parties": null,
+    "foot": [
+     "Vol. xxxiv",
+     "1947"
+    ]
+   },
+   "docMeta": [
+    "All India Reporter, vol. xxxiv",
+    "1947"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Accessible_(PDF 1.47MB)",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "All India Reporter, vol. xxxiv",
+   "splitTitle": {
+    "name": "All India Reporter, vol. xxxiv",
+    "year": "1947"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "1947",
+    "All India Reporter"
+   ],
+   "captionMetaSized": [
+    "1947"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Vol. XXXIV",
+   "volumeLabel": {
+    "top": "Vol. XXXIV",
+    "bottom": "1947"
+   },
+   "citationLine": "Accessible_(PDF 1.47MB) (Court, 1947)"
+  },
+  {
+   "doc": {
+    "id": 36,
+    "category": "books-and-law-reports",
+    "title": "a3f9b2-1c2d-4e5f",
+    "year": 1960,
+    "dateFromTitle": "1960-04-02"
+   },
+   "tidyTitle": "Untitled volume, 1960",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Book",
+    "title": "Untitled volume, 1960",
+    "parties": null,
+    "foot": [
+     "1960"
+    ]
+   },
+   "docMeta": [
+    "1960"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "a3f9b2-1c2d-4e5f",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Untitled volume, 1960",
+   "splitTitle": {
+    "name": "Untitled volume",
+    "year": "1960"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2 Apr 1960"
+   ],
+   "captionMetaSized": [
+    "2 Apr 1960"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Untitled volume,",
+   "volumeLabel": null,
+   "citationLine": "a3f9b2-1c2d-4e5f (Court, 1960)"
+  },
+  {
+   "doc": {
+    "id": 40,
+    "category": "law-commission-reports",
+    "title": "Accessible_(PDF 0.97MB)",
+    "displayTitle": "Law Commission of India — Report No. 277 (2018)",
+    "reportNo": 277,
+    "year": 2018,
+    "subject": "Wrongful Prosecution"
+   },
+   "tidyTitle": "Law Commission of India — Report No. 277 (2018)",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Report",
+    "title": "Law Commission of India — Report No. 277 (2018)",
+    "parties": null,
+    "foot": [
+     "2018"
+    ]
+   },
+   "docMeta": [
+    "2018"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Accessible_(PDF 0.97MB)",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Law Commission of India — Report No. 277 (2018)",
+   "splitTitle": {
+    "name": "Law Commission of India — Report No. 277 (2018)",
+    "year": "2018"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2018"
+   ],
+   "captionMetaSized": [
+    "2018"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Law Commission of India — Report No. 277",
+   "volumeLabel": {
+    "top": "No. 277",
+    "bottom": "2018"
+   },
+   "citationLine": "Accessible_(PDF 0.97MB) (Court, 2018)"
+  },
+  {
+   "doc": {
+    "id": 41,
+    "category": "law-commission-reports",
+    "title": "",
+    "year": 2010
+   },
+   "tidyTitle": "Law Commission report, 2010",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Report",
+    "title": "Law Commission report, 2010",
+    "parties": null,
+    "foot": [
+     "2010"
+    ]
+   },
+   "docMeta": [
+    "2010"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Untitled judgment",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Law Commission report, 2010",
+   "splitTitle": {
+    "name": "Law Commission report",
+    "year": "2010"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2010"
+   ],
+   "captionMetaSized": [
+    "2010"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Law Commission report,",
+   "volumeLabel": null,
+   "citationLine": "Untitled judgment (Court, 2010)"
+  },
+  {
+   "doc": {
+    "id": 42,
+    "category": "regulator-orders",
+    "title": "( 4) Do PT, Rules for the conduct",
+    "publisher": "SEBI",
+    "kind": "adjudication",
+    "reference": "WTM/AB/123",
+    "decidedOn": "2025-11-04",
+    "year": 2025
+   },
+   "tidyTitle": "Do PT, Rules for the conduct",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Order",
+    "title": "Do PT, Rules for the conduct",
+    "parties": null,
+    "foot": [
+     "2025"
+    ]
+   },
+   "docMeta": [
+    "2025"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "( 4) Do PT, Rules for the conduct",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Do PT, Rules for the conduct",
+   "splitTitle": {
+    "name": "Do PT, Rules for the conduct",
+    "year": "2025"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "4 Nov 2025"
+   ],
+   "captionMetaSized": [
+    "4 Nov 2025"
+   ],
+   "referenceLine": "WTM/AB/123 · 4 Nov 2025",
+   "volumeTitle": "Do PT, Rules for the conduct",
+   "volumeLabel": null,
+   "citationLine": "( 4) Do PT, Rules for the conduct (Court, 4 Nov 2025)"
+  },
+  {
+   "doc": {
+    "id": 43,
+    "category": "regulator-orders",
+    "title": "\"Master Circular on KYC",
+    "publisher": "RBI",
+    "displayRef": "RBI/DOR/2025-26/232",
+    "year": 2025,
+    "jurisdiction": "Central"
+   },
+   "tidyTitle": "Master Circular on KYC",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Order",
+    "title": "Master Circular on KYC",
+    "parties": null,
+    "foot": [
+     "2025"
+    ]
+   },
+   "docMeta": [
+    "Central",
+    "2025"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "\"Master Circular on KYC",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Master Circular on KYC",
+   "splitTitle": {
+    "name": "Master Circular on KYC",
+    "year": "2025"
+   },
+   "isRepealed": false,
+   "actKicker": "Bare Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "Central",
+    "label": "Central",
+    "short": "Central",
+    "central": true
+   },
+   "copySource": "India Code",
+   "actCloth": "#6E1F2A",
+   "captionMeta": [
+    "2025"
+   ],
+   "captionMetaSized": [
+    "2025"
+   ],
+   "referenceLine": "RBI/DOR/2025-26/232",
+   "volumeTitle": "Master Circular on KYC",
+   "volumeLabel": null,
+   "citationLine": "\"Master Circular on KYC (Court, 2025)"
+  },
+  {
+   "doc": {
+    "id": 44,
+    "category": "tribunals",
+    "title": "Bharti Airtel Ltd. vs. Union of India",
+    "publisher": "TDSAT",
+    "decidedOn": "2024-07-15",
+    "courtLabel": "TDSAT"
+   },
+   "tidyTitle": "Bharti Airtel Ltd. vs. Union of India",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "TDSAT",
+    "title": null,
+    "parties": [
+     "Bharti Airtel Ltd.",
+     "Union of India"
+    ],
+    "foot": [
+     "15 Jul 2024"
+    ]
+   },
+   "docMeta": [
+    "TDSAT",
+    "15 Jul 2024"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Bharti Airtel Ltd. v. Union of India",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Bharti Airtel Ltd. vs. Union of India",
+   "splitTitle": {
+    "name": "Bharti Airtel Ltd. vs. Union of India",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "15 Jul 2024"
+   ],
+   "captionMetaSized": [
+    "15 Jul 2024"
+   ],
+   "referenceLine": "15 Jul 2024",
+   "volumeTitle": "Bharti Airtel Ltd. vs. Union of India",
+   "volumeLabel": null,
+   "citationLine": "Bharti Airtel Ltd. v. Union of India (TDSAT, 15 Jul 2024)"
+  },
+  {
+   "doc": {
+    "id": 45,
+    "category": "tribunals",
+    "title": "Annual Report",
+    "publisher": "NHRC",
+    "year": 2021
+   },
+   "tidyTitle": "Annual Report",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Tribunal",
+    "title": "Annual Report",
+    "parties": null,
+    "foot": [
+     "2021"
+    ]
+   },
+   "docMeta": [
+    "2021"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Annual Report",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Annual Report",
+   "splitTitle": {
+    "name": "Annual Report",
+    "year": "2021"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2021"
+   ],
+   "captionMetaSized": [
+    "2021"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Annual Report",
+   "volumeLabel": null,
+   "citationLine": "Annual Report (Court, 2021)"
+  },
+  {
+   "doc": {
+    "id": 46,
+    "category": "professional-institutes",
+    "title": "standards on auditing",
+    "publisher": "ICAI",
+    "year": 2016
+   },
+   "tidyTitle": "Standards on auditing",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Institute",
+    "title": "Standards on auditing",
+    "parties": null,
+    "foot": [
+     "2016"
+    ]
+   },
+   "docMeta": [
+    "2016"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "standards on auditing",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Standards on auditing",
+   "splitTitle": {
+    "name": "Standards on auditing",
+    "year": "2016"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2016"
+   ],
+   "captionMetaSized": [
+    "2016"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Standards on auditing",
+   "volumeLabel": null,
+   "citationLine": "standards on auditing (Court, 2016)"
+  },
+  {
+   "doc": {
+    "id": 47,
+    "category": "parliament-prs",
+    "title": "THE DIGITAL PERSONAL DATA PROTECTION BILL, 2023",
+    "kind": "act",
+    "year": 2023,
+    "genericTitle": true
+   },
+   "tidyTitle": "The Digital Personal Data Protection Bill, 2023",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Parliament",
+    "title": "The Digital Personal Data Protection Bill, 2023",
+    "parties": null,
+    "foot": [
+     "2023"
+    ]
+   },
+   "docMeta": [
+    "2023"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "The Digital Personal Data Protection Bill, 2023",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "The Digital Personal Data Protection Bill, 2023",
+   "splitTitle": {
+    "name": "The Digital Personal Data Protection Bill",
+    "year": "2023"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2023"
+   ],
+   "captionMetaSized": [
+    "2023"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "The Digital Personal Data Protection Bill,",
+   "volumeLabel": null,
+   "citationLine": "The Digital Personal Data Protection Bill, 2023 (Court, 2023)"
+  },
+  {
+   "doc": {
+    "id": 48,
+    "category": "legal-aid-nalsa",
+    "title": "NALSA (Legal Services to the Mentally Ill) Scheme, 2015",
+    "year": 2015
+   },
+   "tidyTitle": "NALSA (Legal Services to the Mentally Ill) Scheme, 2015",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Legal aid",
+    "title": "NALSA (Legal Services to the Mentally Ill) Scheme, 2015",
+    "parties": null,
+    "foot": [
+     "2015"
+    ]
+   },
+   "docMeta": [
+    "2015"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "NALSA (Legal Services to the Mentally Ill) Scheme, 2015",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "NALSA (Legal Services to the Mentally Ill) Scheme, 2015",
+   "splitTitle": {
+    "name": "NALSA (Legal Services to the Mentally Ill) Scheme",
+    "year": "2015"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2015"
+   ],
+   "captionMetaSized": [
+    "2015"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "NALSA (Legal Services to the Mentally Ill) Scheme,",
+   "volumeLabel": null,
+   "citationLine": "NALSA (Legal Services to the Mentally Ill) Scheme, 2015 (Court, 2015)"
+  },
+  {
+   "doc": {
+    "id": 49,
+    "category": "unknown-category",
+    "title": "",
+    "year": 2000
+   },
+   "tidyTitle": "Untitled document, 2000",
+   "isUntitled": true,
+   "coverFields": {
+    "kicker": "Document",
+    "title": "Untitled document, 2000",
+    "parties": null,
+    "foot": [
+     "2000"
+    ]
+   },
+   "docMeta": [
+    "2000"
+   ],
+   "isTextDoc": false,
+   "caseTitleText": "Untitled judgment",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Untitled document, 2000",
+   "splitTitle": {
+    "name": "Untitled document",
+    "year": "2000"
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [
+    "2000"
+   ],
+   "captionMetaSized": [
+    "2000"
+   ],
+   "referenceLine": "",
+   "volumeTitle": "Untitled document,",
+   "volumeLabel": null,
+   "citationLine": "Untitled judgment (Court, 2000)"
+  },
+  {
+   "doc": {
+    "id": 50,
+    "category": "case-law",
+    "title": "Text judgment",
+    "render": "text",
+    "ext": ".txt"
+   },
+   "tidyTitle": "Text judgment",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Judgment",
+    "title": "Text judgment",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [],
+   "isTextDoc": true,
+   "caseTitleText": "Text judgment",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Text judgment",
+   "splitTitle": {
+    "name": "Text judgment",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "Text judgment",
+   "volumeLabel": null,
+   "citationLine": "Text judgment (Court)"
+  },
+  {
+   "doc": {
+    "id": 51,
+    "category": "case-law",
+    "title": "Html judgment",
+    "render": "html",
+    "ext": ".html"
+   },
+   "tidyTitle": "Html judgment",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Judgment",
+    "title": "Html judgment",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [],
+   "isTextDoc": true,
+   "caseTitleText": "Html judgment",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "Html judgment",
+   "splitTitle": {
+    "name": "Html judgment",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "Html judgment",
+   "volumeLabel": null,
+   "citationLine": "Html judgment (Court)"
+  },
+  {
+   "doc": {
+    "id": 52,
+    "category": "books-and-law-reports",
+    "title": "A pdf",
+    "render": "pdf",
+    "ext": ".pdf",
+    "cover": "none"
+   },
+   "tidyTitle": "A pdf",
+   "isUntitled": false,
+   "coverFields": {
+    "kicker": "Book",
+    "title": "A pdf",
+    "parties": null,
+    "foot": []
+   },
+   "docMeta": [],
+   "isTextDoc": false,
+   "caseTitleText": "A pdf",
+   "caseNumberText": "",
+   "court": null,
+   "actTitle": "A pdf",
+   "splitTitle": {
+    "name": "A pdf",
+    "year": ""
+   },
+   "isRepealed": false,
+   "actKicker": "Act",
+   "actTabLabel": "The Act",
+   "jurisdiction": {
+    "value": "none",
+    "label": "Unspecified",
+    "short": "",
+    "central": false
+   },
+   "copySource": "India Code, 2026 scrape",
+   "actCloth": "#3A3F5C",
+   "captionMeta": [],
+   "captionMetaSized": [],
+   "referenceLine": "",
+   "volumeTitle": "A pdf",
+   "volumeLabel": null,
+   "citationLine": "A pdf (Court)"
+  }
+ ],
+ "parties": [
+  {
+   "name": "MS Anand Stores",
+   "text": "M/s Anand Stores"
+  },
+  {
+   "name": "MSHindustan Engineering",
+   "text": "M/s Hindustan Engineering"
+  },
+  {
+   "name": "M/S Bharat Traders",
+   "text": "M/s Bharat Traders"
+  },
+  {
+   "name": "DrPercy Mistry",
+   "text": "Dr Percy Mistry"
+  },
+  {
+   "name": "MrMohana Rao",
+   "text": "Mr Mohana Rao"
+  },
+  {
+   "name": "Kamalakar SO Keshav",
+   "text": "Kamalakar s/o Keshav"
+  },
+  {
+   "name": "VKasi",
+   "text": "V. Kasi"
+  },
+  {
+   "name": "SMKarthikeyan",
+   "text": "S.M. Karthikeyan"
+  },
+  {
+   "name": "PSundararama Iyer",
+   "text": "P. Sundararama Iyer"
+  },
+  {
+   "name": "STATE OF KARNATAKA",
+   "text": "State of Karnataka"
+  },
+  {
+   "name": "State Of Karnataka",
+   "text": "State of Karnataka"
+  },
+  {
+   "name": "The State Of Maharashtra Through The",
+   "text": "The State of Maharashtra…"
+  },
+  {
+   "name": "Union of India &",
+   "text": "Union of India…"
+  },
+  {
+   "name": "ABC Corporation and",
+   "text": "ABC Corporation…"
+  },
+  {
+   "name": "Ram Kumar vs.",
+   "text": "Ram Kumar…"
+  },
+  {
+   "name": "  spaced   name  ",
+   "text": "spaced name"
+  },
+  {
+   "name": "",
+   "text": ""
+  },
+  {
+   "name": "UNION OF INDIA AND OTHERS",
+   "text": "Union of India and Others"
+  },
+  {
+   "name": "Smt Kamla Devi",
+   "text": "Smt Kamla Devi"
+  },
+  {
+   "name": "X Y",
+   "text": "X Y"
+  }
+ ],
+ "caseNumbers": [
+  {
+   "header": {
+    "caseType": "W.P.(MD)",
+    "caseNumber": "1234 of 2019"
+   },
+   "text": "W.P.(MD) No. 1234 of 2019"
+  },
+  {
+   "header": {
+    "caseType": "Civil Appeal",
+    "caseNumber": "No. 7710 of 2012"
+   },
+   "text": "Civil Appeal No. 7710 of 2012"
+  },
+  {
+   "header": {
+    "caseType": "Arising out of S.L.P. (C)",
+    "caseNumber": "4629 of 2008"
+   },
+   "text": "Arising out of S.L.P. (C) No. 4629 of 2008"
+  },
+  {
+   "header": {
+    "caseType": "Pune Cyber Police Station Pune City with FIR No.",
+    "caseNumber": "12"
+   },
+   "text": "No. 12"
+  },
+  {
+   "header": {
+    "caseType": "",
+    "caseNumber": "55"
+   },
+   "text": "No. 55"
+  },
+  {
+   "header": {
+    "caseType": "Crl.A.",
+    "caseNumber": ""
+   },
+   "text": "Crl.A."
+  },
+  {
+   "header": {
+    "caseType": "Appeal in",
+    "caseNumber": "3 of 1999"
+   },
+   "text": "Appeal in No. 3 of 1999"
+  },
+  {
+   "header": {},
+   "text": ""
+  }
+ ],
+ "days": [
+  {
+   "iso": "1979-05-04",
+   "text": "4 May 1979"
+  },
+  {
+   "iso": "2026-12-17",
+   "text": "17 Dec 2026"
+  },
+  {
+   "iso": "2012-10-31T00:00:00Z",
+   "text": "31 Oct 2012"
+  },
+  {
+   "iso": "not a date",
+   "text": "not a date"
+  },
+  {
+   "iso": "",
+   "text": ""
+  },
+  {
+   "iso": "2001-13-01",
+   "text": "1  2001"
+  }
+ ],
+ "counts": [
+  {
+   "n": 0,
+   "text": "0"
+  },
+  {
+   "n": 7,
+   "text": "7"
+  },
+  {
+   "n": 1000,
+   "text": "1,000"
+  },
+  {
+   "n": 271480,
+   "text": "2,71,480"
+  },
+  {
+   "n": 12345678,
+   "text": "1,23,45,678"
+  },
+  {
+   "n": -4500,
+   "text": "-4,500"
+  },
+  {
+   "n": 3.5,
+   "text": "3.5"
+  }
+ ],
+ "countParts": [
+  {
+   "tabCounts": {
+    "rules": 9,
+    "amendments": 25,
+    "editions": 2,
+    "related": 1,
+    "act": 1
+   },
+   "first": null,
+   "withEditions": false,
+   "parts": [
+    "9 rules",
+    "25 amendments"
+   ]
+  },
+  {
+   "tabCounts": {
+    "rules": 9,
+    "amendments": 25,
+    "editions": 2,
+    "related": 1,
+    "act": 1
+   },
+   "first": "amendments",
+   "withEditions": true,
+   "parts": [
+    "25 amendments",
+    "9 rules",
+    "2 other editions",
+    "1 related Act"
+   ]
+  },
+  {
+   "tabCounts": {
+    "notifications": 1,
+    "rules": 1,
+    "regulations": 3
+   },
+   "first": null,
+   "withEditions": false,
+   "parts": [
+    "1 rule",
+    "3 regulations",
+    "1 notification"
+   ]
+  },
+  {
+   "tabCounts": {
+    "notifications": 1,
+    "rules": 1,
+    "regulations": 3
+   },
+   "first": "amendments",
+   "withEditions": true,
+   "parts": [
+    "1 rule",
+    "3 regulations",
+    "1 notification"
+   ]
+  },
+  {
+   "tabCounts": {
+    "schemes": 2,
+    "orders": 1000
+   },
+   "first": null,
+   "withEditions": false,
+   "parts": [
+    "1,000 orders",
+    "2 schemes"
+   ]
+  },
+  {
+   "tabCounts": {
+    "schemes": 2,
+    "orders": 1000
+   },
+   "first": "amendments",
+   "withEditions": true,
+   "parts": [
+    "1,000 orders",
+    "2 schemes"
+   ]
+  },
+  {
+   "tabCounts": {},
+   "first": null,
+   "withEditions": false,
+   "parts": []
+  },
+  {
+   "tabCounts": {},
+   "first": "amendments",
+   "withEditions": true,
+   "parts": []
+  }
+ ],
+ "sizes": [
+  {
+   "bytes": 0,
+   "act": "",
+   "book": ""
+  },
+  {
+   "bytes": 500,
+   "act": "1 KB",
+   "book": "1 KB"
+  },
+  {
+   "bytes": 1024,
+   "act": "1 KB",
+   "book": "1 KB"
+  },
+  {
+   "bytes": 921600,
+   "act": "900 KB",
+   "book": "900 KB"
+  },
+  {
+   "bytes": 1048576,
+   "act": "1.0 MB",
+   "book": "1.0 MB"
+  },
+  {
+   "bytes": 5767168,
+   "act": "5.5 MB",
+   "book": "5.5 MB"
+  },
+  {
+   "bytes": 12582912,
+   "act": "12 MB",
+   "book": "12.0 MB"
+  },
+  {
+   "bytes": 157286400,
+   "act": "150 MB",
+   "book": "150 MB"
+  },
+  {
+   "bytes": 2684354560,
+   "act": "2560 MB",
+   "book": "2.5 GB"
+  }
+ ],
+ "series": [
+  {
+   "name": "THE LAWS OF ENGLAND",
+   "text": "The Laws of England"
+  },
+  {
+   "name": "All India Reporter",
+   "text": "All India Reporter"
+  },
+  {
+   "name": "SCC",
+   "text": "SCC"
+  },
+  {
+   "name": "MADRAS LAW JOURNAL",
+   "text": "Madras Law Journal"
+  },
+  {
+   "name": "INDIAN LAW REPORTS OF THE ALLAHABAD SERIES",
+   "text": "Indian Law Reports of the Allahabad Series"
+  }
+ ],
+ "decades": {
+  "docs": [
+   {
+    "id": 1,
+    "year": 1805,
+    "volume": "1"
+   },
+   {
+    "id": 2,
+    "year": 1812,
+    "volume": "2"
+   },
+   {
+    "id": 3,
+    "year": 1819,
+    "volume": "3"
+   },
+   {
+    "id": 4,
+    "year": 1951,
+    "volume": "4"
+   },
+   {
+    "id": 5,
+    "year": 1952,
+    "volume": "5"
+   },
+   {
+    "id": 6,
+    "year": 1953,
+    "volume": "6"
+   },
+   {
+    "id": 7,
+    "year": 1954,
+    "volume": "7"
+   },
+   {
+    "id": 8,
+    "year": 1955,
+    "volume": "8"
+   },
+   {
+    "id": 9,
+    "year": 1961,
+    "volume": "9"
+   },
+   {
+    "id": 10,
+    "volume": "10"
+   },
+   {
+    "id": 11,
+    "year": 1962,
+    "volume": "11"
+   },
+   {
+    "id": 12,
+    "year": 1963,
+    "volume": "xii"
+   }
+  ],
+  "groups": [
+   {
+    "key": "1800",
+    "label": "1805–1955",
+    "ids": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8
+    ]
+   },
+   {
+    "key": "1960",
+    "label": "1960s",
+    "ids": [
+     9,
+     11,
+     12
+    ]
+   },
+   {
+    "key": "undated",
+    "label": "Undated volumes",
+    "ids": [
+     10
+    ]
+   }
+  ]
+ },
+ "latest": [
+  {
+   "docs": [
+    {
+     "id": 1,
+     "year": 2001
+    },
+    {
+     "id": 2,
+     "year": 2019
+    },
+    {
+     "id": 3,
+     "year": 2005
+    }
+   ],
+   "latest": 2
+  },
+  {
+   "docs": [
+    {
+     "id": 1,
+     "year": 2019
+    },
+    {
+     "id": 2,
+     "year": 2019
+    }
+   ],
+   "latest": null
+  },
+  {
+   "docs": [
+    {
+     "id": 1,
+     "year": 2019
+    }
+   ],
+   "latest": null
+  },
+  {
+   "docs": [
+    {
+     "id": 1
+    },
+    {
+     "id": 2
+    }
+   ],
+   "latest": null
+  }
+ ],
+ "plain": {
+  "text": "Title: Seethamma vs State\nCourt: Supreme Court\n==========\n[Cites 3 , Cited by 12]\n\nIN THE SUPREME COURT OF INDIA\nCIVIL APPELLATE JURISDICTION\n\n1. This appeal is by the\nplaintiff against the court's order.\n\n2. The court below held that the\nCourt   had no jurisdiction.\n\n2. A second opinion restarts at two.\n\n10. Held: the appeal is allowed by the Court.\n",
+  "paragraphs": [
+   "IN THE SUPREME COURT OF INDIA CIVIL APPELLATE JURISDICTION",
+   "1. This appeal is by the plaintiff against the court's order.",
+   "2. The court below held that the Court had no jurisdiction.",
+   "2. A second opinion restarts at two.",
+   "10. Held: the appeal is allowed by the Court."
+  ],
+  "blocks": [
+   {
+    "type": "para",
+    "text": "IN THE SUPREME COURT OF INDIA CIVIL APPELLATE JURISDICTION",
+    "id": "b-0"
+   },
+   {
+    "type": "para",
+    "n": "1",
+    "text": "This appeal is by the plaintiff against the court's order.",
+    "id": "para-1"
+   },
+   {
+    "type": "para",
+    "n": "2",
+    "text": "The court below held that the Court had no jurisdiction.",
+    "id": "para-2"
+   },
+   {
+    "type": "para",
+    "text": "2. A second opinion restarts at two.",
+    "id": "b-3"
+   },
+   {
+    "type": "para",
+    "n": "10",
+    "text": "Held: the appeal is allowed by the Court.",
+    "id": "para-10"
+   }
+  ],
+  "find": [
+   {
+    "query": "court",
+    "hits": [
+     [
+      0,
+      15,
+      20
+     ],
+     [
+      1,
+      44,
+      49
+     ],
+     [
+      2,
+      4,
+      9
+     ],
+     [
+      2,
+      30,
+      35
+     ],
+     [
+      4,
+      35,
+      40
+     ]
+    ]
+   },
+   {
+    "query": "Court",
+    "hits": [
+     [
+      0,
+      15,
+      20
+     ],
+     [
+      1,
+      44,
+      49
+     ],
+     [
+      2,
+      4,
+      9
+     ],
+     [
+      2,
+      30,
+      35
+     ],
+     [
+      4,
+      35,
+      40
+     ]
+    ]
+   },
+   {
+    "query": "c",
+    "hits": []
+   },
+   {
+    "query": "the appeal",
+    "hits": [
+     [
+      4,
+      6,
+      16
+     ]
+    ]
+   },
+   {
+    "query": "\"held\"",
+    "hits": [
+     [
+      2,
+      16,
+      20
+     ],
+     [
+      4,
+      0,
+      4
+     ]
+    ]
+   },
+   {
+    "query": "nothing here",
+    "hits": []
+   },
+   {
+    "query": " court ",
+    "hits": [
+     [
+      0,
+      15,
+      20
+     ],
+     [
+      1,
+      44,
+      49
+     ],
+     [
+      2,
+      4,
+      9
+     ],
+     [
+      2,
+      30,
+      35
+     ],
+     [
+      4,
+      35,
+      40
+     ]
+    ]
+   }
+  ],
+  "paras": [
+   {
+    "n": "2",
+    "index": 2
+   },
+   {
+    "n": "3",
+    "index": 4
+   },
+   {
+    "n": "10",
+    "index": 4
+   },
+   {
+    "n": "11",
+    "index": -1
+   },
+   {
+    "n": "x",
+    "index": -1
+   },
+   {
+    "n": "",
+    "index": -1
+   }
+  ]
+ },
+ "hasFilters": [
+  {
+   "key": "rules",
+   "label": "Rules"
+  },
+  {
+   "key": "regulations",
+   "label": "Regulations"
+  },
+  {
+   "key": "notifications",
+   "label": "Notifications"
+  },
+  {
+   "key": "amendments",
+   "label": "Amendments"
+  },
+  {
+   "key": "orders",
+   "label": "Orders"
+  },
+  {
+   "key": "schemes",
+   "label": "Schemes"
+  }
+ ],
+ "tabOrder": [
+  "act",
+  "rules",
+  "regulations",
+  "notifications",
+  "orders",
+  "ordinances",
+  "schemes",
+  "bills",
+  "circulars",
+  "amendments",
+  "editions",
+  "related"
+ ],
+ "courtOrder": [
+  "supremecourt",
+  "scorders",
+  "allahabad",
+  "bombay",
+  "kolkata",
+  "delhi",
+  "karnataka",
+  "chennai"
+ ]
+}

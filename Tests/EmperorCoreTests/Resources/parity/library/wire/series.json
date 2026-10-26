@@ -1,0 +1,40 @@
+{
+ "success": true,
+ "category": "books-and-law-reports",
+ "label": "Books and law reports",
+ "day": 20261027,
+ "seriesTotal": 41,
+ "shelves": [
+  {
+   "series": "All India Reporter",
+   "count": 40,
+   "yearMin": 1914,
+   "yearMax": 1990,
+   "items": [
+    {
+     "id": 31,
+     "title": "AIR 1950",
+     "category": "books-and-law-reports",
+     "series": "All India Reporter",
+     "volume": "37",
+     "year": 1950,
+     "ext": ".pdf",
+     "render": "pdf"
+    }
+   ]
+  }
+ ],
+ "standalone": {
+  "count": 800,
+  "items": [
+   {
+    "id": 32,
+    "title": "A treatise",
+    "category": "books-and-law-reports",
+    "ext": ".pdf",
+    "render": "pdf",
+    "cover": "none"
+   }
+  ]
+ }
+}
