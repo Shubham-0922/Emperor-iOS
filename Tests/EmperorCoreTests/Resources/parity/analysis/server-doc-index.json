@@ -1,0 +1,147 @@
+{
+ "label": "Suit bundle: Helios Renewables v. Northgrid Power",
+ "rationale": "This is a suit file, so the table shows annexure numbers, the amount claimed in each paper, and the defendant's arguments that will be used against the plaintiff. The money claimed is highlighted to track discrepancies.",
+ "filterKey": "type",
+ "filterLabel": "Type",
+ "flag": {
+  "key": "issues",
+  "nonEmpty": true,
+  "label": "with an issue to watch"
+ },
+ "columns": [
+  {
+   "key": "sr",
+   "label": "Sr.",
+   "type": "number",
+   "width": 70,
+   "description": "Serial number.",
+   "pin": true
+  },
+  {
+   "key": "doc",
+   "label": "Document",
+   "type": "text",
+   "width": 220,
+   "description": "The paper, as the case calls it.",
+   "pin": true,
+   "strong": true
+  },
+  {
+   "key": "type",
+   "label": "Type",
+   "type": "badge",
+   "width": 140,
+   "description": "What kind of paper it is.",
+   "tones": {
+    "Pleading": "accent",
+    "Contract": "info",
+    "Notice": "warn",
+    "Reply": "danger"
+   }
+  },
+  {
+   "key": "date",
+   "label": "Date",
+   "type": "date",
+   "width": 120,
+   "description": "Date on the paper."
+  },
+  {
+   "key": "pages",
+   "label": "Pages",
+   "type": "pages",
+   "width": 86,
+   "description": "Page count.",
+   "total": true
+  },
+  {
+   "key": "annexure",
+   "label": "Annexure",
+   "type": "text",
+   "width": 220,
+   "description": "Annexure number as per plaint's list of documents."
+  },
+  {
+   "key": "where",
+   "label": "In file",
+   "type": "link",
+   "width": 190,
+   "description": "Location of the paper in the provided files."
+  },
+  {
+   "key": "about",
+   "label": "What it says",
+   "type": "long",
+   "width": 340,
+   "description": "Two-line summary with key facts."
+  },
+  {
+   "key": "amount",
+   "label": "Amount claimed",
+   "type": "amount",
+   "width": 150,
+   "description": "Monetary claim in rupees, if any."
+  },
+  {
+   "key": "issues",
+   "label": "Issues to watch",
+   "type": "long",
+   "width": 340,
+   "description": "Gaps, mismatches, or defendant's arguments that may be used against the plaintiff."
+  }
+ ],
+ "rows": [
+  {
+   "id": "r1",
+   "sr": 1,
+   "doc": "Plaint (CS(COMM) 412/2025)",
+   "type": "Pleading",
+   "date": "2025-03-06",
+   "pages": 4,
+   "annexure": null,
+   "where": "Plaint_CS-COMM-412-2025.txt, pp. 1-4",
+   "about": "Suit for recovery of ₹4,82,00,000 (principal ₹3,74,00,000 plus interest ₹1,08,00,000). Claims ten unpaid invoices from April 2023 to Jan 2024, illegal termination, and lapse of letter of credit. (Plaint ¶¶6,13, p.2-3)",
+   "amount": 48200000,
+   "issues": "Defendant's reply (Annexure P-7) denies liability: disputes invoices for Oct-Dec 2023 due to lack of joint meter readings (Reply ¶2), claims outage in Aug 2023 (Reply ¶3), and invokes arbitration clause 22 (Reply ¶6). Also, plaint claims ₹3,74,00,000 principal but legal notice (P-6) claimed ₹3,68,40,000 – discrepancy not explained. (Plaint ¶6 vs Notice ¶3). Annexures P-2 to P-5 and P-8 are not provided in this bundle."
+  },
+  {
+   "id": "r2",
+   "sr": 2,
+   "doc": "Power Purchase Agreement dated 14.08.2021 (excerpt)",
+   "type": "Contract",
+   "date": "2021-08-14",
+   "pages": 4,
+   "annexure": "P-1 (per Plaint p.1 ¶3)",
+   "where": "Power_Purchase_Agreement_2021_excerpt.txt, pp. 1-4",
+   "about": "Key clauses: billing based on joint meter reading (cl.9.1), 30-day payment term (cl.9.2), dispute notice within 15 days (cl.9.4), late payment surcharge 1% per month (cl.9.6), letter of credit of ₹6 crore (cl.14), force majeure does not excuse payment for energy supplied (cl.18.5), arbitration clause (cl.22).",
+   "amount": null,
+   "issues": "Defendant relies on change in law and force majeure to justify termination (Reply ¶4-5). PPA cl.18.5 says force majeure does not excuse payment for energy already supplied. Also, cl.9.3 provides that if JMR not signed within 7 days, SLDC reading is final – defendant's argument about lack of JMR may be countered. (PPA cl.9.3, cl.18.5)"
+  },
+  {
+   "id": "r3",
+   "sr": 3,
+   "doc": "Legal notice dated 02.02.2024",
+   "type": "Notice",
+   "date": "2024-02-02",
+   "pages": 1,
+   "annexure": "P-6 (per Plaint p.3 ¶11)",
+   "where": "Legal_notice_and_reply.txt, p. 1",
+   "about": "Demands payment of ₹3,68,40,000 as outstanding principal for invoices April 2023 to Dec 2023 and part-month Jan 2024, plus late payment surcharge at 1% per month. Also notes lapse of letter of credit and disputes termination. (Notice ¶¶3-5)",
+   "amount": 36840000,
+   "issues": "Amount claimed (₹3,68,40,000) differs from plaint's principal of ₹3,74,00,000. Notice mentions invoices up to 09.01.2024, plaint says ten invoices aggregating ₹3,74,00,000. Discrepancy may be used by defendant. (Notice ¶3 vs Plaint ¶6)"
+  },
+  {
+   "id": "r4",
+   "sr": 4,
+   "doc": "Reply to legal notice dated 21.02.2024",
+   "type": "Reply",
+   "date": "2024-02-21",
+   "pages": 2,
+   "annexure": "P-7 (per Plaint p.3 ¶11)",
+   "where": "Legal_notice_and_reply.txt, pp. 2-3",
+   "about": "Denies liability. Disputes invoices for Oct-Dec 2023 because meter readings were not jointly signed (Reply ¶2). Claims plant outage in Aug 2023 (Reply ¶3). Invokes arbitration clause 22 and calls for discussions (Reply ¶6). Also cites change in law and force majeure for termination (Reply ¶4-5).",
+   "amount": null,
+   "issues": "Defendant's key arguments: (a) invoices not payable due to lack of joint meter readings (Reply ¶2); (b) outage period billed incorrectly (Reply ¶3); (c) termination valid due to change in law/force majeure (Reply ¶4-5); (d) disputes must go to arbitration, suit not maintainable (Reply ¶6). These will be used against us."
+  }
+ ]
+}
