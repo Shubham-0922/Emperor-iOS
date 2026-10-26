@@ -63,7 +63,7 @@ struct WebPlans: Equatable, Sendable {
              .matterLimit, .scanLimit:
             return true
         case .accountSuspended, .rateLimit, .providerAccount, .emailUnverified, .accountExists,
-             .invalidCode:
+             .invalidCode, .noAccount, .reauthenticate, .badPhone:
             return false
         }
     }
