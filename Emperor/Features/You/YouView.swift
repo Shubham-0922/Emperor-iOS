@@ -123,6 +123,12 @@ struct YouView: View {
                         IconRowLabel(title: Disclaimer.title, systemImage: "exclamationmark.shield")
                     }
                     .accessibilityIdentifier("settings-disclaimer")
+                    NavigationLink {
+                        SupportFeedbackView()
+                    } label: {
+                        IconRowLabel(title: "Send feedback", systemImage: "bubble.left.and.exclamationmark.bubble.right")
+                    }
+                    .accessibilityIdentifier("settings-support-feedback")
                 } header: {
                     SectionHeader(title: "More")
                 } footer: {
