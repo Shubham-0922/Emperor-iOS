@@ -76,5 +76,7 @@ struct MatterPeopleSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // A container, so the row carries its identifier and each link stays its own control.
+        .accessibilityElement(children: .contain)
     }
 }

@@ -19,7 +19,7 @@ final class MattersUITests: XCTestCase {
         let docket = app.descendants(matching: .any).matching(identifier: "case-row-case1").firstMatch
         XCTAssertTrue(docket.waitForExistence(timeout: 10), "the tracked cases are gone")
         XCTAssertLessThan(matter.frame.minY, docket.frame.minY, "the matters are not above the tracked cases")
-        XCTAssertTrue(app.staticTexts["Tracked cases"].firstMatch.exists, "the tracked cases are not headed")
+        XCTAssertTrue(app.labelled("Tracked cases").exists, "the tracked cases are not headed")
         XCTAssertFalse(app.matterRow("prj-old").exists, "an archived matter is shown under Active")
     }
 
@@ -31,7 +31,7 @@ final class MattersUITests: XCTestCase {
         let status = app.buttons["matters-status"].firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 5), "there is no status menu")
         status.tap()
-        let archived = app.buttons["Archived · 1"].firstMatch
+        let archived = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Archived")).firstMatch
         XCTAssertTrue(archived.waitForExistence(timeout: 5), "the status menu has no Archived")
         archived.tap()
 
@@ -74,7 +74,7 @@ final class MattersUITests: XCTestCase {
     func testAMissingMatterSaysSo() {
         let app = XCUIApplication.launchedSignedIn()
         app.openMatter("prj-gone")
-        XCTAssertTrue(app.staticTexts["Matter not found"].firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(app.labelled("Matter not found").waitForExistence(timeout: 10),
                       "a matter the server does not have did not say so")
     }
 }
@@ -100,6 +100,11 @@ extension XCUIApplication {
     /// Anything, by its identifier.
     func matterElement(_ id: String) -> XCUIElement {
         descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
+    /// Anything whose words include `text` — matched on the label, as a combined row reads.
+    func labelled(_ text: String) -> XCUIElement {
+        descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
     /// All matters, then the matter's workspace.
