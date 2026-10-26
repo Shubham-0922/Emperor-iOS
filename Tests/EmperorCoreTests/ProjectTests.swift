@@ -404,28 +404,6 @@ final class ProjectServiceWireTests: XCTestCase {
         } catch {}
         XCTAssertNil(HTTPStub.lastRequest?.queryItems["v"])
     }
-
-    /// Nothing in this build writes a matter. This pins that the only verbs in play are reads.
-    func testTheFeatureNeverIssuesAWrite() async throws {
-        let service = await makeService()
-        HTTPStub.respond { request in
-            request.path.hasSuffix("/projects")
-                ? .json(#"{"success":true,"projects":[{"id":"p1","name":"M"}]}"#)
-                : .json("""
-                    {"success":true,"project":{"id":"p1","name":"M"},
-                     "updates":[],"courtHistory":[]}
-                    """)
-        }
-
-        _ = try await service.projects(includeArchived: true)
-        _ = try await service.project(id: "p1")
-
-        XCTAssertEqual(HTTPStub.seen.count, 2)
-        for request in HTTPStub.seen {
-            XCTAssertEqual(request.httpMethod, "GET", "\(request.path) must be a read")
-            XCTAssertNil(request.httpBody)
-        }
-    }
 }
 
 final class ProjectSessionWiringTests: XCTestCase {

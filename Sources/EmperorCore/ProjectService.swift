@@ -73,10 +73,9 @@ struct ProjectDetail: Equatable, Sendable {
 
 /// `GET /projects`, `GET /project` and `GET /project-banner` — the user's matters.
 ///
-/// ## Reads only, in this build
+/// ## Reads only
 ///
-/// The matter screens here show what the web keeps; nothing on them writes yet. The writes land
-/// with the matter forms, each behind the web's own validation (`MatterRules`).
+/// The writes are `ProjectWriteService`'s, each behind the web's own validation (`MatterRules`).
 ///
 /// ## Every matter, archived ones too
 ///

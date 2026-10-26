@@ -273,6 +273,14 @@ final class MatterWorkspaceViewModel {
 
     func reload() async { await load() }
 
+    /// The next hearing a chronology write answered with, shown at once; the reload that
+    /// follows brings the rest of the matter in step.
+    func applyNextHearing(_ raw: String?) {
+        guard var fresh = detail else { return }
+        fresh.project.nextHearingDateRaw = raw
+        detail = fresh
+    }
+
     /// Whether a failure means "this matter is not there" (`ProjectService.project`).
     nonisolated static func isMissing(_ error: Error) -> Bool {
         guard case .server(404, let message)? = error as? APIError else { return false }

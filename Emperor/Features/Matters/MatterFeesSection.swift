@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// The workspace's Fees — the web's `FeesSection` read-only: billed, received, outstanding (or
-/// the advance held, when the client has paid ahead) and spent; then the three lists — fees
-/// billed, payments received, expenses — the expenses narrowed by category when there are
-/// several.
+/// The workspace's Fees — the web's `FeesSection`: billed, received, outstanding (or the advance
+/// held, when the client has paid ahead) and spent; then the three lists — fees billed, payments
+/// received, expenses — each with its own Add, the expenses narrowed by category when there are
+/// several. Any payment prints as a fee receipt.
 struct MatterFeesSection: View {
     @Environment(\.theme) private var theme
 
     let model: MatterWorkspaceViewModel
+    var edit: MatterEditActions? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -65,7 +66,23 @@ struct MatterFeesSection: View {
 
     private func columnView(_ column: MatterWorkspaceViewModel.FeeColumn) -> some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            SectionHeader(title: column.title, detail: "\(column.count) · \(column.total)")
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+                SectionHeader(title: column.title, detail: "\(column.count) · \(column.total)")
+                if let edit {
+                    Button {
+                        edit.open(.ledger(nil, kind: column.kind))
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 18))
+                            .frame(minWidth: Layout.touchTarget, minHeight: Layout.touchTarget)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accentText)
+                    .accessibilityLabel(Self.addLabel(column.kind))
+                    .accessibilityIdentifier("fees-add-\(column.kind)")
+                }
+            }
             if column.kind == "expense", model.feeCategories.count > 1 {
                 categoryChips
             }
@@ -78,8 +95,14 @@ struct MatterFeesSection: View {
                 RecordGroup {
                     ForEach(Array(column.entries.enumerated()), id: \.element.id) { index, row in
                         if index > 0 { RecordDivider(inset: 14) }
-                        entryRow(row)
-                            .accessibilityIdentifier("matter-fee-\(row.id)")
+                        HStack(alignment: .top, spacing: 0) {
+                            entryRow(row)
+                            if let edit, let entry = model.detail?.ledger.first(where: { $0.id == row.id }) {
+                                rowActions(row, entry: entry, edit: edit)
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("matter-fee-\(row.id)")
                     }
                 }
             }
@@ -103,6 +126,43 @@ struct MatterFeesSection: View {
             }
             .padding(.vertical, 2)
         }
+    }
+
+    static func addLabel(_ kind: String) -> String {
+        switch kind {
+        case "payment": return "Add payment"
+        case "expense": return "Add expense"
+        default: return "Add fee"
+        }
+    }
+
+    @ViewBuilder
+    private func rowActions(
+        _ row: MatterWorkspaceViewModel.FeeRow, entry: LedgerEntry, edit: MatterEditActions
+    ) -> some View {
+        VStack(spacing: 0) {
+            MatterRowMenu(
+                name: "\(row.title), \(row.amount)", identifier: "ledger-menu-\(row.id)",
+                onEdit: { edit.open(.ledger(entry, kind: entry.kind ?? "fee")) },
+                onDelete: {
+                    edit.run("Entry deleted", { await edit.quick.deleteLedger(row.id) }, error: { edit.quick.error })
+                })
+            if entry.kind == "payment" {
+                Button {
+                    edit.open(.receipt(entry))
+                } label: {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.accentText)
+                        .frame(minWidth: Layout.touchTarget, minHeight: Layout.touchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Receipt for \(row.amount)")
+                .accessibilityIdentifier("ledger-receipt-\(row.id)")
+            }
+        }
+        .padding(.trailing, Spacing.xs)
     }
 
     private func entryRow(_ row: MatterWorkspaceViewModel.FeeRow) -> some View {

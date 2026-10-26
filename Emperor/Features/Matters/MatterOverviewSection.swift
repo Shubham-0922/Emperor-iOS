@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// The workspace's Overview — the web's `OverviewSection` read-only: what is left to set up,
+/// The workspace's Overview — the web's `OverviewSection`: what is left to set up (each step a
+/// way to do it: the side and practice area picked in place, the parties in the details form, the
+/// court case in Court, the client's contact as a person),
 /// where things stand, the To do, Fees and Latest order tiles, and the timeline of what has
 /// happened, newest first.
 struct MatterOverviewSection: View {
     @Environment(\.theme) private var theme
 
     let model: MatterWorkspaceViewModel
+    var edit: MatterEditActions? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
@@ -36,15 +39,78 @@ struct MatterOverviewSection: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Spacing.sm, alignment: .leading)],
                       alignment: .leading, spacing: Spacing.sm) {
                 ForEach(model.setupSteps) { step in
-                    StatusPill(
-                        text: step.label,
-                        tone: step.done == true ? .success : .neutral,
-                        systemImage: step.done == true ? "checkmark" : step.done == false ? "circle" : "ellipsis")
-                        .accessibilityLabel("\(step.label): \(step.done == true ? "done" : step.done == false ? step.hint : "not known yet")")
+                    setupStep(step)
                 }
             }
         }
         .accessibilityIdentifier("matter-setup")
+    }
+
+    private func pill(_ step: MatterSetup.Step) -> some View {
+        StatusPill(
+            text: step.label,
+            tone: step.done == true ? .success : .neutral,
+            systemImage: step.done == true ? "checkmark" : step.done == false ? "circle" : "ellipsis")
+    }
+
+    private func spoken(_ step: MatterSetup.Step) -> String {
+        "\(step.label): \(step.done == true ? "done" : step.done == false ? step.hint : "not known yet")"
+    }
+
+    /// A step, as a way to do it once the matter can be edited here.
+    @ViewBuilder
+    private func setupStep(_ step: MatterSetup.Step) -> some View {
+        if let edit {
+            switch step.key {
+            case "side":
+                Menu {
+                    ForEach(MatterVocabulary.OurSide.allCases, id: \.self) { side in
+                        Button(side.label) {
+                            edit.run(nil, { await edit.quick.setSide(side.rawValue) }, error: { edit.quick.error })
+                        }
+                    }
+                } label: {
+                    pill(step)
+                }
+                .accessibilityLabel(spoken(step))
+                .accessibilityIdentifier("setup-side")
+            case "practice":
+                Menu {
+                    ForEach(MatterVocabulary.PracticeArea.allCases, id: \.self) { area in
+                        Button(area.label) {
+                            edit.run(nil, { await edit.quick.setPracticeArea(area.rawValue) }, error: { edit.quick.error })
+                        }
+                    }
+                } label: {
+                    pill(step)
+                }
+                .accessibilityLabel(spoken(step))
+                .accessibilityIdentifier("setup-practice")
+            case "parties":
+                Button { edit.open(.details(focus: "client")) } label: { pill(step) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(spoken(step))
+                    .accessibilityIdentifier("setup-parties")
+            case "court":
+                Button { model.section = .court } label: { pill(step) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(spoken(step))
+                    .accessibilityIdentifier("setup-court")
+            case "contact":
+                Button {
+                    edit.open(.person(nil, role: "client", name: model.project?.client ?? ""))
+                } label: { pill(step) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(spoken(step))
+                    .accessibilityIdentifier("setup-contact")
+            default:
+                pill(step)
+                    .accessibilityLabel(spoken(step))
+            }
+        } else {
+            pill(step)
+                .accessibilityLabel(spoken(step))
+        }
     }
 
     // MARK: - Where things stand

@@ -13,6 +13,9 @@ struct CourtSearchView: View {
 
     /// Called after a case is pinned, so the docket behind this sheet reloads.
     let onSaved: () -> Void
+    /// Pick mode: the chosen result is handed back (a new matter, a matter's Court section)
+    /// instead of being added to the dashboard here.
+    var onPick: ((CourtSearchResult) -> Void)? = nil
 
     @State private var model: CourtSearchViewModel?
 
@@ -25,7 +28,7 @@ struct CourtSearchView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle(CourtSearchViewModel.Copy.title)
+            .navigationTitle(onPick == nil ? CourtSearchViewModel.Copy.title : "Find the case")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -37,7 +40,8 @@ struct CourtSearchView: View {
                 model = CourtSearchViewModel(
                     service: session.courtSearch,
                     metadata: session.courtMetadata,
-                    onSaved: onSaved)
+                    onSaved: onSaved,
+                    onPick: onPick)
             }
         }
     }
@@ -367,7 +371,23 @@ struct CourtSearchView: View {
     private func saveButton(
         _ model: CourtSearchViewModel, _ result: CourtSearchResult
     ) -> some View {
-        if model.isSaved(result) {
+        if model.isPicking {
+            Button {
+                model.pick(result)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(CourtSearchViewModel.Copy.pickButton)
+                }
+                .font(.brand(.caption, weight: .semibold))
+                .foregroundStyle(theme.accentText)
+                .padding(.horizontal, Spacing.md)
+                .padding(.vertical, 6)
+                .background(theme.accentWash, in: Capsule())
+                .overlay(Capsule().strokeBorder(theme.accentMuted, lineWidth: 1))
+            }
+            .buttonStyle(.borderless)
+        } else if model.isSaved(result) {
             Label(CourtSearchViewModel.Copy.savedLabel, systemImage: "checkmark.circle.fill")
                 .font(.brand(.caption, weight: .medium))
                 .foregroundStyle(theme.success)

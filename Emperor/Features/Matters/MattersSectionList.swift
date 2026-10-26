@@ -5,23 +5,36 @@ import SwiftUI
 /// Sort menus, the "hearings in the next 7 days" shortcut, then one row per matter. The search
 /// field above it is shared with the tracked cases below, so one query narrows both.
 ///
-/// Draws nothing while the user has no matters, so an account with only tracked cases sees the
-/// docket exactly as before.
+/// While the user has no matters it draws only the way to make the first one, so an account with
+/// only tracked cases sees the docket as before. A row's context menu edits, archives or deletes
+/// its matter.
 struct MattersSectionList: View {
     @Environment(\.theme) private var theme
 
+    /// What a row's context menu asks for.
+    enum RowAction { case edit, archive, delete }
+
     let model: MattersListViewModel
     let onOpen: (Project) -> Void
+    /// New matter; nil leaves the button out.
+    var onNew: (() -> Void)? = nil
+    /// A row's context menu; nil leaves the menu out.
+    var onAction: ((Project, RowAction) -> Void)? = nil
 
     var body: some View {
         if model.projects.isEmpty {
             if let failure = model.state.failure {
                 failureLine(failure)
+            } else if onNew != nil, model.state.hasLoaded {
+                firstMatter
             }
         } else {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                SectionHeader(title: "Matters", detail: model.summary)
-                    .accessibilityIdentifier("matters-summary")
+                AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: Spacing.sm) {
+                    SectionHeader(title: "Matters", detail: model.summary)
+                        .accessibilityIdentifier("matters-summary")
+                    newButton
+                }
                 controls
                 if let failure = model.state.failure {
                     failureLine(failure)
@@ -33,6 +46,42 @@ struct MattersSectionList: View {
                 }
             }
         }
+    }
+
+    // MARK: - New matter
+
+    @ViewBuilder
+    private var newButton: some View {
+        if let onNew {
+            Button(action: onNew) {
+                Label("New matter", systemImage: "plus")
+            }
+            .buttonStyle(PrimaryButtonStyle(compact: true))
+            .fixedSize()
+            .accessibilityIdentifier("matters-new")
+        }
+    }
+
+    /// No matters yet: what one is, and the button to make it.
+    private var firstMatter: some View {
+        AdaptiveStack(spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Text("Matters")
+                    .font(.brand(.headline))
+                    .foregroundStyle(theme.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                Text("A matter keeps a case's record, tasks, fees and people in one place.")
+                    .font(.brand(.footnote))
+                    .foregroundStyle(theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            newButton
+        }
+        .padding(Spacing.md)
+        .panel()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("matters-first")
     }
 
     // MARK: - Controls
@@ -119,6 +168,15 @@ struct MattersSectionList: View {
                         imageData: model.bannerImage(for: project))
                 }
                 .buttonStyle(.recordRow)
+                .contextMenu {
+                    if let onAction {
+                        MatterMenuItems(
+                            isArchived: project.isArchived,
+                            onEdit: { onAction(project, .edit) },
+                            onArchive: { onAction(project, .archive) },
+                            onDelete: { onAction(project, .delete) })
+                    }
+                }
                 .accessibilityIdentifier("matter-\(project.id)")
                 .accessibilityHint("Opens the matter")
                 .task(id: MattersListViewModel.bannerKey(project)) {

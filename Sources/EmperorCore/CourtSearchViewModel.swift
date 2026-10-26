@@ -45,6 +45,9 @@ final class CourtSearchViewModel {
     private let metadata: CourtMetadataProviding
     /// Called after a case is pinned, so the dashboard behind this screen refreshes.
     private let onSaved: (() -> Void)?
+    /// Pick mode: a result is handed back to the screen that opened the search (a new matter, a
+    /// matter's Court section) instead of being added to the dashboard here.
+    private let onPick: ((CourtSearchResult) -> Void)?
 
     #if canImport(Darwin)
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -58,11 +61,22 @@ final class CourtSearchViewModel {
     init(
         service: CourtSearching,
         metadata: CourtMetadataProviding,
-        onSaved: (() -> Void)? = nil
+        onSaved: (() -> Void)? = nil,
+        onPick: ((CourtSearchResult) -> Void)? = nil
     ) {
         self.service = service
         self.metadata = metadata
         self.onSaved = onSaved
+        self.onPick = onPick
+    }
+
+    /// Whether a result is chosen rather than saved.
+    var isPicking: Bool { onPick != nil }
+
+    /// Hands the result back in pick mode. Nothing is written here: whoever asked tracks the
+    /// case, so the same case is never filed twice.
+    func pick(_ result: CourtSearchResult) {
+        onPick?(result)
     }
 
     var canSearch: Bool { !isSearching && query.isComplete }
@@ -463,6 +477,7 @@ final class CourtSearchViewModel {
             a few seconds and sometimes longer.
             """
         static let saveButton = "Add to my cases"
+        static let pickButton = "Use this case"
         static let savedLabel = "On your dashboard"
 
         /// Why the district courts are listed but cannot be chosen.

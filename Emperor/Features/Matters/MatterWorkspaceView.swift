@@ -3,23 +3,34 @@ import UIKit
 
 /// One matter's workspace — the web's `ProjectWorkspace.jsx`: the banner with the matter's
 /// name, status, parties, court and next hearing; the section bar; and the chosen section under
-/// it, all in one scroll. Read-only in this build. Pull to refresh fetches the matter again and
-/// keeps what is on screen if that fails.
+/// it, all in one scroll. The bar's menu edits, archives or deletes the matter; each section adds and
+/// changes its own rows. Pull to refresh fetches the matter again and keeps what is on screen if
+/// that fails.
 ///
 /// `MatterWorkspaceViewModel` holds every rule; this lays it out.
 struct MatterWorkspaceView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dismiss) private var dismiss
 
     let route: MatterRoute
     /// The matter's file count from the list, when it came from there.
     var fileCount: Int?
     /// Opens the linked case's own page on the Matters stack.
     let onOpenCase: (String) -> Void
+    /// The matter changed here — edited, archived or deleted — so the list behind it reloads;
+    /// with a message for the list to say (a deletion, which leaves this screen).
+    var onChanged: ((_ message: String?) -> Void)? = nil
 
     @State private var model: MatterWorkspaceViewModel?
     @State private var loadedRoute: MatterRoute?
+    @State private var quick: MatterQuickActions?
+    @State private var court: MatterCourtActions?
+    @State private var sheet: MatterSheet?
+    @State private var failure: String?
+    /// Set once the matter is deleted: the screen leaves when the sheet has gone.
+    @State private var leaveAfterSheet = false
 
     var body: some View {
         Group {
@@ -33,6 +44,28 @@ struct MatterWorkspaceView: View {
         .background(theme.canvas)
         .navigationTitle(model?.title ?? "Matter")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let project = model?.project, model?.state == .loaded {
+                ToolbarItem(placement: .primaryAction) {
+                    MatterMenu(
+                        isArchived: project.isArchived,
+                        onEdit: { sheet = .details(focus: nil) },
+                        onArchive: { archive(!project.isArchived) },
+                        onDelete: { sheet = .delete })
+                }
+            }
+        }
+        .sheet(item: $sheet, onDismiss: {
+            if leaveAfterSheet { dismiss() }
+        }) { which in
+            sheetView(which)
+        }
+        .alert("That did not go through", isPresented: Binding(
+            get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) { failure = nil }
+        } message: {
+            Text(failure ?? "")
+        }
         .task(id: route) {
             // A fresh request for this matter (`MatterRoute.request`) is a fresh screen; coming
             // back to it from the case page is not, and keeps its section.
@@ -42,6 +75,9 @@ struct MatterWorkspaceView: View {
                 projectID: route.projectID, service: session.projects, section: route.section,
                 fileCount: fileCount)
             model = created
+            quick = MatterQuickActions(projectID: route.projectID, writes: session.projectWrites)
+            court = MatterCourtActions(
+                projectID: route.projectID, writes: session.projectWrites, tracking: session.caseTracking)
             await created.load()
             await created.loadBanner()
         }
@@ -89,18 +125,128 @@ struct MatterWorkspaceView: View {
 
     @ViewBuilder
     private func sectionBody(_ model: MatterWorkspaceViewModel) -> some View {
+        let edit = editActions(model)
         switch model.section {
-        case .overview: MatterOverviewSection(model: model)
-        case .chronology: MatterChronologySection(model: model)
-        case .court: MatterCourtSection(model: model, onOpenCase: onOpenCase)
-        case .tasks: MatterTasksSection(model: model)
-        case .fees: MatterFeesSection(model: model)
-        case .people: MatterPeopleSection(model: model)
+        case .overview: MatterOverviewSection(model: model, edit: edit)
+        case .chronology: MatterChronologySection(model: model, edit: edit)
+        case .court: MatterCourtSection(model: model, onOpenCase: onOpenCase, edit: edit)
+        case .tasks: MatterTasksSection(model: model, edit: edit)
+        case .fees: MatterFeesSection(model: model, edit: edit)
+        case .people: MatterPeopleSection(model: model, edit: edit)
         // Not on the bar while `MatterAvailability.contentSections` is off.
         case .ask, .files, .drafts:
             EmptyStateContent(
                 title: model.section.label, systemImage: "hourglass",
                 message: "This part of the matter opens on the web for now.", tone: .neutral) {}
+        }
+    }
+}
+
+// MARK: - Writing
+
+extension MatterWorkspaceView {
+
+    /// The sections' way to change the matter; nil until the actions exist.
+    private func editActions(_ model: MatterWorkspaceViewModel) -> MatterEditActions? {
+        guard let quick, let court else { return nil }
+        return MatterEditActions(
+            open: { sheet = $0 },
+            quick: quick, court: court,
+            reload: { await model.reload(); onChanged?(nil) },
+            done: { model.toast = $0 },
+            failed: { failure = $0 })
+    }
+
+    private func archive(_ archived: Bool) {
+        guard let model, let quick else { return }
+        Task {
+            if await quick.setArchived(archived) {
+                model.toast = archived ? "Matter archived" : "Matter restored to active"
+                await model.reload()
+                onChanged?(nil)
+            } else if let error = quick.error {
+                failure = error
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sheetView(_ which: MatterSheet) -> some View {
+        if let model, let detail = model.detail {
+            let project = detail.project
+            let reload: @MainActor () -> Void = {
+                Task {
+                    await model.reload()
+                    onChanged?(nil)
+                }
+            }
+            switch which {
+            case .details(let focus):
+                MatterDetailsSheet(project: project, focusField: focus, bannerData: model.bannerData) { message in
+                    model.toast = message
+                    Task {
+                        await model.reload()
+                        await model.loadBanner()
+                        onChanged?(nil)
+                    }
+                }
+                .pageSizedSheet()
+            case .delete:
+                DeleteMatterSheet(project: project) { message in
+                    leaveAfterSheet = true
+                    onChanged?(message)
+                }
+            case .entry(let entry):
+                ChronologyEntrySheet(projectID: project.id, entry: entry, today: model.todayKey) { saved in
+                    model.applyNextHearing(saved.nextHearingDate)
+                    model.toast = entry == nil ? "Added to the chronology" : "Entry updated"
+                    reload()
+                }
+            case .task(let task, let kind):
+                TaskSheet(projectID: project.id, task: task, kind: kind) {
+                    model.toast = task == nil ? "Task added" : "Task saved"
+                    reload()
+                }
+            case .ledger(let entry, let kind):
+                LedgerEntrySheet(projectID: project.id, entry: entry, kind: kind, today: model.todayKey) {
+                    model.toast = entry == nil ? "Entry added" : "Entry saved"
+                    reload()
+                }
+            case .person(let person, let role, let name):
+                PersonSheet(projectID: project.id, person: person, role: role, name: name) {
+                    model.toast = person == nil ? "Person added" : "Person saved"
+                    reload()
+                }
+            case .receipt(let entry):
+                ReceiptShare(
+                    html: MatterPrintouts.receiptHTML(entry: entry, detail: detail, user: session.currentUser),
+                    fileName: MatterPrintouts.receiptFileName(entry))
+                    .pageSizedSheet()
+            case .listOfDates:
+                ListOfDatesShare(
+                    html: MatterPrintouts.listOfDatesHTML(detail: detail),
+                    fileName: MatterPrintouts.listOfDatesFileName(project))
+                    .pageSizedSheet()
+            case .linkCase:
+                CourtSearchView(onSaved: {}, onPick: { result in
+                    sheet = nil
+                    link(result, matter: project)
+                })
+                .pageSizedSheet()
+            }
+        }
+    }
+
+    private func link(_ result: CourtSearchResult, matter: Project) {
+        guard let model, let court else { return }
+        Task {
+            if await court.link(result, matter: matter) {
+                model.toast = court.message
+                await model.reload()
+                onChanged?(nil)
+            } else if let error = court.error {
+                failure = error
+            }
         }
     }
 }
