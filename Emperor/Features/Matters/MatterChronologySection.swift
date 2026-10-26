@@ -1,17 +1,41 @@
 import SwiftUI
 
-/// The workspace's Chronology — the web's `ChronologySection` read-only: the matter's own record
-/// and the linked case's hearings and orders as one list (a court fact the server copied into the
-/// record is not shown twice), each entry badged with who put it there: You, the Court or AI.
+/// The workspace's Chronology — the web's `ChronologySection`: the matter's own record and the
+/// linked case's hearings and orders as one list (a court fact the server copied into the record
+/// is not shown twice), each entry badged with who put it there: You, the Court or AI. The user's
+/// own entries can be edited and deleted; the court's are read-only. The list goes out as a List
+/// of Dates.
 struct MatterChronologySection: View {
     @Environment(\.theme) private var theme
 
     let model: MatterWorkspaceViewModel
+    var edit: MatterEditActions? = nil
 
     var body: some View {
         @Bindable var bindable = model
         let entries = model.chronology(newestFirst: model.newestFirst)
         VStack(alignment: .leading, spacing: Spacing.md) {
+            if let edit {
+                HStack(spacing: Spacing.sm) {
+                    Button {
+                        edit.open(.entry(nil))
+                    } label: {
+                        Label("Add entry", systemImage: "plus")
+                    }
+                    .buttonStyle(.compactSecondaryAction)
+                    .accessibilityIdentifier("chronology-add")
+                    if !entries.isEmpty {
+                        Button {
+                            edit.open(.listOfDates)
+                        } label: {
+                            Label("List of Dates", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.quietAction)
+                        .accessibilityHint("A PDF of the dates and events, to share or print")
+                        .accessibilityIdentifier("chronology-list-of-dates")
+                    }
+                }
+            }
             RecordSegmentedControl(
                 label: "Order",
                 options: [(value: true, title: "Newest first"), (value: false, title: "Oldest first")],
@@ -26,8 +50,22 @@ struct MatterChronologySection: View {
                 RecordGroup {
                     ForEach(Array(entries.enumerated()), id: \.element.key) { index, entry in
                         if index > 0 { RecordDivider(inset: 14) }
-                        row(entry)
-                            .accessibilityIdentifier("matter-entry-\(entry.key)")
+                        HStack(alignment: .top, spacing: 0) {
+                            row(entry)
+                            if let edit, entry.own {
+                                MatterRowMenu(
+                                    name: entry.title.isEmpty ? MatterRecord.kindLabel(entry.kind) : entry.title,
+                                    identifier: "entry-menu-\(entry.id)",
+                                    onEdit: { edit.open(.entry(entry)) },
+                                    onDelete: {
+                                        edit.run("Entry deleted", { await edit.quick.deleteUpdate(entry.id) },
+                                                 error: { edit.quick.error })
+                                    })
+                                    .padding(.trailing, Spacing.xs)
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("matter-entry-\(entry.key)")
                     }
                 }
             }

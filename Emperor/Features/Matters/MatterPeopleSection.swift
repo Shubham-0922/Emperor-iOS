@@ -1,30 +1,79 @@
 import SwiftUI
 
-/// The workspace's People — the web's `PeopleSection` read-only: the client, the other side,
-/// counsel on both sides, the bench and witnesses, by role, each with what a clerk reaches for —
-/// a number that dials, an address that opens the mail, the postal address.
+/// The workspace's People — the web's `PeopleSection`: the client, the other side, counsel on both
+/// sides, the bench and witnesses, by role, each with what a clerk reaches for — a number that
+/// dials, an address that opens the mail, the postal address. Each role adds its own; each person
+/// can be edited or removed.
 struct MatterPeopleSection: View {
     @Environment(\.theme) private var theme
 
     let model: MatterWorkspaceViewModel
+    var edit: MatterEditActions? = nil
 
     var body: some View {
         let groups = model.peopleByRole
         VStack(alignment: .leading, spacing: Spacing.lg) {
+            if let edit {
+                Button {
+                    edit.open(.person(nil, role: groups.isEmpty ? "client" : "other",
+                                      name: groups.isEmpty ? (model.project?.client ?? "") : ""))
+                } label: {
+                    Label("Add a person", systemImage: "plus")
+                }
+                .buttonStyle(.compactSecondaryAction)
+                .accessibilityIdentifier("people-add")
+            }
             if groups.isEmpty {
                 EmptyStateContent(
                     title: "No people on this matter yet", systemImage: "person.2",
-                    message: "The client, the other side, counsel, the bench and witnesses added on the web appear here.",
-                    tone: .neutral) {}
+                    message: "Start with your client and the opposite party, then counsel on both sides, the bench and any witnesses. The client’s address goes on the fee receipt.",
+                    tone: .neutral) {
+                    if let edit {
+                        Button("Add the opposite party") {
+                            edit.open(.person(nil, role: "opposite_party", name: model.project?.oppositeParty ?? ""))
+                        }
+                        .buttonStyle(.secondaryAction)
+                    }
+                }
             }
             ForEach(groups) { group in
                 VStack(alignment: .leading, spacing: Spacing.sm) {
-                    SectionHeader(title: group.role.label, detail: "\(group.people.count)")
+                    HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+                        SectionHeader(title: group.role.label, detail: "\(group.people.count)")
+                        if let edit {
+                            Button {
+                                edit.open(.person(nil, role: group.role.rawValue, name: ""))
+                            } label: {
+                                Image(systemName: "plus.circle")
+                                    .font(.system(size: 18))
+                                    .frame(minWidth: Layout.touchTarget, minHeight: Layout.touchTarget)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(theme.accentText)
+                            .accessibilityLabel("Add \(group.role.label.lowercased())")
+                            .accessibilityIdentifier("people-add-\(group.role.rawValue)")
+                        }
+                    }
                     RecordGroup {
                         ForEach(Array(group.people.enumerated()), id: \.element.id) { index, person in
                             if index > 0 { RecordDivider(inset: 14) }
-                            personRow(person)
-                                .accessibilityIdentifier("matter-person-\(person.id)")
+                            HStack(alignment: .top, spacing: 0) {
+                                personRow(person)
+                                if let edit {
+                                    MatterRowMenu(
+                                        name: (person.name ?? "").isEmpty ? "Unnamed" : person.name!,
+                                        identifier: "person-menu-\(person.id)", deleteTitle: "Remove",
+                                        onEdit: { edit.open(.person(person, role: person.role ?? "other", name: "")) },
+                                        onDelete: {
+                                            edit.run("Removed", { await edit.quick.deletePerson(person.id) },
+                                                     error: { edit.quick.error })
+                                        })
+                                        .padding(.trailing, Spacing.xs)
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("matter-person-\(person.id)")
                         }
                     }
                 }

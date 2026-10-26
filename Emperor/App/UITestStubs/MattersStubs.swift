@@ -1,34 +1,28 @@
 #if DEBUG
 import Foundation
 
-/// The UI tests' canned answers for matters (the web's projects): `GET /projects`, `GET /project`
-/// and `GET /project-banner`. Owned by package 03-MA, then 04-MB and 05-MC. `-UITestEmpty`
-/// answers with no matters at all.
+/// The UI tests' canned answers for matters (the web's projects): the reads — `GET /projects`,
+/// `GET /project`, `GET /project-banner` — and, through `Store`, every write on a matter's record,
+/// kept for the life of the launch so a test can create, edit and delete and then read the result.
+/// Owned by package 03-MA, then 04-MB and 05-MC. `-UITestEmpty` answers with no matters at all.
 ///
 /// Four matters: `prj-writ` (active, high priority, linked to a case that is **not** on the
 /// docket, with a full workspace), `prj-arb` (an uploaded banner, nothing dated), `prj-old`
 /// (archived) and `prj-gone` (listed, but its workspace answers 404). No matter links a case the
 /// docket stub lists, so every docket test sees the docket it always saw; no forum name begins
-/// with a docket heading.
+/// with a docket heading. Writes: a new matter is `prj-new-N`; `DELETE /project` wants the exact
+/// name; linking `case-sc` is refused as another team's case; a matter made from
+/// `case-matter-only` is `prj-writ`, which already exists; the court refresh answers once, then
+/// says to wait four minutes.
 enum MattersStubs {
 
     static func reply(_ request: URLRequest, _ path: String) -> StubReply? {
-        guard (request.httpMethod ?? "GET") == "GET" else { return nil }
-        switch path {
-        case "/projects":
-            return .json(UITestSupport.isEmpty ? #"{"success":true,"projects":[]}"# : listJSON())
-        case "/project":
-            let id = UITestSupport.Fixtures.query(request, "id") ?? ""
-            guard !UITestSupport.isEmpty, let body = detailJSON(id) else {
-                return .json(#"{"success":false,"error":"Project not found"}"#, status: 404)
-            }
-            return .json(body)
-        case "/project-banner":
+        let method = request.httpMethod ?? "GET"
+        if method == "GET", path == "/project-banner" {
             guard let png = Data(base64Encoded: onePixelPNG) else { return nil }
             return .bytes(png, type: "image/png")
-        default:
-            return nil
         }
+        return store.reply(method: method, path: path, request: request)
     }
 
     /// A day relative to today, in India, as the server writes a hearing date.
@@ -167,6 +161,375 @@ enum MattersStubs {
         "address":null,"notes":"Additional Advocate General","created_at":"2026-08-02 10:00:00"}],\
         "totals":{"billed":50000,"received":20000,"outstanding":30000,"expenses":1700}}
         """
+    }
+}
+
+// MARK: - The matters, as the writes leave them
+
+extension MattersStubs {
+
+    fileprivate static let store = Store()
+
+    /// One launch's matters: seeded from the canned rows above, changed by every write, read back
+    /// by the next `GET`. Locked, because `URLProtocol` answers on queues of its own.
+    final class Store: @unchecked Sendable {
+        private typealias Row = [String: Any]
+
+        private let lock = NSLock()
+        private var order: [String] = []
+        private var rows: [String: Row] = [:]
+        /// Each matter's lists — `updates`, `tasks`, `ledger`, `people`, `chats`, `courtHistory` —
+        /// and its `linkedCase`. A listed matter without one answers 404 (`prj-gone`).
+        private var children: [String: Row] = [:]
+        private var made = 0
+        private var refreshes: [String: Int] = [:]
+
+        init() {
+            guard !UITestSupport.isEmpty else { return }
+            let list = Self.object(MattersStubs.listJSON())?["projects"] as? [Row] ?? []
+            for row in list {
+                guard let id = row["id"] as? String else { continue }
+                order.append(id)
+                rows[id] = row
+                if let json = MattersStubs.detailJSON(id), var detail = Self.object(json) {
+                    detail.removeValue(forKey: "success")
+                    detail.removeValue(forKey: "totals")
+                    detail.removeValue(forKey: "project")
+                    children[id] = detail
+                }
+            }
+        }
+
+        // MARK: Dispatch
+
+        func reply(method: String, path: String, request: URLRequest) -> StubReply? {
+            lock.lock()
+            defer { lock.unlock() }
+            let body = method == "POST" ? (UITestSupport.Fixtures.jsonBody(of: request) ?? [:]) : [:]
+            func q(_ name: String) -> String { UITestSupport.Fixtures.query(request, name) ?? "" }
+            switch (method, path) {
+            case ("GET", "/projects"): return list()
+            case ("GET", "/project"): return detail(q("id"))
+            case ("POST", "/project"): return save(body)
+            case ("POST", "/project-patch"): return patch(body)
+            case ("DELETE", "/project"): return deleteProject(q("id"), confirm: q("confirm"))
+            case ("POST", "/project-banner"): return banner(body["projectId"] as? String ?? "", on: true)
+            case ("DELETE", "/project-banner"): return banner(q("id"), on: false)
+            case ("POST", "/project-update"): return saveChild("updates", body, prefix: "pup", key: "update")
+            case ("DELETE", "/project-update"): return deleteChild("updates", q("id"), missing: "Chronology entry not found")
+            case ("POST", "/project-task"): return saveChild("tasks", body, prefix: "pt", key: "task")
+            case ("DELETE", "/project-task"): return deleteChild("tasks", q("id"), missing: "Task not found")
+            case ("POST", "/project-ledger"): return saveChild("ledger", body, prefix: "pl", key: "entry")
+            case ("DELETE", "/project-ledger"): return deleteChild("ledger", q("id"), missing: "Ledger entry not found")
+            case ("POST", "/project-person"): return saveChild("people", body, prefix: "pp", key: "person")
+            case ("DELETE", "/project-person"): return deleteChild("people", q("id"), missing: "Person not found")
+            case ("POST", "/project-link-case"): return link(body)
+            case ("POST", "/project-from-case"): return fromCase(body)
+            case ("POST", "/project-case-refresh"): return refresh(body["projectId"] as? String ?? "")
+            default: return nil
+            }
+        }
+
+        // MARK: Reads
+
+        private func list() -> StubReply {
+            let out = order.compactMap { id -> Row? in
+                guard var row = rows[id] else { return nil }
+                if let kids = children[id] {
+                    let tasks = kids["tasks"] as? [Row] ?? []
+                    row["open_tasks"] = tasks.filter { ($0["status"] as? String) != "done" }.count
+                    row["update_count"] = (kids["updates"] as? [Row] ?? []).count
+                    let t = totals(kids["ledger"] as? [Row] ?? [])
+                    row["billed"] = t["billed"]
+                    row["received"] = t["received"]
+                }
+                return row
+            }
+            return Self.reply(["success": true, "projects": out])
+        }
+
+        private func detail(_ id: String) -> StubReply {
+            guard let row = rows[id], var kids = children[id] else { return Self.missing("Project not found") }
+            kids["success"] = true
+            kids["project"] = row
+            kids["totals"] = totals(kids["ledger"] as? [Row] ?? [])
+            return Self.reply(kids)
+        }
+
+        private func totals(_ ledger: [Row]) -> Row {
+            var sums = ["fee": 0, "payment": 0, "expense": 0]
+            for entry in ledger {
+                let kind = entry["kind"] as? String ?? ""
+                sums[kind, default: 0] += (entry["amount_paise"] as? Int) ?? 0
+            }
+            let fee = sums["fee"] ?? 0, paid = sums["payment"] ?? 0
+            return ["billed": Double(fee) / 100, "received": Double(paid) / 100,
+                    "outstanding": Double(fee - paid) / 100, "expenses": Double(sums["expense"] ?? 0) / 100]
+        }
+
+        // MARK: The matter
+
+        /// Body keys to columns, as the server's `PROJECT_FIELDS` maps them.
+        private static let columns: [String: String] = [
+            "name": "name", "client": "client", "description": "description", "forumType": "forum_type",
+            "forumName": "forum_name", "caseNumber": "case_number", "caseYear": "case_year", "caseType": "case_type",
+            "cnr": "cnr", "stage": "stage", "status": "status", "priority": "priority",
+            "nextHearingDate": "next_hearing_date", "filingDate": "filing_date", "color": "color", "banner": "banner",
+            "practiceArea": "practice_area", "ourSide": "our_side", "oppositeParty": "opposite_party",
+            "courtStatus": "court_status",
+        ]
+
+        private static let defaults: [String: String] = ["status": "active", "priority": "normal", "forum_type": "other"]
+
+        private func apply(_ fields: [String: Any], to row: inout Row) {
+            for (key, value) in fields {
+                guard let column = Self.columns[key] else { continue }
+                let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if text.isEmpty {
+                    row[column] = Self.defaults[column] ?? NSNull()
+                } else {
+                    row[column] = text
+                }
+            }
+            if let status = row["status"] as? String {
+                row["archived_at"] = status == "archived" ? Self.nowISO() : NSNull()
+            }
+            row["updated_at"] = Self.nowISO()
+        }
+
+        private func save(_ body: [String: Any]) -> StubReply {
+            if let id = body["id"] as? String {
+                guard var row = rows[id] else { return Self.missing("Project not found") }
+                apply(body, to: &row)
+                rows[id] = row
+                return Self.reply(["success": true, "project": row])
+            }
+            let name = (body["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return Self.refused("Project name is required") }
+            made += 1
+            let id = "prj-new-\(made)"
+            var row: Row = ["id": id, "user_id": "1", "created_at": Self.nowISO(), "linked_case_id": NSNull(),
+                            "file_count": 0, "chat_count": 0, "status": "active", "priority": "normal",
+                            "forum_type": "other"]
+            apply(body, to: &row)
+            rows[id] = row
+            order.insert(id, at: 0)
+            children[id] = ["updates": [Row](), "chats": [Row](), "courtHistory": [Row](), "linkedCase": NSNull(),
+                            "tasks": [Row](), "ledger": [Row](), "people": [Row]()]
+            return Self.reply(["success": true, "project": row])
+        }
+
+        private func patch(_ body: [String: Any]) -> StubReply {
+            let id = body["projectId"] as? String ?? ""
+            guard var row = rows[id] else { return Self.missing("Project not found") }
+            let fields = body["fields"] as? [String: Any] ?? [:]
+            if let unknown = fields.keys.sorted().first(where: { Self.columns[$0] == nil }) {
+                return Self.refused("Unknown project field: \(unknown)")
+            }
+            apply(fields, to: &row)
+            rows[id] = row
+            return Self.reply(["success": true, "project": row])
+        }
+
+        private func deleteProject(_ id: String, confirm: String) -> StubReply {
+            guard let row = rows[id] else { return Self.missing("Project not found") }
+            guard !confirm.isEmpty, confirm == (row["name"] as? String ?? "") else {
+                return Self.refused("To delete this project, send confirm= with its exact name")
+            }
+            let kids = children[id] ?? [:]
+            rows[id] = nil
+            children[id] = nil
+            order.removeAll { $0 == id }
+            func count(_ key: String) -> Int { (kids[key] as? [Row] ?? []).count }
+            return Self.reply(["success": true, "deleted": [
+                "chats": count("chats"), "drafts": 0, "tasks": count("tasks"), "ledger": count("ledger"),
+                "people": count("people"), "updates": count("updates"), "fileLinks": 0, "chatLinks": 0,
+                "storage": true, "index": NSNull()]])
+        }
+
+        private func banner(_ id: String, on: Bool) -> StubReply {
+            guard var row = rows[id] else { return Self.missing("Project not found") }
+            if on {
+                row["banner"] = "image"
+            } else if (row["banner"] as? String) == "image" {
+                row["banner"] = NSNull()
+            }
+            row["updated_at"] = Self.nowISO()
+            rows[id] = row
+            return Self.reply(on ? ["success": true, "banner": "image"] : ["success": true])
+        }
+
+        // MARK: Chronology, tasks, ledger, people
+
+        private func saveChild(_ list: String, _ body: [String: Any], prefix: String, key: String) -> StubReply {
+            let projectID = body["projectId"] as? String ?? ""
+            guard var kids = children[projectID] else { return Self.missing("Project not found") }
+            var items = kids[list] as? [Row] ?? []
+            let existing = (body["id"] as? String).flatMap { id in items.firstIndex { ($0["id"] as? String) == id } }
+            if body["id"] != nil, existing == nil {
+                return Self.missing(list == "updates" ? "Chronology entry not found" : "Not found")
+            }
+            var row: Row = existing.map { items[$0] } ?? [
+                "id": "\(prefix)-\(made + items.count + 1)-\(Int(Date().timeIntervalSince1970 * 1000) % 100_000)",
+                "project_id": projectID, "user_id": "1", "created_at": Self.nowSQL(),
+            ]
+            if list == "updates", key == "update", body["title"] as? String ?? "" == "", body["body"] as? String ?? "" == "" {
+                return Self.refused("A chronology entry needs a title or a note")
+            }
+            for (field, value) in body where field != "projectId" && field != "userId" && field != "id" {
+                let column = Self.childColumns[field] ?? field
+                if field == "amount", let rupees = value as? Double {
+                    row["amount_paise"] = Int((rupees * 100).rounded())
+                    row["amount"] = rupees
+                    continue
+                }
+                if let text = value as? String {
+                    row[column] = text.isEmpty ? NSNull() : text
+                } else {
+                    row[column] = value
+                }
+            }
+            if list == "tasks" {
+                let done = (row["status"] as? String) == "done"
+                row["completed_at"] = done ? Self.nowISO() : NSNull()
+                row["updated_at"] = Self.nowSQL()
+            }
+            if list == "updates", row["event_date"] is NSNull || row["event_date"] == nil {
+                row["event_date"] = MattersStubs.day(0)
+            }
+            if let existing {
+                items[existing] = row
+            } else {
+                items.insert(row, at: 0)
+            }
+            kids[list] = items
+            children[projectID] = kids
+            touch(projectID)
+            var answer: Row = ["success": true, key: row]
+            if list == "updates" {
+                answer["id"] = row["id"]
+                answer["nextHearingDate"] = nextHearing(projectID, after: row)
+            }
+            return Self.reply(answer)
+        }
+
+        private static let childColumns: [String: String] = [
+            "eventDate": "event_date", "sourceRef": "source_ref", "dueDate": "due_date", "entryDate": "entry_date",
+            "receiptFile": "receipt_file",
+        ]
+
+        /// A hearing dated today or later becomes the next date when it is the soonest.
+        private func nextHearing(_ projectID: String, after update: Row) -> Any {
+            guard var row = rows[projectID] else { return NSNull() }
+            let current = row["next_hearing_date"] as? String
+            if (update["kind"] as? String) == "hearing", let day = update["event_date"] as? String, day.count == 10,
+               day >= MattersStubs.day(0), current == nil || day < current! {
+                row["next_hearing_date"] = day
+                rows[projectID] = row
+            }
+            return row["next_hearing_date"] ?? NSNull()
+        }
+
+        private func deleteChild(_ list: String, _ id: String, missing: String) -> StubReply {
+            for (projectID, var kids) in children {
+                var items = kids[list] as? [Row] ?? []
+                guard let index = items.firstIndex(where: { ($0["id"] as? String) == id }) else { continue }
+                items.remove(at: index)
+                kids[list] = items
+                children[projectID] = kids
+                touch(projectID)
+                return Self.reply(["success": true])
+            }
+            return Self.missing(missing)
+        }
+
+        private func touch(_ projectID: String) {
+            rows[projectID]?["updated_at"] = Self.nowISO()
+        }
+
+        // MARK: The court case
+
+        private func link(_ body: [String: Any]) -> StubReply {
+            let id = body["projectId"] as? String ?? ""
+            guard var row = rows[id], var kids = children[id] else { return Self.missing("Project not found") }
+            guard body.keys.contains("caseId") else { return Self.refused("caseId is required (null unlinks the case)") }
+            if let caseID = body["caseId"] as? String, !caseID.isEmpty {
+                if caseID == "case-sc" {
+                    return .json(#"{"success":false,"error":"You are not a member of the team that tracks that case"}"#,
+                                 status: 403)
+                }
+                row["linked_case_id"] = caseID
+                kids["linkedCase"] = ["id": caseID, "title": "Linked case", "court_name": "Delhi High Court",
+                                      "court_type": "hc", "status": "Pending", "last_synced_at": Self.nowISO()]
+            } else {
+                row["linked_case_id"] = NSNull()
+                kids["linkedCase"] = NSNull()
+                kids["courtHistory"] = [Row]()
+            }
+            rows[id] = row
+            children[id] = kids
+            return Self.reply(["success": true, "project": row])
+        }
+
+        private func fromCase(_ body: [String: Any]) -> StubReply {
+            let caseID = body["caseId"] as? String ?? ""
+            guard !caseID.isEmpty else { return Self.refused("caseId is required") }
+            if let existing = order.first(where: { (rows[$0]?["linked_case_id"] as? String) == caseID }),
+               let row = rows[existing] {
+                return Self.reply(["success": true, "project": row, "existed": true])
+            }
+            var fields = body
+            if (fields["name"] as? String ?? "").isEmpty { fields["name"] = "Matter from the court" }
+            _ = save(fields)
+            let id = "prj-new-\(made)"
+            rows[id]?["linked_case_id"] = caseID
+            return Self.reply(["success": true, "project": rows[id] ?? [:], "existed": false])
+        }
+
+        private func refresh(_ projectID: String) -> StubReply {
+            guard rows[projectID] != nil else { return Self.missing("Project not found") }
+            refreshes[projectID, default: 0] += 1
+            if refreshes[projectID] == 1 {
+                return Self.reply(["success": true, "lastSyncedAt": Self.nowISO(),
+                                   "counts": ["hearings": 1, "orders": 1]])
+            }
+            return .json(
+                #"{"success":false,"error":"This case was refreshed a moment ago — try again in 4 min","retryAfter":240}"#,
+                status: 429)
+        }
+
+        // MARK: Helpers
+
+        private static func object(_ json: String) -> Row? {
+            (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? Row
+        }
+
+        private static func reply(_ object: Row) -> StubReply {
+            let data = (try? JSONSerialization.data(withJSONObject: object)) ?? Data("{}".utf8)
+            return StubReply(status: 200, data: data, contentType: "application/json")
+        }
+
+        private static func refused(_ message: String) -> StubReply {
+            .json(#"{"success":false,"error":"\#(message)"}"#, status: 400)
+        }
+
+        private static func missing(_ message: String) -> StubReply {
+            .json(#"{"success":false,"error":"\#(message)"}"#, status: 404)
+        }
+
+        private static func nowISO() -> String {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f.string(from: Date())
+        }
+
+        private static func nowSQL() -> String {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "UTC")
+            f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            return f.string(from: Date())
+        }
     }
 }
 #endif

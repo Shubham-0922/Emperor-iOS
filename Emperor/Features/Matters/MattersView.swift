@@ -6,7 +6,8 @@ import SwiftUI
 /// the serif and opening its sheet — the web's Cause list column. The third is the web's Matters
 /// column: the user's matters (`MattersListViewModel`, each opening its workspace), then the
 /// tracked cases no matter holds (`CaseListViewModel`, with its own sort and filters, each pushing
-/// its case page). One search field narrows both. `+` adds a matter through the court lookup, and
+/// its case page). One search field narrows both; New matter makes a matter, and a row's context
+/// menu edits, archives or deletes it. `+` adds a matter through the court lookup, and
 /// the Calendar button in the bar switches to the Calendar tab. Pull to refresh checks
 /// the cause lists again, and says so when it is done.
 ///
@@ -29,6 +30,10 @@ struct MattersView: View {
     @State private var isAddingMatter = false
     @State private var isArranging = false
     @State private var toast: String?
+    @State private var matterSheet: MatterListSheet?
+    /// A matter made in the New matter sheet, opened once the sheet has gone.
+    @State private var createdMatter: String?
+    @State private var matterFailure: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -92,7 +97,11 @@ struct MattersView: View {
                     MatterWorkspaceView(
                         route: matterRoute,
                         fileCount: matters?.projects.first(where: { $0.id == matterRoute.projectID })?.fileCount,
-                        onOpenCase: { path.append(.legalCase(CaseRoute(caseID: $0))) })
+                        onOpenCase: { path.append(.legalCase(CaseRoute(caseID: $0))) },
+                        onChanged: { message in
+                            if let message { toast = message }
+                            reloadMatters()
+                        })
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
@@ -109,6 +118,15 @@ struct MattersView: View {
                     Task { await cases?.load() }
                 }
                 .pageSizedSheet()
+            }
+            .sheet(item: $matterSheet, onDismiss: { openCreatedMatter() }) { which in
+                matterSheetView(which)
+            }
+            .alert("That did not go through", isPresented: Binding(
+                get: { matterFailure != nil }, set: { if !$0 { matterFailure = nil } })) {
+                Button("OK", role: .cancel) { matterFailure = nil }
+            } message: {
+                Text(matterFailure ?? "")
             }
             .sheet(isPresented: $isArranging) {
                 if let cases {
@@ -271,9 +289,11 @@ struct MattersView: View {
                     prompt: CaseListViewModel.Copy.searchPrompt)
 
                 if let matters {
-                    MattersSectionList(model: matters) { project in
-                        path.append(.matter(MatterRoute(projectID: project.id)))
-                    }
+                    MattersSectionList(
+                        model: matters,
+                        onOpen: { project in path.append(.matter(MatterRoute(projectID: project.id))) },
+                        onNew: { matterSheet = .new },
+                        onAction: { project, action in rowAction(project, action) })
                 }
 
                 if hasMatters {
@@ -307,6 +327,12 @@ struct MattersView: View {
                             Label("Add a matter", systemImage: "plus")
                         }
                         .buttonStyle(.primaryAction)
+                        Button {
+                            matterSheet = .new
+                        } label: {
+                            Label("New matter", systemImage: "folder.badge.plus")
+                        }
+                        .buttonStyle(.secondaryAction)
                     }
                 } else if let noMatches = cases.noMatches {
                     EmptyStateContent(
@@ -341,6 +367,63 @@ struct MattersView: View {
         } else {
             loading
         }
+    }
+
+    // MARK: - Writing matters
+
+    @ViewBuilder
+    private func matterSheetView(_ which: MatterListSheet) -> some View {
+        switch which {
+        case .new:
+            NewMatterSheet(existing: matters?.projects ?? []) { id, existed in
+                toast = NewMatterViewModel.createdMessage(existed: existed)
+                createdMatter = id
+                reloadMatters()
+            }
+        case .edit(let project):
+            MatterDetailsSheet(project: project) { message in
+                toast = message
+                reloadMatters()
+            }
+            .pageSizedSheet()
+        case .delete(let project):
+            DeleteMatterSheet(project: project) { message in
+                toast = message
+                reloadMatters()
+            }
+        }
+    }
+
+    private func rowAction(_ project: Project, _ action: MattersSectionList.RowAction) {
+        switch action {
+        case .edit: matterSheet = .edit(project)
+        case .delete: matterSheet = .delete(project)
+        case .archive:
+            let quick = MatterQuickActions(projectID: project.id, writes: session.projectWrites)
+            let archiving = !project.isArchived
+            Task {
+                if await quick.setArchived(archiving) {
+                    toast = archiving ? "Matter archived" : "Matter restored to active"
+                    reloadMatters()
+                } else if let error = quick.error {
+                    matterFailure = error
+                }
+            }
+        }
+    }
+
+    /// The matter just made, opened over All matters once its sheet has gone.
+    private func openCreatedMatter() {
+        guard let id = createdMatter else { return }
+        createdMatter = nil
+        segment = .all
+        path = [.matter(MatterRoute(projectID: id))]
+    }
+
+    private func reloadMatters() {
+        let matters = self.matters
+        let cases = self.cases
+        Task { await loadMatters(matters, cases: cases) }
     }
 
     // MARK: - States
@@ -534,6 +617,21 @@ private struct DocketRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(legalCase.isCourtSynced ? "From court" : "")
+    }
+}
+
+/// A sheet over All matters.
+enum MatterListSheet: Identifiable {
+    case new
+    case edit(Project)
+    case delete(Project)
+
+    var id: String {
+        switch self {
+        case .new: return "new"
+        case .edit(let p): return "edit-\(p.id)"
+        case .delete(let p): return "delete-\(p.id)"
+        }
     }
 }
 

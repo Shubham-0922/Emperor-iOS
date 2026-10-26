@@ -308,6 +308,45 @@ final class MatterEditorTests: XCTestCase {
         }
     }
 
+    // MARK: - Printouts
+
+    /// The PDF's words are the web's receipt with only the on-screen Print bar left out.
+    func testTheReceiptIsTheWebsReceiptWithoutItsPrintBar() {
+        let payment = LedgerEntry(id: "pl-abc123", kind: "payment", title: nil, amountPaise: 2_500_050,
+                                  entryDateRaw: "2026-09-01", mode: "upi", reference: "UTR 4021")
+        let detail = ProjectDetail(
+            project: Project(id: "prj-1", name: "Bhalla v. State", client: "Ankit Bhalla",
+                             forumName: "Punjab and Haryana High Court", caseNumber: "4412", caseYear: "2025",
+                             caseType: "CWP"),
+            ledger: [payment],
+            people: [ProjectPerson(id: "pp", role: "client", name: "Ankit Bhalla", address: "12, Sector 8")])
+        var user = User(id: 7)
+        user.name = "R. Sharma"
+        user.title = "Advocate"
+        let html = MatterPrintouts.receiptHTML(entry: payment, detail: detail, user: user)
+        let web = MatterReceipt.html(
+            advocate: MatterReceipt.advocate(name: "R. Sharma", title: "Advocate", organization: nil, phone: nil, email: nil),
+            client: MatterReceipt.Client(name: "Ankit Bhalla", address: "12, Sector 8"),
+            matter: MatterReceipt.matter(name: "Bhalla v. State", caseNumber: "4412", caseType: "CWP", caseYear: "2025",
+                                         forumName: "Punjab and Haryana High Court"),
+            entry: payment.ledgerEntry, includePrintBar: false)
+        XCTAssertEqual(html, web)
+        XCTAssertFalse(html.contains("receipt-print"), "the Print button is in the PDF")
+        XCTAssertTrue(html.contains("Twenty Five Thousand and Fifty Paise"))
+        XCTAssertEqual(MatterPrintouts.receiptFileName(payment), "Receipt 2026-27-ABC123.pdf")
+    }
+
+    func testTheListOfDatesCarriesTheMattersOwnEntries() {
+        let detail = ProjectDetail(
+            project: Project(id: "prj-1", name: "Bhalla v. State", forumName: "Delhi High Court"),
+            updates: [ProjectUpdate(id: "u1", kind: "filing", title: "Petition filed", eventDateRaw: "2025-03-01")])
+        let html = MatterPrintouts.listOfDatesHTML(detail: detail)
+        XCTAssertTrue(html.contains("LIST OF DATES AND EVENTS"))
+        XCTAssertTrue(html.contains("Petition filed"))
+        XCTAssertTrue(html.contains("IN THE DELHI HIGH COURT"))
+        XCTAssertEqual(MatterPrintouts.listOfDatesFileName(Project(id: "p", name: "A/B: C")), "List of Dates — A B  C.pdf")
+    }
+
     // MARK: - Court
 
     func testRefreshingTooSoonHoldsTheButtonForTheServersWait() async {

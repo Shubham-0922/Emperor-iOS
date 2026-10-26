@@ -1,19 +1,26 @@
 import SwiftUI
 
-/// The workspace's Court section — the web's `CourtSection` read-only: the linked case in
-/// summary with a way to its own page, then its record by part — hearings, orders, applications,
-/// parties by side, connected matters. A matter with no linked case says why: not linked, not
-/// filed yet, or linked to a case this user can no longer see.
+/// The workspace's Court section — the web's `CourtSection`: the linked case in summary with a
+/// way to its own page, Refresh from court (at most once every five minutes) and Unlink, then its
+/// record by part — hearings, orders, applications, parties by side, connected matters. A matter
+/// with no linked case says why — not linked, not filed yet, or linked to a case this user can no
+/// longer see — and offers Link a case and "Not filed yet".
 struct MatterCourtSection: View {
     @Environment(\.theme) private var theme
 
     let model: MatterWorkspaceViewModel
     let onOpenCase: (String) -> Void
+    var edit: MatterEditActions? = nil
+
+    @State private var confirmingUnlink = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             if let notice = model.courtNotice {
                 noticePanel(notice)
+                if let edit {
+                    unlinkedActions(edit)
+                }
             }
             if let linked = model.detail?.linkedCase, let heading = model.linkedCaseTitle {
                 summary(linked, heading: heading)
@@ -72,10 +79,113 @@ struct MatterCourtSection: View {
             }
             .buttonStyle(.compactSecondaryAction)
             .accessibilityIdentifier("matter-open-case")
+            if let edit {
+                linkedActions(edit)
+            }
         }
         .padding(Spacing.lg)
         .panel()
         .accessibilityIdentifier("matter-court-summary")
+    }
+
+    // MARK: - Actions
+
+    /// Refresh from court and Unlink, under the linked case's facts.
+    private func linkedActions(_ edit: MatterEditActions) -> some View {
+        let court = edit.court
+        return TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                AdaptiveStack(horizontalAlignment: .leading, spacing: Spacing.sm) {
+                    Button {
+                        refresh(edit)
+                    } label: {
+                        HStack(spacing: Spacing.xs) {
+                            if court.isRefreshing { ProgressView().controlSize(.small) }
+                            Label(court.refreshLabel(at: context.date), systemImage: "arrow.clockwise")
+                                .monospacedDigit()
+                        }
+                    }
+                    .buttonStyle(.compactSecondaryAction)
+                    .disabled(court.isRefreshing || court.waitSeconds(at: context.date) > 0)
+                    .accessibilityIdentifier("court-refresh")
+                    Button("Unlink") { confirmingUnlink = true }
+                        .buttonStyle(.quietAction)
+                        .disabled(court.isWorking)
+                        .accessibilityIdentifier("court-unlink")
+                }
+                if let wait = court.waitNotice(at: context.date) {
+                    Text(wait)
+                        .font(.brand(.footnote))
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("court-refresh-wait")
+                }
+            }
+        }
+        .confirmationDialog("Unlink the court case?", isPresented: $confirmingUnlink, titleVisibility: .visible) {
+            Button("Unlink", role: .destructive) {
+                edit.run(nil, {
+                    guard await court.unlink() else { return false }
+                    edit.done(court.message ?? "Court case unlinked")
+                    return true
+                }, error: { court.error })
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The matter stops following the case. The case stays tracked; what was copied from it is cleared where it was not changed.")
+        }
+    }
+
+    /// Link a case, "Not filed yet", and — for a case this user can no longer see — Unlink.
+    @ViewBuilder
+    private func unlinkedActions(_ edit: MatterEditActions) -> some View {
+        let court = edit.court
+        let project = model.project
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Button {
+                edit.open(.linkCase)
+            } label: {
+                Label("Link a case", systemImage: "link")
+            }
+            .buttonStyle(.compactSecondaryAction)
+            .disabled(court.isWorking)
+            .accessibilityIdentifier("court-link")
+            if (project?.linkedCaseID ?? "").isEmpty {
+                Toggle(isOn: Binding(
+                    get: { project?.courtStatus == "not_filed" },
+                    set: { on in
+                        edit.run(nil, { await court.setNotFiled(on) }, error: { court.error })
+                    })) {
+                    Text("Not filed yet")
+                        .font(.brand(.subheadline))
+                }
+                .disabled(court.isWorking)
+                .accessibilityIdentifier("court-not-filed")
+            } else {
+                Button("Unlink") { confirmingUnlink = true }
+                    .buttonStyle(.quietAction)
+                    .accessibilityIdentifier("court-unlink")
+                    .confirmationDialog("Unlink the court case?", isPresented: $confirmingUnlink,
+                                        titleVisibility: .visible) {
+                        Button("Unlink", role: .destructive) {
+                            edit.run("Court case unlinked", { await court.unlink() }, error: { court.error })
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+            }
+        }
+    }
+
+    private func refresh(_ edit: MatterEditActions) {
+        let court = edit.court
+        Task {
+            if await court.refresh() {
+                edit.done(court.message ?? "Court record refreshed")
+                await edit.reload()
+            } else if let error = court.error {
+                edit.failed(error)
+            }
+        }
     }
 
     private func courtGroup(_ group: MatterWorkspaceViewModel.CourtGroup) -> some View {
