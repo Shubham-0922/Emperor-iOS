@@ -41,6 +41,9 @@ struct AccountUsage: Equatable, Sendable {
 
         var isUnlimited: Bool { limit == nil || (limit ?? 0) < 0 }
 
+        /// Whether the plan includes this allowance at all (a limit of zero means it does not).
+        var isIncluded: Bool { limit != 0 }
+
         var isExhausted: Bool {
             guard let limit, limit > 0 else { return false }
             return used >= limit

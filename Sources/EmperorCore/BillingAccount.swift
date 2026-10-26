@@ -94,7 +94,7 @@ struct PlanStanding: Equatable, Sendable {
     /// "purchased · Active until 12 November 2026"; `nil` for an account with no plan.
     static func sourceLine(_ plan: BillingPlanStatus, now: Date) -> String? {
         guard let source = plan.planSource, !source.isEmpty else { return nil }
-        let words = sourceWords[source] ?? source
+        let words = sourceWords[source] ?? "active"
         let tail: String
         if source == "grandfathered" {
             tail = "No expiry"

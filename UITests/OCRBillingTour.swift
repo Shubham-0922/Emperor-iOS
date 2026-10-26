@@ -27,7 +27,7 @@ final class OCRBillingTour: XCTestCase {
                 row.tap()
                 let modes = ocr.segmentedControls.firstMatch
                 if modes.waitForExistence(timeout: 10) { modes.buttons["Translate"].tap() }
-                let notes = ocr.descendants(matching: .any)["ocr-row-notes-1790000000000"].firstMatch
+                let notes = ocr.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Page 4 could not be read")).firstMatch
                 var swipes = 0
                 while !notes.exists, swipes < 4 {
                     ocr.swipeUp()
@@ -50,7 +50,7 @@ final class OCRBillingTour: XCTestCase {
         if includes.waitForExistence(timeout: 5) {
             plan.reveal(includes)
             includes.tap()
-            _ = plan.staticTexts["Email support"].firstMatch.waitForExistence(timeout: 5)
+            _ = plan.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch.waitForExistence(timeout: 5)
             tourSnap(plan, theme: theme, step: &step, "plan-includes-open")
         }
     }

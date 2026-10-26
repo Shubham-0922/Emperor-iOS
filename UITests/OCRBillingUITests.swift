@@ -29,7 +29,7 @@ final class OCRBillingUITests: XCTestCase {
         let app = XCUIApplication.launchedSignedIn(["-UITestOCRNotes"])
         openTranslateHistory(app)
 
-        let notes = app.descendants(matching: .any)["ocr-row-notes-1790000000000"].firstMatch
+        let notes = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Page 4 could not be read")).firstMatch
         var swipes = 0
         while !notes.exists, swipes < 4 {
             app.swipeUp()
@@ -72,7 +72,7 @@ final class OCRBillingUITests: XCTestCase {
         XCTAssertTrue(includes.waitForExistence(timeout: 10), "no \"What your plan includes\" row")
         app.reveal(includes)
         includes.tap()
-        let support = app.staticTexts["Email support"].firstMatch
+        let support = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch
         XCTAssertTrue(poll { support.exists }, "the inclusions did not open")
         XCTAssertFalse(app.buttons["Upgrade"].exists, "the plan sheet sells")
         XCTAssertFalse(app.staticTexts["Upgrade"].exists, "the plan sheet sells")

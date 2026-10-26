@@ -15,7 +15,7 @@ extension AccessibilityAuditTests {
         guard reached(includes, "the inclusions row") else { return }
         app.reveal(includes)
         includes.tap()
-        _ = app.staticTexts["Email support"].firstMatch.waitForExistence(timeout: 5)
+        _ = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch.waitForExistence(timeout: 5)
         audit("plan-includes", in: app, sheet: bar)
     }
 
@@ -35,7 +35,7 @@ extension AccessibilityAuditTests {
         modes.buttons["Translate"].tap()
         let bar = app.navigationBars["Translate"]
         guard reached(bar, "the Translate screen") else { return }
-        let notes = app.descendants(matching: .any)["ocr-row-notes-1790000000000"].firstMatch
+        let notes = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Page 4 could not be read")).firstMatch
         var swipes = 0
         while !notes.exists, swipes < 4 {
             app.swipeUp()

@@ -220,7 +220,7 @@ struct YouView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             StatusPill(
-                text: "\(session.currentUser?.planLabel ?? "PRO") plan",
+                text: PlanLabel.pill(session: session.currentUser?.planLabel, entitlements: nil),
                 tone: .accent,
                 systemImage: "star")
         }
