@@ -53,7 +53,8 @@ struct DevilsAdvocateSeverityDonut: View {
     var body: some View {
         let counts = report.countBySeverity
         let total = report.weakSpots.count
-        let slices = DevilsAdvocateReport.Severity.allCases
+        let inset: CGFloat = total > 1 ? 1.5 : 0
+        let slices: [Slice] = DevilsAdvocateReport.Severity.allCases
             .map { Slice(severity: $0, count: counts[$0], color: DevilsAdvocateTone.color($0, theme)) }
             .filter { $0.count > 0 }
         VStack(alignment: .leading, spacing: Spacing.sm) {
@@ -70,7 +71,7 @@ struct DevilsAdvocateSeverityDonut: View {
                     SectorMark(
                         angle: .value("Spots", slice.count),
                         innerRadius: .ratio(0.62),
-                        angularInset: total > 1 ? 1.5 : 0)
+                        angularInset: inset)
                         .foregroundStyle(slice.color)
                 }
                 .chartLegend(.hidden)
@@ -132,7 +133,8 @@ struct DevilsAdvocateCategoryBars: View {
 
     var body: some View {
         let rows = report.categoryRows
-        let pieces = rows.flatMap { row in
+        let chartHeight: CGFloat = CGFloat(max(rows.count, 1) * 34 + 8)
+        let pieces: [Piece] = rows.flatMap { row in
             DevilsAdvocateReport.Severity.allCases.compactMap { severity -> Piece? in
                 let n = row.by[severity]
                 return n > 0 ? Piece(
@@ -157,7 +159,7 @@ struct DevilsAdvocateCategoryBars: View {
             }
             .chartXAxis(.hidden)
             .chartLegend(.hidden)
-            .frame(height: CGFloat(max(rows.count, 1)) * 34 + 8)
+            .frame(height: chartHeight)
             .accessibilityHidden(true)
             // The bars' content, said in words: the chart's own reading of them is numbers only.
             VStack(alignment: .leading, spacing: Spacing.xs) {

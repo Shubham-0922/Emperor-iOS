@@ -103,12 +103,13 @@ enum AnalysisStubs {
 
         func runs(_ tool: String) -> [Run] {
             lock.withLock {
-                let seed = UITestSupport.isEmpty ? [] : [Run(
+                let seed: [Run] = UITestSupport.isEmpty ? [] : [Run(
                     id: "anr_seed_\(tool)", title: "Helios v. Northgrid (seed)",
                     createdAt: "2026-10-20T09:30:00.000Z",
                     fileNames: ["Plaint.pdf", "Power_Purchase_Agreement.pdf", "Legal_notice_and_reply.pdf"],
                     reference: "We act for Helios.")]
-                return ((added[tool] ?? []) + seed).filter { !removed.contains($0.id) }
+                let extra: [Run] = added[tool] ?? []
+                return (extra + seed).filter { !removed.contains($0.id) }
             }
         }
 

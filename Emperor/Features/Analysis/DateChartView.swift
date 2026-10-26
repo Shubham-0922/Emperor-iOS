@@ -110,9 +110,7 @@ struct DateChartView: View {
                             Image(systemName: "hourglass")
                                 .foregroundStyle(theme.warning)
                                 .accessibilityHidden(true)
-                            (Text("Limitation watch").bold().foregroundStyle(theme.warning)
-                                + Text(" · \(limitation.headline) ").foregroundStyle(theme.textPrimary)
-                                + Text("(check with your advocate)").foregroundStyle(theme.textSecondary))
+                            watchLine(limitation)
                                 .font(.brand(.footnote))
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -137,6 +135,13 @@ struct DateChartView: View {
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
+    }
+
+    private func watchLine(_ l: DateChart.Limitation) -> Text {
+        let lead: Text = Text("Limitation watch").bold().foregroundStyle(theme.warning)
+        let mid: Text = Text(" · \(l.headline) ").foregroundStyle(theme.textPrimary)
+        let tail: Text = Text("(check with your advocate)").foregroundStyle(theme.textSecondary)
+        return lead + mid + tail
     }
 
     private func fact(_ value: String, _ label: String, _ category: DateChart.Category?) -> some View {

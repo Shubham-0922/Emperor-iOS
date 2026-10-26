@@ -236,8 +236,9 @@ struct DocIndexView: View {
         let strong = index.strongColumn
         let visible = state.columns(index)
         let badges = visible.filter { $0.type == .badge && $0.key != strong.key && row[$0.key] != nil }
+        let skipped: [DocIndex.ColumnType] = [.badge, .long, .tags]
         let facts = visible
-            .filter { ![DocIndex.ColumnType.badge, .long, .tags].contains($0.type) && $0.key != strong.key && row[$0.key] != nil }
+            .filter { !skipped.contains($0.type) && $0.key != strong.key && row[$0.key] != nil }
             .prefix(state.compact ? 1 : 3)
         let flagged = index.isFlagged(row)
         return Button {
@@ -439,10 +440,10 @@ struct DocIndexView: View {
 
 /// Lays its views out in lines, wrapping to the next line when one is full — chips, badges,
 /// figures.
-struct AnalysisFlow: Layout {
+struct AnalysisFlow: SwiftUI.Layout {
     var spacing: CGFloat = 6
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0
         var y: CGFloat = 0
@@ -463,7 +464,7 @@ struct AnalysisFlow: Layout {
         return CGSize(width: width.isFinite ? width : widest, height: y + line)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) {
         let width = bounds.width
         var x: CGFloat = 0
         var y: CGFloat = 0

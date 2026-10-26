@@ -23,11 +23,12 @@ struct AnalysisRunningView: View {
                         .accessibilityLabel("Running for \(AnalysisRunModel.clock(context.date.timeIntervalSince(startedAt)))")
                 }
             }
+            let percent: Int = Int((min(1, max(0, progress)) * 100).rounded())
             if progress > 0 {
                 ProgressView(value: min(1, max(0, progress)))
                     .tint(theme.accent)
                     .accessibilityLabel("Progress")
-                    .accessibilityValue("\(Int((min(1, max(0, progress)) * 100).rounded())) percent")
+                    .accessibilityValue("\(percent) percent")
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .leading)

@@ -16,7 +16,7 @@ final class AnalysisUITests: XCTestCase {
         runOnBakshi(app)
         let table = element(app, "di-table")
         XCTAssertTrue(table.waitForExistence(timeout: 15), "the index did not arrive")
-        XCTAssertTrue(poll { rows(app).count == 3 }, "rows: \(rows(app).count)")
+        XCTAssertTrue(poll { element(app, "di-showing").label.hasPrefix("Showing 3 of 3 documents") }, "showing: \(element(app, "di-showing").label)")
 
         // The search field wraps, so it may read as a text view rather than a text field.
         let placeholder = "Search every column"
@@ -27,6 +27,7 @@ final class AnalysisUITests: XCTestCase {
         field.focusForTyping()
         field.typeText("notice")
         XCTAssertTrue(poll { rows(app).count == 1 }, "search left \(rows(app).count) rows")
+        XCTAssertTrue(poll { element(app, "di-showing").label.hasPrefix("Showing 1 of 3 documents") })
     }
 
     func testListOfDatesFiltersAndCopies() {
@@ -74,7 +75,7 @@ final class AnalysisUITests: XCTestCase {
         app.reveal(check)
         XCTAssertTrue(check.waitForExistence(timeout: 5), "no checklist item c2")
         // The switch itself, at the trailing edge: a tap on the row's words does not toggle it.
-        check.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        check.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -26, dy: 0)).tap()
         XCTAssertTrue(poll { counter.label == "2 of 3 done" }, "checklist after a tick: \(counter.label)")
     }
 
@@ -126,7 +127,7 @@ final class AnalysisUITests: XCTestCase {
         app.reveal(run)
         XCTAssertTrue(run.waitForExistence(timeout: 10), "no run button")
         XCTAssertFalse(run.isEnabled, "the run button works with no document")
-        XCTAssertTrue(app.staticTexts["Choose at least one document to begin."].exists)
+        XCTAssertTrue(poll { element(app, "analysis-cta-note").label == "Choose at least one document to begin." })
     }
 
     // MARK: - Steps

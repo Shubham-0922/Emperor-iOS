@@ -13,7 +13,8 @@ struct DocIndexDetailSheet: View {
         let strong = index.strongColumn
         let long = index.columns.filter { $0.type == .long }
         let tags = index.columns.filter { $0.type == .tags }
-        let facts = index.columns.filter { ![DocIndex.ColumnType.long, .tags, .number].contains($0.type) && $0.key != strong.key }
+        let skipped: [DocIndex.ColumnType] = [.long, .tags, .number]
+        let facts = index.columns.filter { !skipped.contains($0.type) && $0.key != strong.key }
         VStack(spacing: 0) {
             RecordSheetHeader(title: DocIndex.cellText(strong, row).isEmpty ? "Document" : DocIndex.cellText(strong, row)) {
                 dismiss()

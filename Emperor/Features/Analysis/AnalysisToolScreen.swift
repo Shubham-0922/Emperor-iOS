@@ -93,7 +93,6 @@ struct AnalysisToolScreen: View {
             }
             .onChange(of: model?.phase) { _, _ in
                 // A new result starts with nothing searched, filtered or hidden.
-                if model?.outcome != nil { return }
                 docIndexState = DocIndexViewState()
                 dateChartState = DateChartViewState()
             }

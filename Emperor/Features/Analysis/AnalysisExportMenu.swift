@@ -69,8 +69,9 @@ struct AnalysisExportMenu: View {
     private static func stem(_ title: String, fallback: String) -> String {
         var out = ""
         var inRun = false
+        let digits: ClosedRange<Unicode.Scalar> = "0"..."9"
         for scalar in title.unicodeScalars {
-            if scalar.isASCII, scalar.properties.isAlphabetic || ("0"..."9").contains(scalar) {
+            if scalar.isASCII, scalar.properties.isAlphabetic || digits.contains(scalar) {
                 out.unicodeScalars.append(scalar)
                 inRun = false
             } else if !inRun, !out.isEmpty {

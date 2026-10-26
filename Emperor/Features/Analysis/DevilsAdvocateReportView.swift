@@ -217,6 +217,7 @@ struct DevilsAdvocateReportView: View {
         VStack(spacing: Spacing.xs) {
             GeometryReader { geo in
                 let width = geo.size.width
+                let mark: CGFloat = min(max(0, width * CGFloat(report.exposureScore) / 100 - 2), max(0, width - 4))
                 ZStack(alignment: .leading) {
                     HStack(spacing: 3) {
                         UnevenRoundedRectangle(topLeadingRadius: 5, bottomLeadingRadius: 5)
@@ -234,7 +235,7 @@ struct DevilsAdvocateReportView: View {
                         .fill(theme.textPrimary)
                         .frame(width: 4, height: 20)
                         .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(theme.surface, lineWidth: 1))
-                        .offset(x: min(max(0, width * CGFloat(report.exposureScore) / 100 - 2), max(0, width - 4)))
+                        .offset(x: mark)
                 }
                 .frame(height: 20)
             }
@@ -254,6 +255,17 @@ struct DevilsAdvocateReportView: View {
         .accessibilityIdentifier("da-gauge")
     }
 
+    private func place(_ a: DevilsAdvocateReport.Authority) -> String {
+        let head: String = [a.court, a.year].filter { !$0.isEmpty }.joined(separator: ", ")
+        let parts: [String] = [head, a.pinCite]
+        return parts.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    private func segment(_ w: CGFloat, _ n: Int, _ total: Int) -> CGFloat {
+        let share: CGFloat = (w - 4) * CGFloat(n) / CGFloat(total)
+        return max(4, share)
+    }
+
     private func severityStack(_ counts: DevilsAdvocateReport.SeverityCounts) -> some View {
         GeometryReader { geo in
             let total = max(1, report.weakSpots.count)
@@ -262,7 +274,7 @@ struct DevilsAdvocateReportView: View {
                     if counts[severity] > 0 {
                         RoundedRectangle(cornerRadius: 3)
                             .fill(DevilsAdvocateTone.color(severity, theme))
-                            .frame(width: max(4, (geo.size.width - 4) * CGFloat(counts[severity]) / CGFloat(total)))
+                            .frame(width: segment(geo.size.width, counts[severity], total))
                     }
                 }
             }
@@ -472,15 +484,16 @@ struct DevilsAdvocateReportView: View {
         } else {
             let counts = report.readinessCounts
             let shown = report.questions(readiness)
+            let filterOptions: [(value: DevilsAdvocateReport.Readiness?, title: String)] = [
+                (nil, "All \(counts.all)"),
+                (.ready, "Ready \(counts.ready)"),
+                (.work, "Needs work \(counts.work)"),
+                (.gap, "Gap \(counts.gap)"),
+            ]
             VStack(alignment: .leading, spacing: Spacing.md) {
                 RecordSegmentedControl(
                     label: "Filter questions by readiness",
-                    options: [
-                        (value: Optional<DevilsAdvocateReport.Readiness>.none, title: "All \(counts.all)"),
-                        (value: .some(.ready), title: "Ready \(counts.ready)"),
-                        (value: .some(.work), title: "Needs work \(counts.work)"),
-                        (value: .some(.gap), title: "Gap \(counts.gap)"),
-                    ],
+                    options: filterOptions,
                     selection: $readiness)
                     .accessibilityIdentifier("da-question-filter")
                 if shown.isEmpty {
@@ -563,10 +576,9 @@ struct DevilsAdvocateReportView: View {
                         Spacer(minLength: Spacing.sm)
                         spotLink(a.against)
                     }
-                    let place = [[a.court, a.year].filter { !$0.isEmpty }.joined(separator: ", "), a.pinCite]
-                        .filter { !$0.isEmpty }.joined(separator: " · ")
-                    if !place.isEmpty {
-                        Text(place)
+                    let placeText: String = place(a)
+                    if !placeText.isEmpty {
+                        Text(placeText)
                             .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                     }
