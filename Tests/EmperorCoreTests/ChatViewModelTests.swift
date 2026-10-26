@@ -781,3 +781,380 @@ private func turn(_ content: String, attaching files: [(String, String?)]) -> Ch
     }
     return message
 }
+
+// MARK: - A run's lifecycle: stop, follow, adopt
+
+@MainActor
+private func withScripted(
+    stepped clock: SteppedClock? = nil,
+    _ body: @MainActor (ScriptedChat, ChatViewModel) async -> Void
+) async {
+    let fake = ScriptedChat()
+    let model = ChatViewModel(chatID: "chat-1", service: fake)
+    if let clock { model.followTiming = clock.timing }
+    await body(fake, model)
+}
+
+/// Waits for a turn or a followed run to end, and for any stop to finish.
+@MainActor
+private func settleRun(_ model: ChatViewModel) async {
+    for _ in 0..<1000 {
+        if !model.isStreaming, !model.isStopping { return }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    XCTFail("run did not settle")
+}
+
+private func question(_ text: String, id: String = "q1") -> ChatMessage {
+    ChatMessage(role: .user, content: text, id: id)
+}
+
+/// An answer as the server saves it at the end of a run.
+private func savedAnswer(_ text: String) -> ChatMessage {
+    var answer = ChatMessage(role: .assistant, content: text)
+    answer.done = true
+    answer.isTyping = false
+    answer.extra["serverRun"] = .bool(true)
+    return answer
+}
+
+/// A run in progress, as `/stream-status` reports it.
+private func liveStatus(
+    content: String = "", fromLiveRun: Bool = false, lines: [String]? = nil
+) -> StreamStatus {
+    var status = StreamStatus(active: true, done: false, incomplete: false, isTyping: true)
+    status.running = true
+    status.phase = "research"
+    status.content = content
+    status.contentLength = content.count
+    status.fromLiveRun = fromLiveRun
+    status.statusLines = lines
+    return status
+}
+
+private func endedStatus() -> StreamStatus {
+    var status = StreamStatus(active: false, done: true, incomplete: false, isTyping: false)
+    status.running = false
+    return status
+}
+
+final class ChatRunLifecycleTests: XCTestCase {
+
+    // MARK: Stop
+
+    /// Stop reaches the server, which saves the run as a stopped answer; that saved
+    /// conversation is what the screen shows afterwards.
+    func testStopTellsTheServerAndAdoptsTheStoppedTurn() async {
+        await withScripted { fake, model in
+            var stopped = ChatMessage(role: .assistant, content: "Half a draft\n\n_Stopped by you._")
+            stopped.extra["stopped"] = .bool(true)
+            stopped.extra["stoppedBy"] = .string("user")
+            let saved = [question("Draft a plaint"), stopped]
+            fake.scriptHistories([[question("Draft a plaint")], saved])
+            fake.scriptStatuses([liveStatus(content: "Half a draft", fromLiveRun: true)])
+            await model.load()
+            XCTAssertTrue(model.isFollowing)
+
+            model.stop()
+            XCTAssertTrue(model.isStopping)
+            model.stop()   // a second tap while stopping does nothing
+            await settleRun(model)
+
+            XCTAssertEqual(fake.stopCalls, 1)
+            XCTAssertEqual(model.messages, saved)
+            XCTAssertTrue(model.wasStopped)
+            XCTAssertFalse(model.isFollowing)
+            XCTAssertNil(model.live)
+        }
+    }
+
+    /// The server cannot be reached: the partial on screen is kept, marked the way the web marks
+    /// a reader's Stop.
+    func testStopWithTheServerUnreachableKeepsThePartialMarked() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Draft a plaint")]])
+            fake.scriptStatuses([liveStatus(content: "The draft so far", fromLiveRun: true)])
+            await model.load()
+
+            model.stop()
+            await settleRun(model)
+
+            let last = model.messages.last
+            XCTAssertEqual(model.messages.count, 2)
+            XCTAssertEqual(last?.role, .assistant)
+            XCTAssertEqual(last?.content, "The draft so far")
+            XCTAssertEqual(last?.extra["stopped"], .bool(true))
+            XCTAssertEqual(last?.extra["stoppedBy"], .string("user"))
+            XCTAssertEqual(fake.messagesCalls, 1, "nothing to adopt without the server")
+        }
+    }
+
+    /// Stopped before a word was written, with no server: a one-line note answers the question
+    /// rather than leaving it looking unanswered.
+    func testStopBeforeAnyTextLeavesTheStoppedNote() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Draft a plaint")]])
+            fake.scriptStatuses([liveStatus()])
+            await model.load()
+
+            model.stop()
+            await settleRun(model)
+
+            XCTAssertEqual(model.messages.count, 2)
+            XCTAssertEqual(model.messages.last?.content, ChatViewModel.stoppedEmptyNote)
+            XCTAssertEqual(model.messages.last?.extra["stoppedBy"], .string("user"))
+        }
+    }
+
+    /// A poll still on its way when Stop was pressed must not draw over the stopped turn or add
+    /// the answer a second time.
+    func testALatePollAfterStopDoesNotAppendTwice() async {
+        await withScripted { fake, model in
+            var stopped = ChatMessage(role: .assistant, content: "Partial")
+            stopped.extra["stoppedBy"] = .string("user")
+            fake.scriptHistories([[question("Q")], [question("Q"), stopped]])
+            fake.scriptStatuses([liveStatus(content: "Partial", fromLiveRun: true)])
+            await model.load()
+            await model.becameActive()   // a poll now in flight
+            model.stop()
+            await settleRun(model)
+            let afterStop = model.messages.count
+
+            try? await Task.sleep(for: .milliseconds(80))
+
+            XCTAssertEqual(afterStop, 2)
+            XCTAssertEqual(model.messages.count, afterStop, "the turn is there once")
+            XCTAssertNil(model.live)
+            XCTAssertFalse(model.isStreaming)
+        }
+    }
+
+    // MARK: Following
+
+    /// A first turn: no answer row exists yet, so the status carries no text — but the run is
+    /// live, and the screen follows it to the saved answer.
+    func testAFirstTurnWithTheRunLiveIsFollowed() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([
+                [question("Is the suit barred?")],
+                [question("Is the suit barred?"), savedAnswer("Yes, under Article 58.")],
+            ])
+            fake.scriptStatuses([liveStatus(), endedStatus()])
+            await model.load()
+
+            XCTAssertTrue(model.isFollowing)
+            XCTAssertTrue(model.isStreaming, "the composer stays in its Stop state")
+            XCTAssertNil(model.runIssue)
+            await settleRun(model)
+
+            XCTAssertEqual(model.messages.map(\.content),
+                           ["Is the suit barred?", "Yes, under Article 58."])
+            XCTAssertNil(model.runIssue)
+            XCTAssertFalse(model.wasInterrupted)
+        }
+    }
+
+    /// Until the run writes, the status carries the previous turn's answer, which must never be
+    /// shown as the one being written.
+    func testThePreviousAnswerIsNotShownAsLive() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[
+                question("First", id: "q1"), savedAnswer("Old answer"), question("Second", id: "q2"),
+            ]])
+            fake.scriptStatuses([liveStatus(content: "Old answer", fromLiveRun: false)])
+            await model.load()
+
+            XCTAssertTrue(model.isFollowing)
+            XCTAssertNil(model.live, "the previous answer is not the live one")
+            model.stop()
+            await settleRun(model)
+        }
+    }
+
+    /// The run's own text and its recent tool calls are drawn while it is followed.
+    func testTheLiveTextAndWorkLogAreDrawn() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus(
+                content: "Possession passed", fromLiveRun: true,
+                lines: ["Reading pages 1–4 of Sale Deed", "Thinking",
+                        "Searching the record for: possession"])])
+            await model.load()
+
+            XCTAssertEqual(model.live?.prose, "Possession passed")
+            guard case .group(let round)? = model.progress.workLog.first else {
+                return XCTFail("no log")
+            }
+            XCTAssertEqual(round.steps.map(\.label),
+                           ["Reading pages 1–4 of Sale Deed", "Searching the record for: possession"])
+            XCTAssertEqual(round.steps.map(\.status), [.completed, .inProgress])
+            model.stop()
+            await settleRun(model)
+        }
+    }
+
+    /// Two seconds, then half as long again each time nothing changed, up to ten.
+    func testPollingBacksOff() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")], [question("Q"), savedAnswer("Done.")]])
+            fake.scriptStatuses(Array(repeating: liveStatus(), count: 7) + [endedStatus()])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(clock.waits, [2000, 3000, 4500, 6750, 10000, 10000, 10000])
+            XCTAssertEqual(model.messages.last?.content, "Done.")
+        }
+    }
+
+    /// Something changed: the wait goes back to two seconds.
+    func testAChangeResetsTheBackOff() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")], [question("Q"), savedAnswer("Done.")]])
+            fake.scriptStatuses([
+                liveStatus(), liveStatus(), liveStatus(),
+                liveStatus(content: "Writ", fromLiveRun: true), endedStatus(),
+            ])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(clock.waits, [2000, 3000, 4500, 2000])
+        }
+    }
+
+    /// A run that never ends is watched for 35 minutes, then reported with Retry.
+    func testFollowingGivesUpAfterThirtyFiveMinutes() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus()])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(model.runIssue, LiveRun.failureText("timeout"))
+            XCTAssertFalse(model.isFollowing)
+            let waited = clock.waits.reduce(0, +)
+            XCTAssertGreaterThanOrEqual(waited, LiveRun.watchMaxMs)
+            XCTAssertLessThanOrEqual(waited, LiveRun.watchMaxMs + LiveRun.pollMaxMs)
+        }
+    }
+
+    /// Eight unreadable status answers in a row, and the screen says it lost touch.
+    func testFollowingGivesUpAfterEightFailedReads() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([.success(liveStatus()), .failure(APIError.transport("offline"))])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(model.runIssue, LiveRun.failureText("lost"))
+            XCTAssertEqual(fake.statusCalls, 1 + LiveRun.maxPollFailures)
+        }
+    }
+
+    /// The run ended without saving an answer: said so, with Retry, which asks the question again.
+    func testARunThatSavedNothingOffersRetry() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus(), endedStatus()])
+            fake.events = [.content(StreamContent.parse("An answer."))]
+            await model.load()
+            await settleRun(model)
+            XCTAssertEqual(model.runIssue, LiveRun.failureText("no-answer"))
+
+            model.retryRun()
+            await settleRun(model)
+            XCTAssertNil(model.runIssue)
+            XCTAssertEqual(fake.sent.last?.map(\.content), ["Q"])
+            XCTAssertEqual(model.messages.last?.content, "An answer.")
+        }
+    }
+
+    /// A run the server marked interrupted is adopted and flagged.
+    func testAnInterruptedRunIsFlaggedWhenItEnds() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            var cut = savedAnswer("Half of it")
+            cut.incomplete = true
+            fake.scriptHistories([[question("Q")], [question("Q"), cut]])
+            fake.scriptStatuses([liveStatus(), endedStatus()])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertTrue(model.wasInterrupted)
+            XCTAssertEqual(model.messages.last?.content, "Half of it")
+        }
+    }
+
+    // MARK: Refused as busy
+
+    /// A question refused because a run is live keeps its text for the composer, and the screen
+    /// follows that run to its saved answer instead of going idle.
+    func testABusyRefusalFollowsTheLiveRun() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.events = [.busy("Your draft for this chat is still being generated.")]
+            fake.scriptStatuses([liveStatus(content: "Drafting", fromLiveRun: true), endedStatus()])
+            fake.scriptHistories([[question("Earlier"), savedAnswer("The earlier answer.")]])
+            model.send("Another question")
+            await settleRun(model)
+
+            XCTAssertEqual(model.restoredDraft, "Another question")
+            XCTAssertEqual(model.messages.map(\.content), ["Earlier", "The earlier answer."])
+            XCTAssertNil(model.busyNotice, "the run it was waiting for has answered")
+            XCTAssertEqual(fake.statusCalls, 2)
+        }
+    }
+
+    // MARK: Coming back to the foreground
+
+    /// Idle, and a run has started elsewhere: coming back reads the conversation and follows it.
+    func testComingBackFollowsARunStartedElsewhere() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Q"), savedAnswer("A")]])
+            fake.scriptStatuses([endedStatus()])
+            await model.load()
+            XCTAssertFalse(model.isFollowing)
+
+            fake.scriptHistories([[
+                question("Q"), savedAnswer("A"), question("Asked on the web", id: "q2"),
+            ]])
+            fake.scriptStatuses([liveStatus()])
+            await model.becameActive()
+
+            XCTAssertTrue(model.isFollowing)
+            XCTAssertEqual(model.messages.last?.content, "Asked on the web",
+                           "the question the run belongs to is read first")
+            model.stop()
+            await settleRun(model)
+        }
+    }
+
+    /// Already following: coming back polls at once rather than sitting out the back-off.
+    func testComingBackWhileFollowingPollsAtOnce() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus()])
+            await model.load()
+            XCTAssertEqual(fake.statusCalls, 1)
+
+            await model.becameActive()
+            for _ in 0..<200 where fake.statusCalls < 2 {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            XCTAssertEqual(fake.statusCalls, 2, "polled without waiting two seconds")
+            model.stop()
+            await settleRun(model)
+        }
+    }
+}
