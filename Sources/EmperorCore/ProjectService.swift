@@ -3,67 +3,97 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// The project operations a view model needs.
+/// The matter operations a view model needs.
 protocol ProjectProviding: Sendable {
     func projects(includeArchived: Bool) async throws -> [Project]
     func project(id: String) async throws -> ProjectDetail
+    /// An uploaded banner's bytes (png, jpeg or webp). `version` is the matter's `updated_at`,
+    /// so a changed picture is a different request.
+    func bannerImage(projectID: String, version: String) async throws -> Data
 }
 
-/// One matter and everything hanging off it.
+extension ProjectProviding {
+    /// Stand-ins that draw no pictures need not answer; the banner then falls back to its preset.
+    func bannerImage(projectID: String, version: String) async throws -> Data {
+        throw APIError.server(status: 404, message: "No banner image.")
+    }
+}
+
+/// One matter and everything hanging off it — the web's `normalize`d payload: every list
+/// present (empty when the server sent none), `courtHistory[].data` an object, and totals summed
+/// from the ledger wherever the server sent none.
 struct ProjectDetail: Equatable, Sendable {
     var project: Project
+    /// The matter's own record, newest first as the server sends it; rows with neither a title
+    /// nor a body are dropped.
     var updates: [ProjectUpdate]
-    /// The linked case's scraped hearing and order rows, merged in server-side. Empty when
-    /// `Project.linkedCaseID` is unset — and also when the linked case has since been deleted
-    /// by the sync that owns it, which the route swallows rather than 500s on
-    /// (`sync-server.js:9973-9982`).
-    var courtHistory: [CaseItem]
+    var chats: [ProjectChat]
+    /// The linked case's record. Empty when nothing is linked, or the user is not in the team
+    /// that tracks the case.
+    var courtHistory: [CourtHistoryItem]
+    var linkedCase: LinkedCase?
+    var tasks: [ProjectTask]
+    var ledger: [LedgerEntry]
+    var people: [ProjectPerson]
+    var totals: MatterRules.LedgerTotals
 
-    /// The most recent update, which is what the list screen's "last activity" refers to. The
-    /// server already sorted them, so this is the first rather than a fresh comparison.
-    var latestUpdate: ProjectUpdate? { updates.first }
+    init(
+        project: Project, updates: [ProjectUpdate] = [], chats: [ProjectChat] = [],
+        courtHistory: [CourtHistoryItem] = [], linkedCase: LinkedCase? = nil,
+        tasks: [ProjectTask] = [], ledger: [LedgerEntry] = [], people: [ProjectPerson] = [],
+        totals: MatterRules.LedgerTotals? = nil
+    ) {
+        self.project = project
+        self.updates = updates
+        self.chats = chats
+        self.courtHistory = courtHistory
+        self.linkedCase = linkedCase
+        self.tasks = tasks
+        self.ledger = ledger
+        self.people = people
+        self.totals = totals ?? Ledger.totals(ledger.map(\.ledgerEntry))
+    }
+
+    /// The payload as the screens read it.
+    init(response: ProjectDetailResponse, project: Project) {
+        let ledger = response.ledger ?? []
+        let summed = Ledger.totals(ledger.map(\.ledgerEntry))
+        self.init(
+            project: project,
+            updates: (response.updates ?? []).filter(\.isRenderable),
+            chats: response.chats ?? [],
+            courtHistory: (response.courtHistory ?? []).filter(\.isRenderable),
+            linkedCase: response.linkedCase,
+            tasks: response.tasks ?? [],
+            ledger: ledger,
+            people: response.people ?? [],
+            totals: response.totals.map { $0.over(summed) } ?? summed)
+    }
 }
 
-/// `GET /projects` and `GET /project` — hand-made matters.
+/// `GET /projects`, `GET /project` and `GET /project-banner` — the user's matters.
 ///
-/// ## Read-only, deliberately
+/// ## Reads only, in this build
 ///
-/// The platform has `POST /project`, `POST /project-update`, `POST /project-file` and
-/// `POST /project-chat`, and this client calls **none of them**. Projects are still being
-/// trialled on the web — the row is routed but unlinked from its own sidebar — so the shape of a
-/// matter, and of an update on one, is not yet settled. Writing rows against a schema that is
-/// still moving would leave a user's own notes stranded in a shape the web later stops rendering,
-/// and there is no migration story for hand-typed content.
+/// The matter screens here show what the web keeps; nothing on them writes yet. The writes land
+/// with the matter forms, each behind the web's own validation (`MatterRules`).
 ///
-/// Reading is safe on the same terms: an unmodelled column is simply not shown. So this ships as
-/// a viewer for matters opened on the web, and the writes land when the web settles.
+/// ## Every matter, archived ones too
 ///
-/// ## Ordering is the server's, not ours
+/// The list always asks for archived matters (`includeArchived=1`), as the web's Matters page
+/// does: an archived matter still owns its linked case, so leaving it out would bring that case
+/// back onto the list as an unlinked "tracked case". The status filter is applied on the phone.
 ///
-/// The list arrives sorted by priority, then next hearing, then last update
-/// (`sync-server.js:9926-9929`). It is not re-sorted here. Re-deciding it would put the phone and
-/// the browser in disagreement about which matter is most urgent, which is the one thing a
-/// priority field exists to settle — and it is the opposite call from `CaseListViewModel`, which
-/// *does* re-sort because `/cases` orders by `updated_at DESC` and adding a note there moves a
-/// matter to the top of the docket.
+/// ## The order is the screen's
 ///
-/// ## Archived is excluded unless asked for
-///
-/// `includeArchived=1` is the route's own opt-in, and the exclusion happens in the `WHERE`
-/// clause. The default matches the web, and an archived matter appearing on a phone but not in a
-/// browser would read as a sync fault.
+/// The server sends the list by priority, next hearing and last update; the Matters screen sorts
+/// it itself (`MattersListViewModel`) by recent activity, next hearing or name, as the web does.
 struct ProjectService: ProjectProviding {
     let client: APIClient
 
-    /// Every matter this user owns.
-    ///
-    /// - Parameter includeArchived: whether to ask for archived matters too. This is a
-    ///   **different request**, not a filter over what is already held: the rows simply are not
-    ///   in hand otherwise, so filtering locally would show an empty archive to someone who has
-    ///   one.
+    /// Every matter this user owns; archived ones only when asked for.
     func projects(includeArchived: Bool = false) async throws -> [Project] {
-        // Sent only when true. The route tests `=== '1'`, so `includeArchived=0` is read as
-        // false anyway — but omitting it keeps the request identical to the web's.
+        // Sent only when true, as the literal "1" the route reads.
         let query = includeArchived ? ["includeArchived": "1"] : [:]
 
         let response = try await withRetry {
@@ -74,16 +104,13 @@ struct ProjectService: ProjectProviding {
         return response.projects ?? []
     }
 
-    /// One matter, its own timeline, and the linked case's court record.
+    /// One matter, its own record, its tasks, money and people, and the linked case's record.
     ///
-    /// - Important: a missing matter and someone else's matter are the **same answer**. The
-    ///   query is `WHERE id = ? AND user_id = ?` (`sync-server.js:9949`) and both fall into the
-    ///   one 404, so they are indistinguishable from here by design. The wording covers both
-    ///   honestly rather than guessing which — and it is rewritten at this layer rather than in
-    ///   the view model so it reaches the screen through `LoadFailure` like every other message.
-    ///
-    ///   The server's own word is the bare string `"Project not found"`, which read on its own
-    ///   says nothing about what to do next.
+    /// - Important: a missing matter and someone else's matter are the same answer, a 404 with
+    ///   an error envelope. It is reworded here to `projectGoneMessage`, which is also how the
+    ///   workspace recognises "this matter is not there" (`MatterWorkspaceViewModel`). A 404
+    ///   with no envelope is a server without the route and keeps its own wording — it is a
+    ///   failure to load, not a deleted matter.
     func project(id: String) async throws -> ProjectDetail {
         let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -100,26 +127,40 @@ struct ProjectService: ProjectProviding {
             guard let project = response.project else {
                 throw APIError.server(status: 404, message: Self.projectGoneMessage)
             }
-            // Filtered here rather than in the view, so a section header's count and the number
-            // of rows beneath it cannot disagree.
-            return ProjectDetail(
-                project: project,
-                updates: (response.updates ?? []).filter(\.isRenderable),
-                courtHistory: (response.courtHistory ?? []).filter(\.isRenderable))
+            return ProjectDetail(response: response, project: project)
         } catch let error as APIError {
-            throw Self.rewriting(error, status: 404, as: Self.projectGoneMessage)
+            throw Self.rewritingMissing(error)
         }
+    }
+
+    /// An uploaded banner, as bytes. The bearer header carries the session, so the screen loads
+    /// it through here rather than through a plain image URL.
+    func bannerImage(projectID: String, version: String) async throws -> Data {
+        var query = ["id": projectID]
+        if !version.isEmpty { query["v"] = version }
+        let request = try await client.makeRequest("GET", "/project-banner", query: query)
+        let (data, response) = try await client.perform(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw APIError.classify(status: response.statusCode, body: data)
+        }
+        guard !data.isEmpty else {
+            throw APIError.server(status: 404, message: "No banner image.")
+        }
+        return data
     }
 
     static let projectGoneMessage =
         "This matter no longer exists, or belongs to another account."
 
-    /// Replaces the server's terse refusal on one status with wording a reader can act on,
-    /// leaving every other failure exactly as it was. The twin of `AuctionService.rewriting`.
-    private static func rewriting(
-        _ error: APIError, status: Int, as message: String
-    ) -> APIError {
-        guard case .server(let received, _) = error, received == status else { return error }
-        return .server(status: status, message: message)
+    /// The wording `APIError.classify` gives a status whose body carried no error.
+    static let bareStatusPrefix = "The server returned status"
+
+    /// A 404 that came with the server's own word becomes `projectGoneMessage`; every other
+    /// failure is left exactly as it was.
+    static func rewritingMissing(_ error: APIError) -> APIError {
+        guard case .server(404, let message) = error, !message.hasPrefix(bareStatusPrefix) else {
+            return error
+        }
+        return .server(status: 404, message: projectGoneMessage)
     }
 }
