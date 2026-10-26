@@ -176,7 +176,7 @@ struct HomeView: View {
     }
 
     private var planLabel: String {
-        session.currentUser?.planLabel ?? "PRO"
+        PlanLabel.pill(session: session.currentUser?.planLabel, entitlements: nil)
     }
 
     private func pillText(_ title: String) -> some View {

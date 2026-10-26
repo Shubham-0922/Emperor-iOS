@@ -38,18 +38,18 @@ final class AccountUsageTests: XCTestCase {
         XCTAssertTrue(thinking.isExhausted)
         XCTAssertNotNil(thinking.note, "a sub-allowance is said to be one")
 
-        XCTAssertEqual(meter(usage, .storage)?.summary, "2.4 GB of 10 GB")
+        XCTAssertEqual(meter(usage, .storage)?.summary, "2.2 GB of 9.3 GB", "binary units, as the web")
     }
 
     /// `-1` is the platform's word for "no limit" (`planLimits.UNLIMITED`). Reading it as a limit
     /// of minus one would draw a meter that is always over.
     func testMinusOneMeansNoLimit() throws {
         let usage = try decode(Self.metered)
-        let documents = try XCTUnwrap(meter(usage, .documents))
-        XCTAssertNil(documents.limit)
-        XCTAssertNil(documents.fraction)
-        XCTAssertEqual(documents.summary, "44 this month")
-        XCTAssertEqual(meter(usage, .matters)?.summary, "7", "a running total, not a monthly count")
+        XCTAssertNil(meter(usage, .documents), "shown only when capped")
+        XCTAssertNil(meter(usage, .matters), "shown only when capped")
+        let uncapped = AccountUsage.Meter(kind: .documents, used: 44, limit: nil)
+        XCTAssertNil(uncapped.fraction)
+        XCTAssertEqual(uncapped.summary, "44 · no limit")
     }
 
     /// Staff and demo accounts are not metered; the platform shows them usage without limits
@@ -58,15 +58,9 @@ final class AccountUsageTests: XCTestCase {
         let usage = try decode(Self.metered.replacingOccurrences(
             of: #""metered":true"#, with: #""metered":false"#))
         XCTAssertFalse(usage.isMetered)
-        XCTAssertTrue(usage.meters.allSatisfy { $0.limit == nil })
-    }
-
-    func testAZeroLimitMeansNotIncluded() {
-        let meter = AccountUsage.Meter(kind: .scannedPages, used: 0, limit: 0)
-        XCTAssertFalse(meter.isIncluded)
-        XCTAssertEqual(meter.summary, "Not included")
-        XCTAssertNil(meter.fraction)
-        XCTAssertNil(meter.statusLabel, "nothing to run out of")
+        XCTAssertEqual(usage.meters.map(\.kind), [.questions, .scannedPages, .storage])
+        XCTAssertTrue(usage.meters.filter { $0.kind != .storage }.allSatisfy { $0.limit == nil })
+        XCTAssertNotNil(meter(usage, .storage)?.limit, "the storage allowance is shown even unmetered")
     }
 
     /// A meter's state is said in words as well as drawn in colour, so it reaches VoiceOver and
@@ -76,7 +70,7 @@ final class AccountUsageTests: XCTestCase {
         XCTAssertEqual(meter(usage, .questions)?.statusLabel, "Running low", "812 of 1,000")
         XCTAssertEqual(meter(usage, .deepThinking)?.statusLabel, "Used up", "150 of 150")
         XCTAssertNil(meter(usage, .scannedPages)?.statusLabel, "120 of 6,000 is not worth a word")
-        XCTAssertNil(meter(usage, .documents)?.statusLabel, "no limit, so nothing to run low on")
+        XCTAssertNil(meter(usage, .storage)?.statusLabel, "2.2 of 9.3 GB")
 
         // The edges: four-fifths is low, one short of the limit is still only low, and past the
         // limit — a server that let one through — is used up, never something odder.
@@ -92,15 +86,14 @@ final class AccountUsageTests: XCTestCase {
     /// A field the route stops sending must not cost the screen.
     func testASparseResponseStillDecodes() throws {
         let usage = try decode(#"{"success":true,"metered":true}"#)
-        XCTAssertEqual(usage.meters.first?.summary, "0 this month")
+        XCTAssertTrue(usage.meters.isEmpty, "no usage in the answer, nothing to draw — as the web")
         XCTAssertNil(usage.renewsOn)
     }
 
     func testStorageReadsTheWayPeopleSayIt() {
-        XCTAssertEqual(AccountUsage.bytes(850_000_000), "850 MB")
-        XCTAssertEqual(AccountUsage.bytes(2_400_000_000), "2.4 GB")
-        XCTAssertEqual(AccountUsage.bytes(10_000_000_000), "10 GB")
-        XCTAssertEqual(AccountUsage.bytes(12_000), "12 KB")
+        XCTAssertEqual(AccountUsage.bytes(850 * 1_048_576), "850 MB")
+        XCTAssertEqual(AccountUsage.bytes(1_073_741_824), "1 GB")
+        XCTAssertEqual(AccountUsage.bytes(50 * 1_073_741_824), "50 GB")
     }
 }
 
@@ -136,16 +129,6 @@ final class AccountUsageViewModelTests: XCTestCase {
         XCTAssertEqual(ended, "This account's plan has ended.")
         XCTAssertEqual(unmetered, "No usage limits apply to this account.")
         XCTAssertEqual(metered, "Monthly allowances renew on 1 November.")
-    }
-
-    /// A meter the plan does not include, with nothing used against it, is noise.
-    func testOnlyMeaningfulMetersAreShown() async {
-        let usage = AccountUsage(
-            planLabel: nil, isMetered: true, hasExpired: false, renewsOn: nil,
-            meters: [.init(kind: .questions, used: 3, limit: 30),
-                     .init(kind: .scannedPages, used: 0, limit: 0)])
-        let kinds = await loadedModel(usage).visibleMeters.map(\.kind)
-        XCTAssertEqual(kinds, [.questions])
     }
 
     func testAFailedLoadIsAFailureNotAnEmptyScreen() async {

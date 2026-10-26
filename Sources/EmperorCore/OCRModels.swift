@@ -28,6 +28,36 @@ struct OCRJob: Codable, Equatable, Identifiable, Sendable {
     /// The account the job was recorded against. Sent as a string, read leniently because the
     /// record round-trips through a JSON file on the server and an older writer stored numbers.
     var ownerID: String? = nil
+    /// The fallback pipeline's Markdown copy. Decoded for completeness; never offered — the web
+    /// offers no Markdown download either.
+    var markdownFile: String? = nil
+    /// `"layout"` for a job the layout engine rebuilt page by page.
+    var engine: String? = nil
+    var pages: Int? = nil
+    var digitalPages: Int? = nil
+    var scannedPages: Int? = nil
+    /// What the engine reported about pages it could not read or passages it could not translate.
+    var warnings: [String]? = nil
+
+    /// "12 pages", "12 pages · 3 scanned", "1 page"; `nil` when the job reported no pages
+    /// (the fallback pipeline, or a Word file, which reports zero).
+    var pageSummary: String? {
+        guard let pages, pages > 0 else { return nil }
+        var text = pages == 1 ? "1 page" : "\(pages) pages"
+        if let scannedPages, scannedPages > 0 { text += " · \(scannedPages) scanned" }
+        return text
+    }
+
+    /// The warnings, trimmed, without blanks or repeats, in the order the engine gave them.
+    var notes: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for warning in warnings ?? [] {
+            let text = warning.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty, seen.insert(text).inserted { out.append(text) }
+        }
+        return out
+    }
 
     var state: OCRJobState { OCRJobState(wire: status) }
 
@@ -41,6 +71,9 @@ struct OCRJob: Codable, Equatable, Identifiable, Sendable {
     var translationMayBeIncomplete: Bool {
         guard state == .completed, targetLang.map(OCRLanguage.translates) == true else {
             return false
+        }
+        if notes.contains(where: { $0.localizedCaseInsensitiveContains("could not be translated") }) {
+            return true
         }
         return logs?.contains { $0.message?.hasPrefix("WARN: translation") == true } ?? false
     }
@@ -89,6 +122,7 @@ struct OCRJob: Codable, Equatable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, status, step, progress, fileName, targetLang, pageSetup, logs, error, outputFile
+        case markdownFile, engine, pages, digitalPages, scannedPages, warnings
         case ownerID = "userId"
     }
 }
@@ -111,6 +145,23 @@ extension OCRJob {
         error = try? container.decodeIfPresent(String.self, forKey: .error)
         outputFile = try? container.decodeIfPresent(String.self, forKey: .outputFile)
         ownerID = Self.text(container, .ownerID)
+        markdownFile = try? container.decodeIfPresent(String.self, forKey: .markdownFile)
+        engine = try? container.decodeIfPresent(String.self, forKey: .engine)
+        pages = Self.whole(container, .pages)
+        digitalPages = Self.whole(container, .digitalPages)
+        scannedPages = Self.whole(container, .scannedPages)
+        warnings = Self.strings(container, .warnings)
+    }
+
+    /// An array's string elements; anything else in it is dropped.
+    private static func strings(_ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> [String]? {
+        guard var list = try? container.nestedUnkeyedContainer(forKey: key) else { return nil }
+        var out: [String] = []
+        while !list.isAtEnd {
+            if let text = try? list.decode(String.self) { out.append(text) }
+            else if (try? list.decode(JSONValue.self)) == nil { break }
+        }
+        return out
     }
 
     /// A string, or a whole number written as one.
