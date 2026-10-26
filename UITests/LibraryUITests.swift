@@ -35,9 +35,11 @@ extension XCUIApplication {
     /// Opens a document card on a home shelf, the shelf scrolled to first.
     func openShelfDocument(_ id: Int, shelf: String) -> Bool {
         let shelfElement = library("library-shelf-\(shelf)")
+        if !shelfElement.waitForExistence(timeout: 5) { reveal(shelfElement) }
         guard shelfElement.waitForExistence(timeout: 15) else { return false }
         let card = library("library-doc-\(id)")
-        guard card.waitForExistence(timeout: 15) else { return false }
+        if !card.waitForExistence(timeout: 15) { reveal(card) }
+        guard card.waitForExistence(timeout: 5) else { return false }
         reveal(card)
         guard card.isHittable else { return false }
         card.tap()

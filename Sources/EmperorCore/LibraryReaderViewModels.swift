@@ -60,6 +60,10 @@ final class LibraryFileViewModel {
                 content = .missing
                 return
             }
+            if head.status == 401 {
+                content = .failed(LoadFailure(APIError.invalidCredentials))
+                return
+            }
             guard (200..<300).contains(head.status) else {
                 content = .failed(LoadFailure(APIError.server(status: head.status, message: "The server answered \(head.status).")))
                 return

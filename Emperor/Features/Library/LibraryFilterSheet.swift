@@ -211,10 +211,10 @@ struct LibraryLetterGrid: View {
 }
 
 /// Chips that wrap onto as many lines as they need.
-struct LibraryFlowLayout: Layout {
+struct LibraryFlowLayout: SwiftUI.Layout {
     var spacing: CGFloat = 8
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0
         var y: CGFloat = 0
@@ -234,7 +234,7 @@ struct LibraryFlowLayout: Layout {
         return CGSize(width: proposal.width ?? widest, height: y + lineHeight)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout ()) {
         var x = bounds.minX
         var y = bounds.minY
         var lineHeight: CGFloat = 0
