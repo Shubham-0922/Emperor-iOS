@@ -1,0 +1,372 @@
+{
+ "matter": {
+  "title": "Helios Renewables Pvt. Ltd. vs Northgrid Power Ltd.",
+  "forum": "High Court of Delhi at New Delhi (Commercial Division)",
+  "number": "CS(COMM) 412 of 2025",
+  "client": "Helios Renewables Pvt. Ltd."
+ },
+ "exposureScore": 75,
+ "oneMinute": [
+  "The biggest danger is the arbitration clause. The PPA says any dispute about amounts payable must go to arbitration, and the defendant has already invoked that clause. If the court agrees, your suit will be stopped and you will have to start over before an arbitrator, losing the court fee and time spent here. Your argument that the debt is 'admitted' is weak because the defendant has clearly disputed the invoices in its reply.",
+  "The second problem is the mismatch in the principal amount. Your own legal notice demanded Rs. 3,68,40,000, but the plaint claims Rs. 3,74,00,000. The other side will use this to attack your credibility and ask the court to dismiss the claim as unverified.",
+  "The interest you claim at 18% per year is much higher than the 1% per month simple rate in the PPA. The court is likely to cut it down to the contract rate, which reduces your total claim and may affect court fee.",
+  "You have not attached the joint meter reading sheets or SLDC readings that prove how much energy was supplied. The defendant says the readings for October to December 2023 were never signed by them. Without those documents, you cannot prove the invoices for those months."
+ ],
+ "weakSpots": [
+  {
+   "id": 1,
+   "severity": "serious",
+   "category": "jurisdiction",
+   "likelihood": 5,
+   "impact": 5,
+   "title": "The arbitration clause covers this dispute and the defendant has invoked it",
+   "why": "Clause 22.1 of the PPA sends any dispute about amounts payable to arbitration. The defendant's reply to your legal notice expressly disputes the invoices and invokes Clause 22. The plaint says the dispute is about 'admitted dues' and therefore outside Clause 22, but the defendant has never admitted the debt. The court is likely to refer the parties to arbitration under Section 8 of the Arbitration and Conciliation Act, 1996, which will stall the suit.",
+   "where": [
+    "PPA cl. 22.1 (p. 3)",
+    "PPA cl. 22.2 (p. 3)",
+    "Reply to notice ¶6 (p. 3)",
+    "Plaint ¶16 (p. 3)"
+   ],
+   "say": "The plaintiff sues on a contract that contains a broad arbitration clause covering all disputes about amounts payable. The defendant has disputed the invoices and invoked arbitration. The suit is not maintainable and must be referred to arbitration under Section 8.",
+   "fix": "Prepare a strong reply to the defendant's likely Section 8 application. Argue that the debt is admitted because the defendant never disputed the invoices within 15 days as required by Clause 9.4, and that the email of 14.07.2023 only mentioned grid curtailment without disputing any specific invoice. Also check whether the defendant has filed its first statement on the substance; if not, the Section 8 application is still timely."
+  },
+  {
+   "id": 2,
+   "severity": "serious",
+   "category": "pleadings",
+   "likelihood": 5,
+   "impact": 4,
+   "title": "The principal amount in the plaint differs from the amount in the legal notice",
+   "why": "Your legal notice dated 02.02.2024 demanded Rs. 3,68,40,000 as principal. The plaint claims Rs. 3,74,00,000. There is no explanation for the increase of Rs. 5,60,000. The other side will argue that the plaintiff itself does not know how much is owed, and the court may doubt the entire claim.",
+   "where": [
+    "Legal notice ¶3 (p. 1)",
+    "Plaint ¶6 (p. 2)"
+   ],
+   "say": "The plaintiff's own demand has changed between the notice and the plaint. The figure is unreliable. The suit should be dismissed for want of a consistent case.",
+   "fix": "Reconcile the two figures immediately. If the notice omitted an invoice or made an error, file an affidavit explaining the difference with a revised statement of account. If the plaint figure is wrong, amend the plaint."
+  },
+  {
+   "id": 3,
+   "severity": "serious",
+   "category": "evidence",
+   "likelihood": 4,
+   "impact": 4,
+   "title": "No joint meter reading sheets or SLDC readings are annexed to prove the quantum of energy supplied",
+   "why": "The PPA requires invoices to be based on Joint Meter Reading signed by both parties (Clause 9.1). The defendant's reply states that the readings for October to December 2023 were never jointly signed. The plaint does not annex any JMR sheets or, if JMR was not signed, the SLDC readings that Clause 9.3 makes final. Without these, the invoices are just self-generated documents and may not be accepted as proof of supply.",
+   "where": [
+    "PPA cl. 9.1 (p. 1)",
+    "PPA cl. 9.3 (p. 1)",
+    "Reply to notice ¶2 (p. 2)",
+    "Plaint ¶6 (p. 2)"
+   ],
+   "say": "The plaintiff has not produced the primary evidence of the energy supplied. The invoices are not proof by themselves. The claim for October to December 2023 must fail.",
+   "fix": "Obtain and annex the signed JMR sheets for all months. For any month where the defendant did not sign, obtain the SLDC readings and annex them with a certificate. If SLDC readings are not available, gather all site-level meter data and logs."
+  },
+  {
+   "id": 4,
+   "severity": "moderate",
+   "category": "relief",
+   "likelihood": 5,
+   "impact": 3,
+   "title": "Interest claimed at 18% per annum exceeds the contractual rate",
+   "why": "Clause 9.6 of the PPA provides for late payment surcharge at 1% per month simple (12% per annum simple). The plaint claims 18% per annum without any legal basis. The court will likely award only the contract rate, reducing the total claim and possibly requiring a refund of excess court fee.",
+   "where": [
+    "PPA cl. 9.6 (p. 1)",
+    "Plaint ¶13 (p. 3)",
+    "Plaint prayer (a) (p. 4)"
+   ],
+   "say": "The PPA itself fixes the interest rate. The plaintiff cannot unilaterally claim a higher rate. The interest claim must be restricted to 1% per month simple.",
+   "fix": "Amend the plaint to claim interest at the contractual rate of 1% per month simple, or plead a legal ground (such as the Interest Act, 1978) for 18% if one exists. Recalculate the total claim and adjust the court fee accordingly."
+  },
+  {
+   "id": 5,
+   "severity": "moderate",
+   "category": "evidence",
+   "likelihood": 4,
+   "impact": 3,
+   "title": "The emails are electronic records without the required certificate",
+   "why": "The plaint relies on emails (Annexure P-4) to show reminders and the defendant's response. Under Section 63 of the Bharatiya Sakshya Adhiniyam, 2023, electronic records are admissible only if accompanied by a certificate. The plaint says a certificate will be filed later, but until it is filed, the emails cannot be used as evidence.",
+   "where": [
+    "Plaint ¶7 (p. 2)",
+    "Plaint list of documents P-4 (p. 4)"
+   ],
+   "say": "The emails are not admissible without a certificate under Section 63. The plaintiff's promise to file one later is not enough. The emails must be excluded.",
+   "fix": "Prepare and file the certificate under Section 63 of the Bharatiya Sakshya Adhiniyam, 2023, for all emails relied upon, before the next hearing."
+  },
+  {
+   "id": 6,
+   "severity": "moderate",
+   "category": "evidence",
+   "likelihood": 4,
+   "impact": 3,
+   "title": "The statement of account is a self-serving document",
+   "why": "Annexure P-3 is a statement of account maintained by the plaintiff in its own books. It is not signed by the defendant and is not primary evidence of the debt. The court will give it little weight unless supported by the underlying invoices and proof of delivery.",
+   "where": [
+    "Plaint ¶6 (p. 2)",
+    "Plaint list of documents P-3 (p. 4)"
+   ],
+   "say": "This statement of account is prepared by the plaintiff itself. It is not an acknowledged statement and cannot prove the debt.",
+   "fix": "Supplement the statement with the defendant's own payment history, bank statements showing past payments, and any correspondence where the defendant acknowledged the outstanding amount."
+  },
+  {
+   "id": 7,
+   "severity": "moderate",
+   "category": "evidence",
+   "likelihood": 3,
+   "impact": 3,
+   "title": "The defendant alleges a plant outage in August 2023 for which the plaintiff may have billed",
+   "why": "The defendant's reply states that the plant suffered a major outage from 02.08.2023 to 19.08.2023 and that the plaintiff billed for energy not supplied. The plaint does not address this. If true, the invoice for August 2023 may be inflated. The plaintiff must prove that energy was actually supplied during that period.",
+   "where": [
+    "Reply to notice ¶3 (p. 2)",
+    "Plaint ¶6 (p. 2) (no mention of outage)"
+   ],
+   "say": "The defendant has specifically pleaded an outage. The plaintiff has not denied it or produced generation data. The August 2023 invoice is unreliable.",
+   "fix": "Obtain the plant's generation logs, inverter data, and any outage reports for August 2023. If there was an outage, adjust the claim for that month and explain the correction."
+  },
+  {
+   "id": 8,
+   "severity": "moderate",
+   "category": "contract",
+   "likelihood": 3,
+   "impact": 2,
+   "title": "No pleading that the plaintiff demanded renewal of the Letter of Credit",
+   "why": "The plaint says the LC lapsed on 30.09.2023 and was not renewed. Under Clause 14.2, failure to renew within 7 days of a written demand is a Buyer Event of Default. The plaint does not state that the plaintiff made such a written demand. The defendant may argue that the plaintiff did not take steps to enforce the LC, which could have reduced the outstanding amount.",
+   "where": [
+    "PPA cl. 14.2 (p. 2)",
+    "Plaint ¶9 (p. 2)"
+   ],
+   "say": "The plaintiff complains about the LC but never demanded its renewal as required by the contract. The plaintiff could have drawn on the LC before it lapsed and failed to mitigate its loss.",
+   "fix": "Check whether any written demand for LC renewal was sent. If yes, plead it and annex the demand. If not, be ready to explain why the plaintiff did not invoke the LC before it lapsed."
+  },
+  {
+   "id": 9,
+   "severity": "minor",
+   "category": "pleadings",
+   "likelihood": 3,
+   "impact": 2,
+   "title": "The declaration that the termination notice is illegal may be unnecessary and is not fully pleaded",
+   "why": "The plaint seeks a declaration that the termination notice dated 09.01.2024 is illegal. However, the main claim is for payment for energy already supplied, which is protected under Clause 18.5 regardless of termination. The declaration adds little and may be struck off if not properly pleaded with material facts showing how the termination affects the plaintiff beyond the money claim.",
+   "where": [
+    "Plaint prayer (c) (p. 4)",
+    "Plaint ¶10 (p. 3)"
+   ],
+   "say": "The declaration is not necessary for the recovery claim. The plaintiff has not shown any separate injury from the termination. The prayer should be rejected.",
+   "fix": "Consider whether the declaration is essential. If the PPA is already terminated and the plaintiff only wants money for past supply, the declaration may be dropped to simplify the suit."
+  },
+  {
+   "id": 10,
+   "severity": "minor",
+   "category": "procedure",
+   "likelihood": 2,
+   "impact": 1,
+   "title": "The plaint cites the wrong limitation article",
+   "why": "The plaint relies on Article 113 of the Limitation Act, 1963, which is the residuary article. A suit for recovery of money under a contract is governed by Article 55 (three years from the date the debt becomes due). The error does not affect limitation because the period is the same, but it shows carelessness.",
+   "where": [
+    "Plaint ¶15 (p. 3)"
+   ],
+   "say": "The plaintiff has cited the wrong provision. While limitation is not barred, the pleading is inaccurate.",
+   "fix": "Amend the plaint to cite Article 55 of the Limitation Act, 1963."
+  }
+ ],
+ "questions": [
+  {
+   "q": "Why is the principal amount in the plaint Rs. 3,74,00,000 when your own legal notice demanded only Rs. 3,68,40,000?",
+   "why": "The discrepancy undermines the reliability of the claim.",
+   "answer": "Need: a reconciliation statement explaining which invoices were included in the notice and which were added later, with dates and amounts.",
+   "readiness": "gap",
+   "spot": 2
+  },
+  {
+   "q": "Where are the joint meter reading sheets signed by both parties for the months of October to December 2023?",
+   "why": "The defendant says the readings were not jointly signed, and the PPA requires JMR for billing.",
+   "answer": "Need: the signed JMR sheets or, if not signed, the SLDC readings for those months as per Clause 9.3.",
+   "readiness": "gap",
+   "spot": 3
+  },
+  {
+   "q": "Why have you claimed interest at 18% per annum when the PPA provides only 1% per month simple?",
+   "why": "The court will not award more than the contract rate without a legal basis.",
+   "answer": "The PPA rate is 1% per month simple. The plaint must be amended to claim that rate, or a legal justification for 18% must be pleaded.",
+   "readiness": "work",
+   "spot": 4
+  },
+  {
+   "q": "Have you filed the certificate under Section 63 of the Bharatiya Sakshya Adhiniyam, 2023 for the emails you rely on?",
+   "why": "Without the certificate, the emails are not admissible.",
+   "answer": "Not yet. The plaint says it will be filed later. It must be filed before the evidence stage.",
+   "readiness": "work",
+   "spot": 5
+  },
+  {
+   "q": "How do you say the debt is admitted when the defendant's reply expressly disputes the invoices for October to December 2023 and the total amount?",
+   "why": "This goes to the maintainability of the suit in the face of the arbitration clause.",
+   "answer": "The defendant did not dispute any invoice within 15 days as required by Clause 9.4, so the invoices are deemed accepted. The email of 14.07.2023 only mentioned grid curtailment, not a specific dispute.",
+   "readiness": "ready",
+   "spot": 1
+  },
+  {
+   "q": "What evidence do you have that the plant did not suffer an outage between 02.08.2023 and 19.08.2023?",
+   "why": "The defendant alleges you billed for energy not supplied during that period.",
+   "answer": "Need: plant generation logs, inverter data, and any communication with the defendant about the alleged outage.",
+   "readiness": "gap",
+   "spot": 7
+  },
+  {
+   "q": "Did you send a written demand to the defendant to renew the Letter of Credit before it lapsed?",
+   "why": "If you did not, the defendant will argue you failed to mitigate your loss.",
+   "answer": "Need: a copy of any written demand for LC renewal. If none was sent, be prepared to explain why.",
+   "readiness": "gap",
+   "spot": 8
+  },
+  {
+   "q": "Why is the statement of account (Annexure P-3) not signed or acknowledged by the defendant?",
+   "why": "A self-made statement has little evidentiary value.",
+   "answer": "It is a summary of the invoices. The primary evidence is the invoices and proof of delivery. The statement can be supported by bank records of past payments.",
+   "readiness": "work",
+   "spot": 6
+  }
+ ],
+ "docGaps": [
+  {
+   "doc": "Joint Meter Reading sheets signed by both parties for all months from April 2023 to January 2024",
+   "who": "Plaintiff’s site team and defendant’s representatives",
+   "how": "Retrieve from plant records; if missing, request from defendant by notice to produce",
+   "when": "Before the first hearing",
+   "spot": 3
+  },
+  {
+   "doc": "SLDC readings for any month where JMR was not signed",
+   "who": "State Load Despatch Centre, Rajasthan",
+   "how": "Apply to SLDC for certified copies of the readings",
+   "when": "Within 30 days",
+   "spot": 3
+  },
+  {
+   "doc": "Plant generation logs and inverter data for August 2023",
+   "who": "Plaintiff’s plant operator",
+   "how": "Download from plant SCADA system and get certified by plant manager",
+   "when": "Before the first hearing",
+   "spot": 7
+  },
+  {
+   "doc": "Certificate under Section 63 of the Bharatiya Sakshya Adhiniyam, 2023 for all emails in Annexure P-4",
+   "who": "Plaintiff’s IT or legal team",
+   "how": "Prepare in the prescribed format, signed by a person responsible for the computer system",
+   "when": "Before the next date of hearing",
+   "spot": 5
+  },
+  {
+   "doc": "Board resolution dated 24.02.2025 authorising Mr. Arvind Mehra",
+   "who": "Plaintiff’s company secretary",
+   "how": "Certified copy from board minutes",
+   "when": "Annex to plaint immediately",
+   "spot": 1
+  },
+  {
+   "doc": "Written demand for renewal of Letter of Credit, if any",
+   "who": "Plaintiff’s correspondence files",
+   "how": "Search email and post records",
+   "when": "Before the first hearing",
+   "spot": 8
+  }
+ ],
+ "authorities": [
+  {
+   "name": "Arbitration and Conciliation Act, 1996, Section 8",
+   "court": "",
+   "year": "1996",
+   "holds": "A court must refer the parties to arbitration if there is an arbitration agreement and a party applies before submitting its first statement on the substance of the dispute.",
+   "distinguish": "The plaintiff argues the debt is admitted and thus not a 'dispute' under Clause 22. The defendant never disputed the invoices within 15 days as required by Clause 9.4, so the invoices are deemed accepted and the amount is not genuinely disputed.",
+   "verify": true,
+   "against": 1
+  },
+  {
+   "name": "Limitation Act, 1963, Article 55",
+   "court": "",
+   "year": "1963",
+   "holds": "A suit for compensation for breach of contract must be filed within three years from the date of breach.",
+   "distinguish": "The plaint cites Article 113 but the period is the same. The suit is within time as the first invoice fell due on 05.05.2023 and the suit was filed on 06.03.2025.",
+   "verify": true,
+   "against": 10
+  },
+  {
+   "name": "Bharatiya Sakshya Adhiniyam, 2023, Section 63",
+   "court": "",
+   "year": "2023",
+   "holds": "Electronic records are admissible only if accompanied by a certificate identifying the record and describing the manner of its production.",
+   "distinguish": "The plaintiff has stated that a certificate will be filed. The court may allow time to file it; the absence is not fatal at this stage.",
+   "verify": true,
+   "against": 5
+  },
+  {
+   "name": "Commercial Courts Act, 2015, Section 12A",
+   "court": "",
+   "year": "2015",
+   "holds": "Pre-institution mediation is mandatory before filing a commercial suit unless urgent interim relief is sought.",
+   "distinguish": "The plaintiff has complied by initiating mediation on 14.10.2024 and obtaining a non-starter report on 18.12.2024.",
+   "verify": false,
+   "against": 1
+  },
+  {
+   "name": "Principle: Broad arbitration clause covers disputes about quantum",
+   "court": "",
+   "year": "",
+   "holds": "Where an arbitration clause covers 'any dispute arising out of or in connection with' the contract, it includes disputes about the amount payable.",
+   "distinguish": "The plaintiff's case is that the amount is not genuinely disputed because the defendant failed to dispute invoices within the contractual 15-day period, making the debt deemed accepted under Clause 9.4.",
+   "verify": true,
+   "against": 1
+  }
+ ],
+ "checklist": [
+  {
+   "id": "c1",
+   "text": "Reconcile the principal amount difference between the legal notice and plaint and file an explanatory affidavit",
+   "done": false
+  },
+  {
+   "id": "c2",
+   "text": "Amend the plaint to claim interest at the contractual rate of 1% per month simple or plead a legal basis for 18%",
+   "done": false
+  },
+  {
+   "id": "c3",
+   "text": "Obtain and annex all signed JMR sheets or SLDC readings for the invoice period",
+   "done": false
+  },
+  {
+   "id": "c4",
+   "text": "File the certificate under Section 63 of the Bharatiya Sakshya Adhiniyam, 2023 for the emails",
+   "done": false
+  },
+  {
+   "id": "c5",
+   "text": "Annex the board resolution dated 24.02.2025 authorising Mr. Arvind Mehra",
+   "done": false
+  },
+  {
+   "id": "c6",
+   "text": "Gather plant generation data for August 2023 to rebut the outage allegation",
+   "done": false
+  },
+  {
+   "id": "c7",
+   "text": "Prepare a reply to the anticipated Section 8 application, emphasising Clause 9.4 deemed acceptance and the defendant's failure to dispute invoices within 15 days",
+   "done": false
+  },
+  {
+   "id": "c8",
+   "text": "Check for any written demand for LC renewal and plead it if available",
+   "done": false
+  },
+  {
+   "id": "c9",
+   "text": "Review whether the declaration on termination is necessary and consider dropping it to streamline the suit",
+   "done": false
+  },
+  {
+   "id": "c10",
+   "text": "Correct the limitation article in the plaint from Article 113 to Article 55",
+   "done": false
+  }
+ ]
+}
