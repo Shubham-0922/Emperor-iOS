@@ -21,6 +21,7 @@ final class MattersWriteUITests: XCTestCase {
         app.type("Kapoor v. Kapoor", into: app.matterElement("new-matter-name"))
         let notFiled = app.buttons["Not filed yet"].firstMatch
         XCTAssertTrue(notFiled.waitForExistence(timeout: 5))
+        app.reveal(notFiled)
         notFiled.tap()
         create.tap()
 

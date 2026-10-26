@@ -57,7 +57,7 @@ final class Session {
     /// Where a plan is bought, if this build sends anyone there — see `WebPlans`.
     var webPlans: WebPlans
     let officePreview: OfficePreviewService
-    /// Hand-made matters. Read-only — see `ProjectService` for why the writes are held back.
+    /// Hand-made matters — the reads. The writes are `projectWrites` (`ProjectWriteService`, Session+MattersWrite.swift).
     let projects: ProjectService
     /// The in-app report channel for a generated answer. Both stores require one.
     let feedback: FeedbackService

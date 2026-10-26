@@ -3,7 +3,7 @@ import Foundation
 import Observation
 #endif
 
-/// One matter's workspace — the web's `src/pages/ProjectWorkspace.jsx` and its read-only
+/// One matter's workspace — the web's `src/pages/ProjectWorkspace.jsx` and its
 /// sections: the header over the banner, the section bar with its counts, and Overview,
 /// Chronology, Court, Tasks, Fees and People. Ask, Files and Drafts join the bar once
 /// `MatterAvailability.contentSections` is on.
