@@ -155,6 +155,10 @@ struct StreamContent: Equatable, Sendable {
         // Everything except the model's private reasoning — see `persistableContent`.
         content.persistableContent = Self.strippingReasoning(from: raw)
 
+        // The server's sentence-rewrite block is never text for the reader, whole or still
+        // arriving. Only the displayed prose loses it; `persistableContent` above is untouched.
+        text = Self.strippingPolish(from: text)
+
         // Order matters: pull structured blocks out before the generic tag sweep, so their
         // bodies are captured rather than flattened into prose.
         content.plan = Self.takePlan(&text)
@@ -173,6 +177,24 @@ struct StreamContent: Equatable, Sendable {
         text = Self.stripDanglingTag(text)
         content.prose = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return content
+    }
+
+    private static let polishClosedRegex = try! NSRegularExpression(
+        pattern: "<draft_polish(?:\\s[^>]*)?>[\\s\\S]*?</draft_polish>", options: [.caseInsensitive])
+    private static let polishOpenTailRegex = try! NSRegularExpression(
+        pattern: "<draft_polish(?:\\s[^>]*)?>[\\s\\S]*$", options: [.caseInsensitive])
+
+    /// Drops every complete `<draft_polish>…</draft_polish>` block, then any block still open at
+    /// the end of a stream that has not finished writing it.
+    private static func strippingPolish(from text: String) -> String {
+        guard text.range(of: "<draft_polish", options: .caseInsensitive) != nil else { return text }
+        var out = text
+        for re in [polishClosedRegex, polishOpenTailRegex] {
+            out = re.stringByReplacingMatches(
+                in: out, options: [], range: NSRange(location: 0, length: (out as NSString).length),
+                withTemplate: "")
+        }
+        return out
     }
 
     /// Removes only the reasoning wrappers, leaving artifacts and citations intact.

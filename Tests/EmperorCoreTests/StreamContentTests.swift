@@ -202,4 +202,27 @@ final class StreamContentTests: XCTestCase {
         XCTAssertFalse(content.persistableContent.contains("reconsider limitation"))
         XCTAssertTrue(content.persistableContent.contains("The suit is barred."))
     }
+
+    // MARK: - The polish block
+
+    func testACompletePolishBlockIsNotShown() {
+        let raw = "The suit is barred.<draft_polish>eyJlZGl0cyI6W119</draft_polish>"
+        let content = StreamContent.parse(raw)
+
+        XCTAssertEqual(content.prose, "The suit is barred.")
+        // What goes back to the server keeps the block.
+        XCTAssertTrue(content.persistableContent.contains("<draft_polish>"))
+    }
+
+    func testAPolishBlockStillArrivingIsNotShown() {
+        let content = StreamContent.parse("The suit is barred.\n\n<draft_polish>eyJlZGl0")
+
+        XCTAssertEqual(content.prose, "The suit is barred.")
+    }
+
+    func testAPolishBlockWithAttributesAndInTheMiddleIsStripped() {
+        let content = StreamContent.parse("A <draft_polish v=\"1\">xx</draft_polish>B")
+
+        XCTAssertEqual(content.prose, "A B")
+    }
 }
