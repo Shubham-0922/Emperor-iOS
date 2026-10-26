@@ -275,6 +275,58 @@ final class ServiceWireTests: XCTestCase {
         XCTAssertEqual(reply.savedByKind, .stop)
     }
 
+    /// An image upload is converted to a PDF stored under a new name. Polling the original name
+    /// is answered "Reading document content..." forever, so the poll must use `storedName`.
+    func testConvertedUploadPollsTheStoredName() async throws {
+        let client = await makeClient()
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/upload-status")
+                ? .json(#"{"status":"ready"}"#)
+                : .json(#"{"success":true,"storedName":"scan (1).pdf","convertedFrom":"png"}"#)
+        }
+        let uploads = UploadService(client: client)
+
+        var stored: String?
+        var finished: IngestState?
+        for try await event in uploads.upload(
+            data: Data("x".utf8), fileName: "scan.png", folderName: "Scans") {
+            if case .stored(let name) = event { stored = name }
+            if case .finished(let state) = event { finished = state }
+        }
+
+        XCTAssertEqual(stored, "scan (1).pdf")
+        XCTAssertEqual(finished, .ready)
+        let poll = try XCTUnwrap(HTTPStub.seen.last { $0.path.hasSuffix("/upload-status") })
+        XCTAssertEqual(poll.queryItems["fileName"], "scan__1_.pdf")
+    }
+
+    func testUnconvertedUploadPollsTheOriginalNameAndYieldsNoStoredEvent() async throws {
+        let client = await makeClient()
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/upload-status")
+                ? .json(#"{"status":"ready"}"#)
+                : .json(#"{"success":true}"#)
+        }
+        var sawStored = false
+        for try await event in UploadService(client: client).upload(
+            data: Data("x".utf8), fileName: "Order.pdf", folderName: "Scans") {
+            if case .stored = event { sawStored = true }
+        }
+        XCTAssertFalse(sawStored)
+        let poll = try XCTUnwrap(HTTPStub.seen.last { $0.path.hasSuffix("/upload-status") })
+        XCTAssertEqual(poll.queryItems["fileName"], "Order.pdf")
+    }
+
+    func testReplyParsingIsLenient() {
+        XCTAssertEqual(
+            UploadReply.storedName(from: Data(#"{"storedName":"a.pdf","convertedFrom":"jpg"}"#.utf8)),
+            "a.pdf")
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"success":true}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"storedName":""}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"storedName":5}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data("not json".utf8)))
+    }
+
     // MARK: - Auth
 
     func testLoginPostsCredentialsWithoutRequiringAToken() async throws {

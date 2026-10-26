@@ -76,6 +76,8 @@ final class FileLibraryViewModel {
     private(set) var isUploading = false
     private(set) var uploadProgress: Double = 0
     var uploadError: String?
+    /// The name the last upload was stored under, when the server renamed it.
+    private(set) var storedName: String?
 
     /// Which file an edit is running against, so one row spins rather than the whole list.
     private(set) var busyPath: String?
@@ -107,6 +109,7 @@ final class FileLibraryViewModel {
         isUploading = true
         uploadProgress = 0
         uploadError = nil
+        storedName = nil
         defer { isUploading = false }
 
         do {
@@ -116,6 +119,11 @@ final class FileLibraryViewModel {
                 switch event {
                 case .progress(let sent, let total):
                     uploadProgress = total > 0 ? Double(sent) / Double(total) : 0
+                case .stored(let name):
+                    // A converted image is stored under a different name; show that one and
+                    // refresh so the row is there when ingestion finishes.
+                    storedName = name
+                    await load()
                 case .processing:
                     uploadProgress = 1
                 case .finished(let state):
