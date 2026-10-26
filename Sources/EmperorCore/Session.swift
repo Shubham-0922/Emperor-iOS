@@ -228,6 +228,15 @@ final class Session {
         case suspended
     }
 
+    /// The administrator's stated reason for a pause, trimmed, or nil when there is none or the
+    /// account is not paused. Shown beside the paused banner.
+    var suspendedReason: String? {
+        guard standing == .suspended,
+              let reason = currentUser?.suspendedReason?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !reason.isEmpty else { return nil }
+        return reason
+    }
+
     /// From the account as last read: at sign-in, at launch (`refreshAccount`), and whenever the
     /// server refuses something for one of these two reasons.
     var standing: Standing? {
@@ -316,6 +325,7 @@ final class Session {
         if let phone = saved.phone { user.phone = phone }
         if let needsPlan = saved.needsPlan { user.needsPlan = needsPlan }
         if let suspended = saved.suspended { user.suspended = suspended }
+        if saved.suspended != nil { user.suspendedReason = saved.suspendedReason }
         persist(user)
         state = .signedIn(user)
     }

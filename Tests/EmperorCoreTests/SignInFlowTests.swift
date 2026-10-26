@@ -61,6 +61,26 @@ final class SignInFlowTests: XCTestCase {
 
     // MARK: - Creating an account
 
+    /// A number the server rejects is said under the mobile field, and clears when it is edited.
+    func testABadPhoneIsSaidUnderTheMobileField() async throws {
+        let auth = FakeAuth()
+        let refusal = try XCTUnwrap(Refusal.parse(status: 400, body: Data(
+            #"{"error":"Please enter a valid 10-digit Indian mobile number.","code":"BAD_PHONE"}"#.utf8)))
+        auth.registerResult = .failure(APIError.refused(refusal))
+        let (flow, _) = make(auth)
+        flow.show(.createAccount)
+        flow.name = "A. Advocate"; flow.email = "a@b.in"; flow.password = "longenough"
+        flow.confirmPassword = "longenough"
+        flow.setPhone("9876543210")
+
+        await flow.createAccount()
+
+        XCTAssertNil(flow.error)
+        XCTAssertEqual(flow.phoneHint, DisplayText.message(for: refusal))
+        flow.setPhone("9876543211")
+        XCTAssertNil(flow.phoneHint)
+    }
+
     /// The break this exists for: the server creates the account, sends a confirmation email and
     /// returns no token. The old flow expected a token and reported "unexpected response" about
     /// an account it had just made.

@@ -116,6 +116,13 @@ enum DisplayText {
         case .accountSuspended:
             return "This account is paused, so new work can't be started. Your history and "
                 + "documents are still here to read. Contact support to restore it."
+        case .noAccount:
+            return "This account couldn't be found. Sign in again, or contact support if it "
+                + "should still exist."
+        case .reauthenticate:
+            return "Please sign in again to continue."
+        case .badPhone:
+            return "Enter a 10-digit Indian mobile number, or leave it blank."
         case .rateLimit:
             return "That's more requests in an hour than anyone sends by hand, so the account is "
                 + "paused for a few minutes. Please try again shortly."
@@ -135,6 +142,9 @@ enum DisplayText {
         case .matterLimit: return "Matter limit reached"
         case .scanLimit: return "Monthly scans used"
         case .accountSuspended: return "Account paused"
+        case .noAccount: return "Account not found"
+        case .reauthenticate: return "Sign in again"
+        case .badPhone: return "Check the mobile number"
         case .rateLimit: return "Too many requests"
         }
     }

@@ -117,6 +117,9 @@ struct User: Codable, Equatable, Identifiable, Sendable {
     var needsPlan: Bool?
     /// Set by `/login` when an administrator has paused the account. Reading still works.
     var suspended: Bool?
+    /// Why an administrator paused the account, as the platform reports it with `/auth/session`
+    /// and `/update-profile`. Absent or empty when the account is not paused or none was given.
+    var suspendedReason: String?
     /// The mobile number given at sign-up, as the platform stores it: `+91XXXXXXXXXX`.
     var phone: String?
     /// The role the account practises as, by the web's id for it (`PractitionerRole.webID`).
@@ -127,7 +130,7 @@ struct User: Codable, Equatable, Identifiable, Sendable {
         case id, email, name, avatar, title, organization, plan, phone
         case preferredModel = "preferred_model"
         case practiceRole = "practice_role"
-        case planLabel, feeTier, needsPlan, suspended
+        case planLabel, feeTier, needsPlan, suspended, suspendedReason
     }
 }
 
