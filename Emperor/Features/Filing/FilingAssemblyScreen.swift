@@ -56,6 +56,11 @@ private struct FilingAssemblyContent: View {
     @State private var newTitle = ""
     @State private var removing: FilingAnnexure?
 
+    private var renameMessage: String {
+        guard let annexure = renaming else { return "" }
+        return "The title \(annexure.mark) carries in the Index and List of Annexures."
+    }
+
     var body: some View {
         List {
             Section {
@@ -136,7 +141,7 @@ private struct FilingAssemblyContent: View {
             }
             Button("Cancel", role: .cancel) { renaming = nil }
         } message: {
-            Text(renaming.map { "The title \($0.mark) carries in the Index and List of Annexures." } ?? "")
+            Text(renameMessage)
         }
         .confirmationDialog(
             removing.map(FilingAssemblyViewModel.removePrompt(for:)) ?? "Remove annexure?",

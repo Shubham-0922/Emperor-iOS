@@ -25,7 +25,7 @@ struct FilingResultView: View {
                     model.dismissOutcome()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.brand(.footnote, weight: .bold))
                         .foregroundStyle(theme.textFaint)
                         .frame(minWidth: Layout.touchTarget, minHeight: Layout.touchTarget)
                         .contentShape(Rectangle())

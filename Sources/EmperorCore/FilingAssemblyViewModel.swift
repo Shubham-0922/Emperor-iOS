@@ -334,6 +334,7 @@ final class FilingAssemblyViewModel {
     func assemble() async {
         guard canAssemble, let current = draft else { return }
         let started = now()
+        let known = Set(bundles.map(\.id))
         isAssembling = true
         outcome = nil
         notice = nil
@@ -353,7 +354,11 @@ final class FilingAssemblyViewModel {
                 refusal = refused
                 return
             }
-            if case APIError.transport = error, let bundle = await bundleMade(since: started, for: current) {
+            let maybeRan = Self.mayHaveRun(error)
+            let adopted: FilingBundle? = maybeRan
+                ? await bundleMade(since: started, excluding: known, for: current)
+                : nil
+            if let bundle = adopted {
                 let result = FilingAssemblyResult(
                     success: true, bundleId: bundle.id, pageCount: bundle.pageCount)
                 outcome = result
@@ -366,12 +371,33 @@ final class FilingAssemblyViewModel {
         }
     }
 
-    private func bundleMade(since start: Date, for current: FilingDraft) async -> FilingBundle? {
+    /// Whether the run may have gone ahead although no answer came back: the connection was
+    /// lost, or a proxy gave up waiting while the server went on.
+    nonisolated static func mayHaveRun(_ error: Error) -> Bool {
+        switch error as? APIError {
+        case .transport?:
+            return true
+        case .server(let status, _)?:
+            return [502, 504, 520, 522, 524].contains(status)
+        default:
+            return false
+        }
+    }
+
+    /// The newest ready bundle that was not there before the tap. The phone's clock is only a
+    /// loose guard (five minutes of slack either way), the earlier list is what decides.
+    private func bundleMade(
+        since start: Date, excluding known: Set<Int>, for current: FilingDraft
+    ) async -> FilingBundle? {
         guard let list = try? await service.bundles(draftID: current.id) else { return nil }
         bundles = list
-        return list
-            .filter { $0.isReady && ($0.createdDate.map { $0 >= start } ?? false) }
-            .max { ($0.createdAt ?? 0) < ($1.createdAt ?? 0) }
+        let floor = start.addingTimeInterval(-300)
+        let fresh = list.filter { bundle in
+            guard bundle.isReady, !known.contains(bundle.id) else { return false }
+            guard let made = bundle.createdDate else { return true }
+            return made >= floor
+        }
+        return fresh.max { $0.id < $1.id }
     }
 
     func dismissOutcome() { outcome = nil }

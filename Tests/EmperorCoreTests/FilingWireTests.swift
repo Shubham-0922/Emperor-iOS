@@ -208,6 +208,14 @@ final class FilingWireTests: XCTestCase {
         XCTAssertEqual(HTTPStub.seen.count, 1)
     }
 
+    func testARejectedAssemblyKeepsEveryReason() async throws {
+        HTTPStub.always(.json(#"{"success":false,"error":"P-1: source file missing","errors":["P-1: source file missing","P-4: page range outside the file"]}"#, status: 400))
+        let result = try await service().assemble(draftID: "canvas_1", cover: FilingCover(forum: "NCLT"))
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.errorLines, ["P-1: source file missing", "P-4: page range outside the file"])
+        XCTAssertEqual(HTTPStub.seen.count, 1)
+    }
+
     func testAnAssemblyThatCannotBeSentIsNotRetried() async throws {
         HTTPStub.always(.json(#"{"success":false,"error":"internal error: boom"}"#, status: 500))
         do {

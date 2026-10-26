@@ -267,6 +267,42 @@ final class FilingViewModelTests: XCTestCase {
         }
     }
 
+    func testABundleThatWasAlreadyThereIsNotAdopted() async {
+        await run { fake, model in
+            // Newer than the tap by the phone's clock, but listed before it: not this run's.
+            fake.bundleList = [FilingBundle(
+                id: 5, draftID: "canvas_1", pageCount: 30, status: "ok",
+                createdAt: Int(Self.start.timeIntervalSince1970 * 1000) + 90_000)]
+            fake.errors["assemble"] = APIError.transport("The request timed out.")
+            await model.loadDrafts()
+            await model.pick(model.drafts[0])
+            model.cover.forum = "NCLT"
+            await model.assemble()
+            XCTAssertEqual(model.outcome?.success, false)
+        }
+    }
+
+    func testAGatewayTimeoutTriggersReconciliation() async {
+        await run { fake, model in
+            fake.bundlesMadeByAssemble = [FilingBundle(
+                id: 6, draftID: "canvas_1", pageCount: 44, status: "ok",
+                createdAt: Int(Self.start.timeIntervalSince1970 * 1000) + 90_000)]
+            fake.errors["assemble"] = APIError.server(status: 504, message: "Gateway Timeout")
+            await model.loadDrafts()
+            await model.pick(model.drafts[0])
+            model.cover.forum = "NCLT"
+            await model.assemble()
+            XCTAssertEqual(model.outcome?.success, true)
+            XCTAssertEqual(model.outcome?.bundleId, 6)
+        }
+    }
+
+    func testAServerRefusalDoesNotTriggerReconciliation() {
+        XCTAssertFalse(FilingAssemblyViewModel.mayHaveRun(APIError.server(status: 500, message: "boom")))
+        XCTAssertTrue(FilingAssemblyViewModel.mayHaveRun(APIError.server(status: 504, message: "")))
+        XCTAssertTrue(FilingAssemblyViewModel.mayHaveRun(APIError.transport("lost")))
+    }
+
     func testALostAnswerWithNoNewBundleIsAFailure() async {
         await run { fake, model in
             fake.bundleList = [FilingBundle(

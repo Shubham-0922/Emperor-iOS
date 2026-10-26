@@ -12,11 +12,7 @@ struct FilingDraftPicker: View {
                 RecordRow(
                     title: draft.displayTitle, subtitle: detail(for: draft),
                     leading: { IconTile(systemImage: "doc.text") },
-                    trailing: {
-                        Button("Change draft") { model.changeDraft() }
-                            .buttonStyle(QuietButtonStyle())
-                            .accessibilityIdentifier("filing-change-draft")
-                    })
+                    trailing: { EmptyView() })
                     .listRowInsets(EdgeInsets())
             } else if model.drafts.isEmpty, model.draftsState == .idle || model.draftsState.isLoading {
                 HStack(spacing: Spacing.sm) {
@@ -63,7 +59,17 @@ struct FilingDraftPicker: View {
                 }
             }
         } header: {
-            SectionHeader(title: "1 · Choose a draft")
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader(title: "1 · Choose a draft")
+                Spacer(minLength: Spacing.sm)
+                if model.draft != nil {
+                    Button("Change draft") { model.changeDraft() }
+                        .font(.brand(.footnote, weight: .semibold))
+                        .foregroundStyle(theme.accentText)
+                        .textCase(nil)
+                        .accessibilityIdentifier("filing-change-draft")
+                }
+            }
         } footer: {
             Text("Saved documents from your Library / Live Drafts")
         }

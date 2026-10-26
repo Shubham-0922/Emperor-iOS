@@ -188,6 +188,21 @@ struct FilingService: FilingProviding {
             userId: try await userID(), draftId: draftID, cover: cover,
             options: .init(numbering: "arabic"))
         let request = try await client.makeRequest("POST", "/filing/assemble", body: body)
-        return try await client.send(request, as: FilingAssemblyResult.self)
+        let (data, response) = try await client.perform(request)
+        let status = response.statusCode
+        // A rejected assembly is a 400 carrying every reason in `errors`; they are all shown,
+        // so it is read as an answer, not thrown as the one-line `error`.
+        if status == 400 {
+            let rejected = try? JSONDecoder().decode(FilingAssemblyResult.self, from: data)
+            if let rejected, !rejected.success { return rejected }
+        }
+        if !(200..<300).contains(status) {
+            throw APIError.classify(status: status, body: data)
+        }
+        do {
+            return try JSONDecoder().decode(FilingAssemblyResult.self, from: data)
+        } catch {
+            throw APIError.decoding(String(describing: error))
+        }
     }
 }
