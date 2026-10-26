@@ -11,9 +11,11 @@ import UniformTypeIdentifiers
 /// and "Page N of M"; Prev and Next move a page at a time; under the page it says what was cited,
 /// plainly — including when the citation named no page and the document opened at its first.
 ///
-/// The quoted words are not marked on the page: this client does not yet read the server's word
-/// boxes for a page, so the sheet says which page was cited rather than pretending to have found
-/// the words on it.
+/// When the citation quotes words, they are looked for on the cited page and one either side —
+/// in a scanned page's placed words from the server, or the page's own text — and marked where
+/// they are found, in the theme's `mark`. The marks are drawn on the page on screen only; Share
+/// sends the document as stored. When the words are elsewhere or nowhere, the sheet says so in
+/// the web's words rather than pretending to have found them.
 struct SourceDocumentView: View {
     @Environment(\.theme) private var theme
     let attachment: ChatAttachment
@@ -21,6 +23,10 @@ struct SourceDocumentView: View {
     /// Whether a citation opened this — `false` for a document opened from the library, which
     /// has no cited page to speak of.
     var isCitation = true
+    /// The words the citation quotes, to find and mark; `""` for none.
+    var quote: String = ""
+    /// The server's check of those words against this document.
+    var quoteStatus: QuoteStatus?
 
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
@@ -30,6 +36,8 @@ struct SourceDocumentView: View {
     @State private var page = 1
     @State private var pageCount: Int?
     @State private var sharing: SharedDocumentFile?
+    /// The quoted words' marks, by 0-based page, in page space.
+    @State private var highlights: [Int: [CGRect]] = [:]
 
     private struct SharedDocumentFile: Identifiable {
         let id = UUID()
@@ -74,16 +82,45 @@ struct SourceDocumentView: View {
                 attachment: attachment, mention: mention, service: session.files,
                 officePreview: session.officePreview,
                 offline: session.offlineCopies.map { OfflineDocuments(store: $0.documents) },
-                connectivity: AppConnectivity.current)
+                connectivity: AppConnectivity.current,
+                quote: quote, quoteStatus: quoteStatus, words: session.citedSources)
             model = created
             await created.load()
-            if created.isPDF, let data = created.data {
-                pageCount = PDFDocument(data: data)?.pageCount
+            if created.isPDF, let data = created.data, let document = PDFDocument(data: data) {
+                pageCount = document.pageCount
+                await findQuote(created, in: document)
             }
         }
     }
 
-    /// "Page 3 of 40 · Annexure P-3".
+    /// Looks for the quoted words and marks them, landing on the page they are on.
+    private func findQuote(_ model: SourceDocumentViewModel, in document: PDFDocument) async {
+        guard let result = await model.findQuote(
+            pageCount: document.pageCount,
+            textWords: { number in
+                guard let page = document.page(at: number - 1) else { return [] }
+                return PDFQuoteHighlighter.words(on: page)
+            })
+        else { return }
+        page = result.page
+        if let hit = result.hit, let found = document.page(at: result.page - 1) {
+            let rects = PDFQuoteHighlighter.rects(for: hit, on: found)
+            if rects.isEmpty {
+                // PDFKit gave no rectangles: the words are not marked, so the page does not
+                // say they are; the "not located" note is said instead.
+                model.quoteWasNotMarked()
+            } else {
+                highlights = [result.page - 1: rects]
+            }
+        }
+        if let note = model.quoteNote {
+            VoiceOver.announce(note)
+        } else if !highlights.isEmpty {
+            VoiceOver.announce("The quoted words are highlighted.")
+        }
+    }
+
+    /// "Page 3 of 40 · Annexure P-3 · Quote checked".
     private var headerSubtitle: String? {
         var parts: [String] = []
         if let pageCount, model?.isPDF == true {
@@ -92,6 +129,7 @@ struct SourceDocumentView: View {
             parts.append(pages)
         }
         if !mention.mark.isEmpty { parts.append(mention.mark) }
+        if let status = model?.quoteStatusLabel { parts.append(status) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -140,34 +178,34 @@ struct SourceDocumentView: View {
         .padding(.vertical, Spacing.sm)
     }
 
-    /// The citation, under the page: which page it named, or that it named none.
+    /// The citation, under the page: which page it named, or that it named none — and, for a
+    /// quote, that its words are marked, or where they were or were not found, on the warning wash.
+    @ViewBuilder
     private var citedNote: some View {
-        let cited = mention.startPage
-        let text: String
-        if let cited {
-            text = page == cited || mention.endPage.map({ (cited...$0).contains(page) }) == true
-                ? "This is the page the answer cites."
-                : "The answer cites \(mention.pageDescription ?? "page \(cited)")."
-        } else {
-            text = "The answer cites this document without a page, so it opens at the first."
+        if let model {
+            let note = model.citedNote(page: page)
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+                Image(systemName: note.isWarning ? "exclamationmark.triangle" : "text.quote")
+                    .foregroundStyle(note.isWarning ? theme.warning : theme.accentText)
+                    .accessibilityHidden(true)
+                Text(note.text)
+                    .font(.brand(size: 13.5, relativeTo: .footnote))
+                    .foregroundStyle(note.isWarning ? theme.textPrimary : theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, 10)
+            .background(
+                note.isWarning ? theme.warnBg : theme.accentSoft,
+                in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .overlay(alignment: .leading) {
+                Rectangle().fill(note.isWarning ? theme.warning : theme.accentText).frame(width: 3)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(note.isWarning ? "source-quote-note" : "source-cited-note")
         }
-        return HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
-            Image(systemName: "text.quote")
-                .foregroundStyle(theme.accentText)
-                .accessibilityHidden(true)
-            Text(text)
-                .font(.brand(size: 13.5, relativeTo: .footnote))
-                .foregroundStyle(theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, 10)
-        .background(theme.accentSoft, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-        .overlay(alignment: .leading) {
-            Rectangle().fill(theme.accentText).frame(width: 3)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
     }
 
     /// Share — the one action, so it carries the gradient.
@@ -222,7 +260,9 @@ struct SourceDocumentView: View {
             VStack(spacing: 0) {
                 pageControls
                 // The page as paper: the document's own white, on the sheet's recessed ground.
-                PDFDataView(data: data, page: page, pagesOneAtATime: true)
+                PDFDataView(
+                    data: data, page: page, pagesOneAtATime: true,
+                    highlights: highlights, highlightColor: UIColor(theme.mark))
                     .background(theme.surface2)
             }
                 .safeAreaInset(edge: .bottom) {

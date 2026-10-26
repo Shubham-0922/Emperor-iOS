@@ -109,6 +109,14 @@ final class ChatViewModel {
     /// different failure with different wording, not a failed turn.
     var citationError: String?
 
+    /// Finds the stored document a reference names (`/resolve-file`). Set by the screen; without
+    /// it a reference opens only from the documents this conversation already knows.
+    var citedSources: (any CitedSourceResolving)?
+    /// The matter this conversation belongs to, if any. Its documents are where a citation's file
+    /// is looked for — a matter's file is never found without it. Set by the screen hosting a
+    /// matter's conversation.
+    var projectID: String?
+
     /// A question the server refused to start, handed back so the composer can restore it.
     ///
     /// The refusal happens *before* anything is stored (`sync-server.js:7256-7276`), so leaving
@@ -1060,6 +1068,48 @@ final class ChatViewModel {
         let id = UUID()
         let attachment: ChatAttachment
         let mention: AnnexureMention
+        /// The words the citation quotes, to find and mark on the page; `""` for none.
+        var quote: String = ""
+        /// The server's check of those words against the document.
+        var quoteStatus: QuoteStatus?
+    }
+
+    /// Opens the document a reference line names — `[3] Lease.pdf, p. 12 — "…"` — at the page the
+    /// server found its quoted words on, or else the page the reference names, with the words to
+    /// mark there.
+    ///
+    /// The server is asked which stored document the name means, as the web asks it: a reference
+    /// carries the name the model saw, never its folder, and in a matter's conversation the file
+    /// is one of that matter's.
+    func showCitedDocument(_ ref: DocumentReference) async {
+        let projectID = self.projectID?.nilIfEmpty
+        guard let citedSources else {
+            // Nothing to ask: the conversation's own documents are all there is.
+            let mention = AnnexureMention(
+                fileName: ref.file, mark: "", startPage: ref.page, endPage: nil)
+            if !resolveFromCache(mention, quote: ref.quote) {
+                citationError = "The cited document could not be opened."
+            }
+            return
+        }
+        do {
+            let resolved = try await citedSources.resolve(
+                name: ref.file, quote: ref.quote.nilIfEmpty, projectID: projectID)
+            guard let attachment = resolved.attachment else {
+                let whose = projectID == nil ? "your" : "this matter’s"
+                citationError = "“\(ref.file)” is not among \(whose) documents, so it cannot be opened."
+                return
+            }
+            openSource = SourceSelection(
+                attachment: attachment,
+                mention: AnnexureMention(
+                    fileName: attachment.name, mark: "",
+                    startPage: resolved.page ?? ref.page, endPage: nil),
+                quote: ref.quote,
+                quoteStatus: resolved.quoteStatus)
+        } catch {
+            citationError = "The cited document could not be opened."
+        }
     }
 
     /// Opens the document a citation points at, at the page it names.
@@ -1075,6 +1125,16 @@ final class ChatViewModel {
             if resolveFromCache(mention) { return }
         }
 
+        // Last, the server: it knows a matter's documents, and a name the library spells
+        // differently. A failure here changes nothing — the file is still not to be found.
+        if let citedSources,
+           let resolved = try? await citedSources.resolve(
+               name: mention.fileName, quote: nil, projectID: projectID?.nilIfEmpty),
+           let attachment = resolved.attachment {
+            openSource = SourceSelection(attachment: attachment, mention: mention)
+            return
+        }
+
         // Name the file that is missing. A citation pointing at a document no longer in the
         // library is exactly the case the user needs told plainly rather than as a dead tap.
         citationError = """
@@ -1083,7 +1143,7 @@ final class ChatViewModel {
             """
     }
 
-    private func resolveFromCache(_ mention: AnnexureMention) -> Bool {
+    private func resolveFromCache(_ mention: AnnexureMention, quote: String = "") -> Bool {
         // The transcript's own documents after the composer's: a citation names a file some turn
         // carried, and the transcript knows its folder exactly. This is also what lets a citation
         // open from a saved copy with no connection, when the library cannot be fetched.
@@ -1091,7 +1151,7 @@ final class ChatViewModel {
         guard let attachment = CitationResolver.resolve(
             mention, attachments: attachments + transcript, files: libraryCache)
         else { return false }
-        openSource = SourceSelection(attachment: attachment, mention: mention)
+        openSource = SourceSelection(attachment: attachment, mention: mention, quote: quote)
         return true
     }
 }

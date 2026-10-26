@@ -1,0 +1,1109 @@
+{
+ "parse": [
+  {
+   "text": "Lease_Agreement.pdf, p. 12 — \"the lessee shall pay the monthly rent\"",
+   "ref": {
+    "file": "Lease_Agreement.pdf",
+    "page": 12,
+    "quote": "the lessee shall pay the monthly rent"
+   }
+  },
+  {
+   "text": "Vishaka vs. State of Rajasthan, (1997) 6 SCC 241.",
+   "ref": null
+  },
+  {
+   "text": "**Order_dated_24.04.2026.pdf**, page 3",
+   "ref": {
+    "file": "Order_dated_24.04.2026.pdf",
+    "page": 3,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Notes.pdf — \"no page given here at all\"",
+   "ref": {
+    "file": "Notes.pdf",
+    "page": null,
+    "quote": "no page given here at all"
+   }
+  },
+  {
+   "text": "Lease_Agreement.pdf, p. 2 — “the lessee shall pay the monthly rent on the fifth day”",
+   "ref": {
+    "file": "Lease_Agreement.pdf",
+    "page": 2,
+    "quote": "the lessee shall pay the monthly rent on the fifth day"
+   }
+  },
+  {
+   "text": "Deed.pdf, p. 4 — ‘the vendor hereby conveys the property’",
+   "ref": {
+    "file": "Deed.pdf",
+    "page": 4,
+    "quote": "the vendor hereby conveys the property"
+   }
+  },
+  {
+   "text": "Deed.pdf, p. 4 — 'the vendor hereby conveys'",
+   "ref": {
+    "file": "Deed.pdf",
+    "page": 4,
+    "quote": "the vendor hereby conveys"
+   }
+  },
+  {
+   "text": "Affidavit.pdf, pp. 4-5 — \"deponent states on solemn affirmation\"",
+   "ref": {
+    "file": "Affidavit.pdf",
+    "page": 4,
+    "quote": "deponent states on solemn affirmation"
+   }
+  },
+  {
+   "text": "Affidavit.pdf, pg 7",
+   "ref": {
+    "file": "Affidavit.pdf",
+    "page": 7,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Affidavit.pdf, Page 12",
+   "ref": {
+    "file": "Affidavit.pdf",
+    "page": 12,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Affidavit.PDF, P. 9 — \"short\"",
+   "ref": {
+    "file": "Affidavit.PDF",
+    "page": 9,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Plaint.docx, p.3",
+   "ref": {
+    "file": "Plaint.docx",
+    "page": 3,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Photo_of_site.JPEG",
+   "ref": {
+    "file": "Photo_of_site.JPEG",
+    "page": null,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Scan.tiff, p 2 — \"a scanned page with words\"",
+   "ref": {
+    "file": "Scan.tiff",
+    "page": 2,
+    "quote": "a scanned page with words"
+   }
+  },
+  {
+   "text": "Ledger.txt",
+   "ref": {
+    "file": "Ledger.txt",
+    "page": null,
+    "quote": ""
+   }
+  },
+  {
+   "text": "p. 4 of the Order.pdf — \"the order was passed\"",
+   "ref": {
+    "file": "Order.pdf",
+    "page": 4,
+    "quote": "the order was passed"
+   }
+  },
+  {
+   "text": "Order.pdf, app. 5",
+   "ref": {
+    "file": "Order.pdf",
+    "page": null,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Order.pdf (p.12)",
+   "ref": {
+    "file": "Order.pdf",
+    "page": 12,
+    "quote": ""
+   }
+  },
+  {
+   "text": "<b>Order.pdf</b>, <i>p. 6</i> — \"the court directed the parties\"",
+   "ref": {
+    "file": "Order.pdf",
+    "page": 6,
+    "quote": "the court directed the parties"
+   }
+  },
+  {
+   "text": "`Exhibit_P-3.pdf`, p. 10",
+   "ref": {
+    "file": "Exhibit_P-3.pdf",
+    "page": 10,
+    "quote": ""
+   }
+  },
+  {
+   "text": "आदेश_दिनांक.pdf, p. ३ — \"न्यायालय ने आदेश दिया कि\"",
+   "ref": {
+    "file": "आदेश_दिनांक.pdf",
+    "page": null,
+    "quote": "न्यायालय ने आदेश दिया कि"
+   }
+  },
+  {
+   "text": "आदेश_दिनांक.pdf, p. 3 — \"न्यायालय ने आदेश दिया कि\"",
+   "ref": {
+    "file": "आदेश_दिनांक.pdf",
+    "page": 3,
+    "quote": "न्यायालय ने आदेश दिया कि"
+   }
+  },
+  {
+   "text": "Two.pdf and Three.pdf, p. 8",
+   "ref": {
+    "file": "Two.pdf",
+    "page": 8,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Lease.pdfx, p. 1",
+   "ref": {
+    "file": "Lease.pdf",
+    "page": 1,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Lease_Agreement.pdf, p. 00012",
+   "ref": {
+    "file": "Lease_Agreement.pdf",
+    "page": 12,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Lease_Agreement.pdf, p. 0",
+   "ref": {
+    "file": "Lease_Agreement.pdf",
+    "page": 0,
+    "quote": ""
+   }
+  },
+  {
+   "text": "Lease_Agreement.pdf, p. 123456",
+   "ref": {
+    "file": "Lease_Agreement.pdf",
+    "page": null,
+    "quote": ""
+   }
+  },
+  {
+   "text": "No file named here, p. 3 — \"just a quote somewhere\"",
+   "ref": null
+  },
+  {
+   "text": "",
+   "ref": null
+  }
+ ],
+ "docs": [
+  {
+   "content": "Rent is due [1].\n\n[1] Lease_Agreement.pdf, p. 12 — \"the lessee shall pay\"",
+   "docs": [
+    {
+     "n": 1,
+     "file": "Lease_Agreement.pdf",
+     "page": 12,
+     "quote": "the lessee shall pay"
+    }
+   ]
+  },
+  {
+   "content": "The lease [1] and the deed [2] agree [3].\n\n## References\n\n[1] Lease_Agreement.pdf, p. 2 — “the lessee shall pay the monthly rent on the fifth day”\n- [2]: Sale_Deed.pdf, page 4 — \"the vendor hereby conveys\"\n* [3] - Vishaka v. State of Rajasthan, (1997) 6 SCC 241\n1. [4] Lease Agreement.pdf, p. 2 — “the lessee shall pay the monthly rent on the fifth day”\n• [5] Lease_Agreement.pdf, p. 3 — \"another passage entirely\"\n[6]Lease_Agreement.pdf\n[7] Order.pdf, p. 1\r\n   [8]   Notes.txt\n[9]\nText [10] Inline.pdf, p. 2",
+   "docs": [
+    {
+     "n": 1,
+     "file": "Lease_Agreement.pdf",
+     "page": 2,
+     "quote": "the lessee shall pay the monthly rent on the fifth day"
+    },
+    {
+     "n": 2,
+     "file": "Sale_Deed.pdf",
+     "page": 4,
+     "quote": "the vendor hereby conveys"
+    },
+    {
+     "n": 4,
+     "file": "Agreement.pdf",
+     "page": 2,
+     "quote": "the lessee shall pay the monthly rent on the fifth day"
+    },
+    {
+     "n": 5,
+     "file": "Lease_Agreement.pdf",
+     "page": 3,
+     "quote": "another passage entirely"
+    },
+    {
+     "n": 8,
+     "file": "Notes.txt",
+     "page": null,
+     "quote": ""
+    }
+   ]
+  },
+  {
+   "content": "",
+   "docs": []
+  }
+ ],
+ "norm": [
+  {
+   "text": "अन्‍य १९५०",
+   "norm": "अन्य1950"
+  },
+  {
+   "text": "अन्य 1950",
+   "norm": "अन्य1950"
+  },
+  {
+   "text": "“State Information, SIC”",
+   "norm": "stateinformationsic"
+  },
+  {
+   "text": "ÅNGSTRÖM",
+   "norm": "ångström"
+  },
+  {
+   "text": "İstanbul",
+   "norm": "i̇stanbul"
+  },
+  {
+   "text": "Ⅻ ½ ٣",
+   "norm": "ⅻ½٣"
+  },
+  {
+   "text": "don’t — stop!",
+   "norm": "dontstop"
+  },
+  {
+   "text": "tab\tand nbsp",
+   "norm": "tabandnbsp"
+  },
+  {
+   "text": "emoji 😀 ok",
+   "norm": "emojiok"
+  },
+  {
+   "text": "",
+   "norm": ""
+  }
+ ],
+ "find": [
+  {
+   "id": "sic-exact",
+   "words": [
+    "40.",
+    "The",
+    "State",
+    "Information",
+    "Commission",
+    "(SIC)",
+    "is",
+    "an",
+    "autonomous",
+    "body,",
+    "that",
+    "is"
+   ],
+   "quote": "State Information Commission (SIC) is an autonomous body",
+   "range": {
+    "start": 2,
+    "end": 9
+   }
+  },
+  {
+   "id": "sic-punctuation",
+   "words": [
+    "40.",
+    "The",
+    "State",
+    "Information",
+    "Commission",
+    "(SIC)",
+    "is",
+    "an",
+    "autonomous",
+    "body,",
+    "that",
+    "is"
+   ],
+   "quote": "“state information commission, SIC, is an autonomous body”",
+   "range": {
+    "start": 2,
+    "end": 9
+   }
+  },
+  {
+   "id": "sic-misspelt-middle",
+   "words": [
+    "40.",
+    "The",
+    "State",
+    "Information",
+    "Commission",
+    "(SIC)",
+    "is",
+    "an",
+    "autonomous",
+    "body,",
+    "that",
+    "is"
+   ],
+   "quote": "The State Information Commision is an autonomous body",
+   "range": {
+    "start": 1,
+    "end": 8
+   }
+  },
+  {
+   "id": "sic-nothing",
+   "words": [
+    "40.",
+    "The",
+    "State",
+    "Information",
+    "Commission",
+    "(SIC)",
+    "is",
+    "an",
+    "autonomous",
+    "body,",
+    "that",
+    "is"
+   ],
+   "quote": "nothing like this sentence appears anywhere",
+   "range": null
+  },
+  {
+   "id": "hindi-exact",
+   "words": [
+    "16.",
+    "ऐसी",
+    "विधि",
+    "शब्दावली",
+    "की",
+    "कमी",
+    "थी",
+    "जो",
+    "इंग्लैंड",
+    "में",
+    "पनपी"
+   ],
+   "quote": "ऐसी विधि शब्दावली की कमी थी",
+   "range": {
+    "start": 1,
+    "end": 6
+   }
+  },
+  {
+   "id": "hindi-joiner-digits",
+   "words": [
+    "अन्‍य",
+    "विधि",
+    "१९५०",
+    "में",
+    "पारित",
+    "हुई"
+   ],
+   "quote": "अन्य विधि 1950 में पारित",
+   "range": {
+    "start": 0,
+    "end": 4
+   }
+  },
+  {
+   "id": "lease-exact",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "the monthly rent on or before the fifth day",
+   "range": {
+    "start": 4,
+    "end": 12
+   }
+  },
+  {
+   "id": "lease-head-and-tail",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "the lessee shall pay the monthly rent on the fifth day of every calendar month",
+   "range": {
+    "start": 0,
+    "end": 16
+   }
+  },
+  {
+   "id": "lease-head-only",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "The lessee shall pay the monthly rent in cash every single week of the year",
+   "range": {
+    "start": 0,
+    "end": 15
+   }
+  },
+  {
+   "id": "lease-tail-only",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "a tenant must hand over money to the lessor at his registered office",
+   "range": {
+    "start": 11,
+    "end": 23
+   }
+  },
+  {
+   "id": "lease-densest-window",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "deduction whatsoever calendar month lessor registered office rent",
+   "range": {
+    "start": 15,
+    "end": 22
+   }
+  },
+  {
+   "id": "lease-densest-too-thin",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "rent payable quarterly through bank transfer only",
+   "range": null
+  },
+  {
+   "id": "lease-short-quote",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "pay rent",
+   "range": {
+    "start": 2,
+    "end": 3
+   }
+  },
+  {
+   "id": "lease-one-word",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "lessor",
+   "range": {
+    "start": 19,
+    "end": 19
+   }
+  },
+  {
+   "id": "empty-quote",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "",
+   "range": null
+  },
+  {
+   "id": "punctuation-quote",
+   "words": [
+    "The",
+    "lessee",
+    "shall",
+    "pay",
+    "the",
+    "monthly",
+    "rent",
+    "on",
+    "or",
+    "before",
+    "the",
+    "fifth",
+    "day",
+    "of",
+    "every",
+    "calendar",
+    "month",
+    "to",
+    "the",
+    "lessor",
+    "at",
+    "his",
+    "registered",
+    "office",
+    "without",
+    "any",
+    "deduction",
+    "whatsoever."
+   ],
+   "quote": "— … —",
+   "range": null
+  },
+  {
+   "id": "no-words",
+   "words": [],
+   "quote": "the lessee shall pay",
+   "range": null
+  },
+  {
+   "id": "blank-words",
+   "words": [
+    "—",
+    "…"
+   ],
+   "quote": "the lessee shall pay",
+   "range": null
+  }
+ ],
+ "rects": [
+  {
+   "id": "selftest-wrap",
+   "boxes": [
+    [
+     10,
+     10,
+     40,
+     20
+    ],
+    [
+     45,
+     10,
+     80,
+     20
+    ],
+    [
+     10,
+     30,
+     50,
+     40
+    ]
+   ],
+   "start": 0,
+   "end": 2,
+   "rects": [
+    [
+     10,
+     10,
+     80,
+     20
+    ],
+    [
+     10,
+     30,
+     50,
+     40
+    ]
+   ]
+  },
+  {
+   "id": "one-line",
+   "boxes": [
+    [
+     10,
+     10,
+     40,
+     20
+    ],
+    [
+     45,
+     11,
+     80,
+     21
+    ],
+    [
+     85,
+     10,
+     120,
+     20
+    ]
+   ],
+   "start": 0,
+   "end": 2,
+   "rects": [
+    [
+     10,
+     10,
+     120,
+     21
+    ]
+   ]
+  },
+  {
+   "id": "three-lines",
+   "boxes": [
+    [
+     300,
+     100,
+     340,
+     112
+    ],
+    [
+     345,
+     100,
+     400,
+     112
+    ],
+    [
+     72,
+     116,
+     120,
+     128
+    ],
+    [
+     125,
+     116,
+     180,
+     128
+    ],
+    [
+     72,
+     132,
+     99,
+     144
+    ]
+   ],
+   "start": 0,
+   "end": 4,
+   "rects": [
+    [
+     300,
+     100,
+     400,
+     112
+    ],
+    [
+     72,
+     116,
+     180,
+     128
+    ],
+    [
+     72,
+     132,
+     99,
+     144
+    ]
+   ]
+  },
+  {
+   "id": "two-columns",
+   "boxes": [
+    [
+     10,
+     10,
+     40,
+     20
+    ],
+    [
+     300,
+     10,
+     340,
+     20
+    ],
+    [
+     20,
+     10,
+     60,
+     20
+    ]
+   ],
+   "start": 0,
+   "end": 2,
+   "rects": [
+    [
+     10,
+     10,
+     340,
+     20
+    ]
+   ]
+  },
+  {
+   "id": "partial-range",
+   "boxes": [
+    [
+     10,
+     10,
+     40,
+     20
+    ],
+    [
+     45,
+     10,
+     80,
+     20
+    ],
+    [
+     10,
+     30,
+     50,
+     40
+    ],
+    [
+     55,
+     30,
+     90,
+     40
+    ]
+   ],
+   "start": 1,
+   "end": 2,
+   "rects": [
+    [
+     45,
+     10,
+     80,
+     20
+    ],
+    [
+     10,
+     30,
+     50,
+     40
+    ]
+   ]
+  },
+  {
+   "id": "past-the-end",
+   "boxes": [
+    [
+     10,
+     10,
+     40,
+     20
+    ],
+    [
+     45,
+     10,
+     80,
+     20
+    ]
+   ],
+   "start": 1,
+   "end": 4,
+   "rects": [
+    [
+     45,
+     10,
+     80,
+     20
+    ]
+   ]
+  },
+  {
+   "id": "jumping-back",
+   "boxes": [
+    [
+     100,
+     10,
+     140,
+     20
+    ],
+    [
+     80,
+     10,
+     95,
+     20
+    ],
+    [
+     10,
+     10,
+     40,
+     20
+    ]
+   ],
+   "start": 0,
+   "end": 2,
+   "rects": [
+    [
+     100,
+     10,
+     140,
+     20
+    ],
+    [
+     80,
+     10,
+     95,
+     20
+    ],
+    [
+     10,
+     10,
+     40,
+     20
+    ]
+   ]
+  }
+ ]
+}

@@ -63,6 +63,10 @@ struct ChatThreadView: View {
     /// not on screen, and nothing is passed.
     var onTurnFinished: (() -> Void)?
 
+    /// The matter this conversation belongs to, when it does. A reference in its answers names
+    /// one of the matter's documents, and is looked for there.
+    var projectID: String?
+
     var body: some View {
         Group {
             if let model {
@@ -105,6 +109,10 @@ struct ChatThreadView: View {
             // answer. Without this every conversation would open as a litigator regardless of
             // who is asking.
             created.role = practice.role.wireRole
+            // A reference to one of the reader's documents is looked up on the server, in the
+            // matter's documents when this conversation is a matter's.
+            created.citedSources = session.citedSources
+            created.projectID = projectID
             composer = PromptEnhancerViewModel(service: session.enhancer)
             model = created
             await created.load()
@@ -145,6 +153,9 @@ struct ChatThreadView: View {
 
     private func thread(_ model: ChatViewModel) -> some View {
         @Bindable var model = model
+        let open = OpenCitedDocumentAction { reference in
+            openCited(reference, in: model)
+        }
 
         return VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -167,7 +178,8 @@ struct ChatThreadView: View {
                                 onAskAgain: askAgain(after: message, in: model),
                                 followUps: followUps(after: message, in: model),
                                 onFollowUp: { question in send(question, in: model) },
-                                onCopied: { toast = "Copied with its sources" })
+                                onCopied: { toast = "Copied with its sources" },
+                                projectID: model.projectID)
                                 .id(message.stableID)
                                 .transition(Motion.rise(reduceMotion: reduceMotion))
                         }
@@ -345,8 +357,13 @@ struct ChatThreadView: View {
             }
         }
         .sheet(item: $model.openSource) { source in
-            SourceDocumentView(attachment: source.attachment, mention: source.mention)
+            SourceDocumentView(
+                attachment: source.attachment, mention: source.mention,
+                quote: source.quote, quoteStatus: source.quoteStatus)
         }
+        // A reference naming one of the reader's documents — its Open chip, its badge in the
+        // text — opens that document at the quoted words.
+        .environment(\.openCitedDocument, open)
         .alert("Cannot open that source", isPresented: alertBinding($model.citationError)) {
             Button("OK") { model.citationError = nil }
         } message: {
@@ -699,6 +716,10 @@ struct ChatThreadView: View {
         Task { await model.showSource(mention) }
     }
 
+    private func openCited(_ reference: DocumentReference, in model: ChatViewModel) {
+        Task { await model.showCitedDocument(reference) }
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy, _ model: ChatViewModel) {
         let target = model.live != nil ? "live" : model.messages.last?.stableID
         guard let target else { return }
@@ -724,6 +745,8 @@ private struct MessageBubble: View {
     var followUps: [String] = []
     var onFollowUp: (String) -> Void = { _ in }
     var onCopied: () -> Void = {}
+    /// The matter the conversation belongs to, for checking its citations there.
+    var projectID: String?
 
     @State private var isReporting = false
     @State private var sharing: SharedAnswer?
@@ -761,6 +784,11 @@ private struct MessageBubble: View {
                     ReasoningPanel(snapshot: log, isStreaming: false, liveStatus: nil)
                 }
                 answer
+                // Whether the documents it cites hold what it quotes. Nothing for an answer
+                // citing none of the reader's documents.
+                CitationMetaLine(
+                    content: StreamContent.parse(message.content).prose,
+                    messageID: message.stableID, projectID: projectID)
                 actions
                 if !followUps.isEmpty {
                     followUpList
