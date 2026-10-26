@@ -1,79 +1,116 @@
 import Foundation
 
-/// One tab of the reference library — bare acts, case law, rules.
-struct LibraryCategory: Codable, Equatable, Identifiable, Sendable {
-    let key: String
-    var label: String?
-    /// How many documents this tab holds. **Zero is meaningful** — see `LibraryService`.
-    var count: Int?
-    /// `"state"`, `"court"`, … or absent when the tab has no sub-filter.
-    var subFilterType: String?
+/// The nine collections of the reference library, in the web's shelf order
+/// (`src/components/library/coverTheme.js`, `CATEGORY_ORDER`).
+///
+/// The wire carries the key as a string and a category this client does not know is still shown
+/// (under its own label), so `LibraryCategory.key` stays a `String`; this enum names the ones a
+/// screen treats specially.
+enum LibraryCategoryKey: String, CaseIterable, Sendable {
+    case bareActs = "bare-acts"
+    case caseLaw = "case-law"
+    case books = "books-and-law-reports"
+    case regulatorOrders = "regulator-orders"
+    case tribunals = "tribunals"
+    case lawCommission = "law-commission-reports"
+    case institutes = "professional-institutes"
+    case parliament = "parliament-prs"
+    case legalAid = "legal-aid-nalsa"
 
-    var id: String { key }
-    var displayLabel: String { label ?? key.replacingOccurrences(of: "-", with: " ").capitalized }
-    var hasSubFilters: Bool { (subFilterType?.isEmpty == false) }
+    /// The keys in shelf order, as strings.
+    static let order: [String] = allCases.map(\.rawValue)
 }
 
-/// A document in the reference library.
-struct LibraryDocument: Codable, Equatable, Identifiable, Sendable {
-    let id: Int
-    var title: String?
-    var fileSize: Int?
-    /// `pdf`, `txt`, … Used to decide how to present it.
-    var ext: String?
-    /// `COALESCE(downloaded_at, created_at)`, so the encoding follows whichever wrote it.
-    var added: String?
-
-    var displayTitle: String {
-        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? "Untitled document" : trimmed
-    }
-
-    var addedDate: Date? { WireDate.parseAny(added) }
-    var isPDF: Bool { (ext ?? "").lowercased() == "pdf" }
-
-    enum CodingKeys: String, CodingKey {
-        case id, title, ext, added
-        case fileSize = "file_size"
-    }
-}
-
-/// How a browse is ordered. These are the exact wire values the server accepts
-/// (`lib/referenceLibrary.js:181-188`); anything else silently falls back to title order.
+/// The catalogue's sort vocabulary (`lib/library/query.js`, `SORTS` and `JS_SORTS`). An unknown
+/// value falls back to the collection's default on the server, so a sort is passed as its raw
+/// string; these name the ones the client chooses itself.
 enum LibrarySort: String, CaseIterable, Sendable {
     case titleAscending = "title_asc"
+    case titleDescending = "title_desc"
     case newest = "date_desc"
     case oldest = "date_asc"
+    case yearNewest = "year_desc"
+    case yearOldest = "year_asc"
+    case court = "court"
     case largest = "size_desc"
+    case smallest = "size_asc"
+    case reportNewest = "report_desc"
+    case reportOldest = "report_asc"
 
-    var label: String {
-        switch self {
-        case .titleAscending: return "Title"
-        case .newest: return "Newest"
-        case .oldest: return "Oldest"
-        case .largest: return "Largest"
+    /// The server's own default for a collection, used until the reader picks another.
+    static func defaultSort(for category: String) -> String {
+        switch category {
+        case LibraryCategoryKey.caseLaw.rawValue: return LibrarySort.newest.rawValue
+        case LibraryCategoryKey.lawCommission.rawValue: return LibrarySort.reportNewest.rawValue
+        default: return LibrarySort.titleAscending.rawValue
+        }
+    }
+
+    /// What the web chooses for a collection before the reader does (the `defaultSort` each
+    /// `categories/*.jsx` passes its grid) — `nil` leaves it to the server.
+    static func webDefault(for category: String) -> String? {
+        switch category {
+        case LibraryCategoryKey.caseLaw.rawValue: return LibrarySort.newest.rawValue
+        case LibraryCategoryKey.regulatorOrders.rawValue, LibraryCategoryKey.tribunals.rawValue:
+            return LibrarySort.yearNewest.rawValue
+        default: return nil
         }
     }
 }
 
-// MARK: - Envelopes
+/// Why a library request failed, read from the catalogue's `error` code
+/// (`lib/library/routes.js`). The catalogue's error bodies carry a code and no sentence worth
+/// showing, so the words are this client's — the web's own, where it has them.
+enum LibraryError: Error, Equatable, Sendable {
+    /// `503 catalogue_unavailable`: this server has no catalogue built.
+    case catalogueUnavailable
+    case notFound
+    case notAnAct
+    case notAJudgment
+    /// `404 file_missing`: listed, but the file is not on this server yet.
+    case fileMissing
+    /// `413 too_large`, or a file over the size this client opens in memory.
+    case tooLarge
+    /// `503 search_busy` / `search_timeout`: the search pool is full; try again in a moment.
+    case busy
+    case missingQuery
+    case other(String)
 
-struct LibraryCategoriesResponse: Codable, Sendable {
-    var success: Bool?
-    var categories: [LibraryCategory]?
-    var error: String?
+    /// Maps an `APIError` from a catalogue route. A signed-out answer, maintenance, a refusal and
+    /// a transport failure are not library errors and are returned as they came — the caller
+    /// rethrows them, so the session handling and the offline wording stay the app's own.
+    static func from(_ error: Error) -> Error {
+        guard let api = error as? APIError, case .server(let status, let code) = api else { return error }
+        switch (status, code) {
+        case (503, "catalogue_unavailable"): return LibraryError.catalogueUnavailable
+        case (_, "not_found"), (_, "unknown_category"): return LibraryError.notFound
+        case (_, "not_an_act"): return LibraryError.notAnAct
+        case (_, "not_a_judgment"): return LibraryError.notAJudgment
+        case (_, "file_missing"): return LibraryError.fileMissing
+        case (413, _), (_, "too_large"): return LibraryError.tooLarge
+        case (_, "search_busy"), (_, "search_timeout"): return LibraryError.busy
+        case (_, "missing_query"): return LibraryError.missingQuery
+        default: return LibraryError.other(code)
+        }
+    }
+
+    /// Plain words, the web's where it has them.
+    var message: String {
+        switch self {
+        case .catalogueUnavailable: return "The catalogue has not been built on this server yet."
+        case .notFound: return "There is no such document."
+        case .notAnAct: return "This document is not part of the Bare Acts."
+        case .notAJudgment: return "This document is not a judgment."
+        case .fileMissing:
+            return "It is listed in the catalogue, but its file has not been copied to this server. Try again later."
+        case .tooLarge: return "This document is too large to open here."
+        case .busy: return "The library is busy. Try again in a moment."
+        case .missingQuery: return "Type something to search for."
+        case .other: return "The library did not answer properly. Try again in a moment."
+        }
+    }
 }
 
-struct LibrarySubFiltersResponse: Codable, Sendable {
-    var success: Bool?
-    var subFilters: [String]?
-    var error: String?
-}
-
-struct LibraryBrowseResponse: Codable, Sendable {
-    var success: Bool?
-    var items: [LibraryDocument]?
-    /// The full result count, not the page size — the route pages server-side.
-    var total: Int?
-    var error: String?
+extension LibraryError: LocalizedError {
+    var errorDescription: String? { message }
 }

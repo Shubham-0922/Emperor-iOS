@@ -1,0 +1,20 @@
+{
+ "success": true,
+ "categories": [
+  {
+   "key": "bare-acts",
+   "label": "Bare acts",
+   "count": 21480
+  },
+  {
+   "key": "case-law",
+   "label": "Case law",
+   "count": 271480
+  },
+  {
+   "key": "books-and-law-reports",
+   "label": "Books and law reports",
+   "count": 3120
+  }
+ ]
+}

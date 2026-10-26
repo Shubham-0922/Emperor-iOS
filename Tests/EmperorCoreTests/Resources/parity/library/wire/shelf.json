@@ -1,0 +1,21 @@
+{
+ "success": true,
+ "category": "bare-acts",
+ "label": "Bare acts",
+ "day": 20261027,
+ "items": [
+  {
+   "id": 2478,
+   "title": "THE INDIAN PENAL CODE, 1860",
+   "category": "bare-acts",
+   "docType": "act",
+   "ext": ".pdf",
+   "render": "pdf",
+   "hasCover": true,
+   "tabCounts": {
+    "rules": 2
+   },
+   "instruments": 2
+  }
+ ]
+}

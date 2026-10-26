@@ -263,12 +263,6 @@ enum UITestSupport {
             // `userFilesBody` for what the library holds.
             case "/user-files":
                 return userFilesBody()
-            case "/library/categories":
-                return #"{"success":true,"categories":[]}"#
-            case "/library/subfilters":
-                return #"{"success":true,"subFilters":[]}"#
-            case "/library/browse":
-                return #"{"success":true,"items":[],"total":0}"#
             case "/auction-notices":
                 return #"{"success":true,"notices":[],"total":0}"#
             case "/auction-notices/facets":

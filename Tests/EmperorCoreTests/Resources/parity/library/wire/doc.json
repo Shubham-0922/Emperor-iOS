@@ -1,0 +1,40 @@
+{
+ "success": true,
+ "doc": {
+  "id": 2479,
+  "title": "Penal Rules, 1950",
+  "category": "bare-acts",
+  "docType": "rules",
+  "ext": ".pdf",
+  "render": "pdf",
+  "fileSize": 20480,
+  "hasFile": false,
+  "parentId": 2478,
+  "childGroups": [
+   {
+    "key": "notifications",
+    "label": "Notifications",
+    "items": [
+     {
+      "id": 2490,
+      "title": "A notification",
+      "category": "bare-acts"
+     }
+    ]
+   }
+  ],
+  "childCount": 1,
+  "editions": [
+   {
+    "id": 3001,
+    "title": "Penal Rules, 1950",
+    "category": "bare-acts"
+   }
+  ],
+  "parent": {
+   "id": 2478,
+   "title": "THE INDIAN PENAL CODE, 1860",
+   "category": "bare-acts"
+  }
+ }
+}
