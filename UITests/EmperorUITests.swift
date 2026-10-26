@@ -832,11 +832,15 @@ final class EmperorUITests: XCTestCase {
 
         // Left as the other tests expect to find it. The picker is waited on by its own bar
         // before the row is tapped, the same way the first open waits for its rows.
-        app.reveal(selector)
-        selector.tap()
-        XCTAssertTrue(
-            app.navigationBars["Switch role"].waitForExistence(timeout: 10),
-            "the role picker did not reopen")
+        // A tap that lands while the closed sheet is still settling is swallowed, so the row is
+        // revealed and tapped again, up to three times, before the picker is called missing.
+        var reopened = false
+        for _ in 0..<3 where !reopened {
+            app.reveal(selector)
+            selector.tap()
+            reopened = app.navigationBars["Switch role"].waitForExistence(timeout: 6)
+        }
+        XCTAssertTrue(reopened, "the role picker did not reopen")
         let litigator = app.buttons["role-litigator"].firstMatch
         XCTAssertTrue(litigator.waitForExistence(timeout: 10), "the roles were not listed")
         litigator.tap()
