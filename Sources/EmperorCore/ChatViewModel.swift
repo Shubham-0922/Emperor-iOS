@@ -1001,6 +1001,21 @@ final class ChatViewModel {
     /// partial answer on screen is kept, marked as stopped by the reader.
     ///
     /// Taps while a stop is on its way are ignored.
+    /// The screen is closing or switching chats: stop polling for a run this screen no longer
+    /// shows. The run itself keeps going on the server, as it does for the web.
+    func leave() {
+        guard isFollowing else { return }
+        followTask?.cancel()
+        followTask = nil
+        followNap?.cancel()
+        followNap = nil
+        wakeRequested = false
+        isFollowing = false
+        isStreaming = false
+        status = nil
+        live = nil
+    }
+
     func stop() {
         guard isStreaming, !isStopping else { return }
         isStopping = true
@@ -1023,7 +1038,8 @@ final class ChatViewModel {
             saved = try? await service.messages(chatID: chatID)
         }
         wasStopped = true
-        if let saved, let last = saved.last, last.role == .assistant, last.isTyping != true,
+        let stoppedQuestion = messages.last(where: { $0.role == .user })?.content
+        if let saved, Self.isServerAnswer(saved, to: stoppedQuestion),
            historyIsIntact, !isShowingSavedCopy {
             // The server's copy holds the stopped answer, ending with its own "stopped" line.
             adopt(saved)

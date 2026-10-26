@@ -908,6 +908,31 @@ final class ChatRunLifecycleTests: XCTestCase {
         }
     }
 
+    /// Stop pressed before the server has stored the new question: its copy of the chat still
+    /// ends with the previous answer, which does not answer this question. The question and
+    /// the partial stay on screen, marked stopped; the server's copy is not adopted.
+    func testStopBeforeTheServerHoldsTheQuestionKeepsTheQuestion() async {
+        await withScripted { fake, model in
+            let earlierAnswer = ChatMessage(role: .assistant, content: "Earlier answer", id: "a0")
+            fake.stopReply = StopReply(
+                success: true, running: false, stopped: nil, savedBy: "stop", error: nil)
+            fake.scriptHistories([
+                [question("Earlier", id: "q0"), earlierAnswer, question("New question", id: "q1")],
+                [question("Earlier", id: "q0"), earlierAnswer],
+            ])
+            fake.scriptStatuses([liveStatus(content: "The draft so far", fromLiveRun: true)])
+            await model.load()
+
+            model.stop()
+            await settleRun(model)
+
+            XCTAssertTrue(
+                model.messages.contains { $0.role == .user && $0.content == "New question" },
+                "the stopped question must not be replaced by the server's older copy")
+            XCTAssertEqual(model.messages.last?.extra["stoppedBy"], .string("user"))
+        }
+    }
+
     /// A poll still on its way when Stop was pressed must not draw over the stopped turn or add
     /// the answer a second time.
     func testALatePollAfterStopDoesNotAppendTwice() async {

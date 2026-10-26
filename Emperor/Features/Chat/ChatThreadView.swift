@@ -82,6 +82,7 @@ struct ChatThreadView: View {
         }
         // Back in the foreground: a followed run polls at once, and an idle screen asks again
         // whether a run is live or has finished while the app was away.
+        .onDisappear { model?.leave() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, let model else { return }
             Task { await model.becameActive() }
