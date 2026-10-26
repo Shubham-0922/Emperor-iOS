@@ -393,7 +393,7 @@ final class AccessibilityAuditTests: XCTestCase {
 
     // MARK: - Getting around
 
-    private func launch(_ extraArguments: String...) -> XCUIApplication {
+    func launch(_ extraArguments: String...) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-UITestMode"] + extraArguments
         app.launch()
@@ -402,7 +402,7 @@ final class AccessibilityAuditTests: XCTestCase {
 
     /// Signs in through the real sign-in screen with an emailed code, as `EmperorUITests` does.
     /// The address is scrolled to first: at the largest text size the screen starts lower.
-    private func signIn(_ app: XCUIApplication) -> Bool {
+    func signIn(_ app: XCUIApplication) -> Bool {
         let email = app.textFields["Email"]
         guard reached(email, "the sign-in screen") else { return false }
         scrollUntilHittable(email, in: app)
@@ -425,7 +425,7 @@ final class AccessibilityAuditTests: XCTestCase {
 
     /// Opens a row of You and returns the navigation bar of the sheet it presents, or `nil` —
     /// having said so — when the row or the sheet is not there.
-    private func present(
+    func present(
         _ row: String, titled title: String, from app: XCUIApplication
     ) -> XCUIElement? {
         let button = app.buttons[row].firstMatch
@@ -446,7 +446,7 @@ final class AccessibilityAuditTests: XCTestCase {
 
     /// Closes a sheet from its own Done, and waits until it has gone — the bar of the screen under
     /// it is there the whole time, so its presence proves nothing.
-    private func close(_ title: String, in app: XCUIApplication) {
+    func close(_ title: String, in app: XCUIApplication) {
         let done = app.navigationBars[title].buttons["Done"]
         if done.waitForExistence(timeout: 5) { done.tap() } else { app.swipeDown() }
         var polls = 0
@@ -457,7 +457,7 @@ final class AccessibilityAuditTests: XCTestCase {
     }
 
     /// Waits for an element, and records a failure naming what was expected when it never comes.
-    private func reached(_ element: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
+    func reached(_ element: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
         if element.waitForExistence(timeout: timeout) { return true }
         XCTFail("could not reach \(what), so it was not audited")
         return false
@@ -866,7 +866,7 @@ final class AccessibilityAuditTests: XCTestCase {
     }
 
     /// A screenshot kept with the run, named so the CI export files it beside the tour's.
-    private func shoot(_ screen: String, _ app: XCUIApplication) {
+    func shoot(_ screen: String, _ app: XCUIApplication) {
         Thread.sleep(forTimeInterval: 0.8)
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "a11y-xxxl-\(screen)"
@@ -905,7 +905,7 @@ final class AccessibilityAuditTests: XCTestCase {
     ///   - reposition: on such a screen, puts the list back where it was audited from. Called
     ///     before each pass after the first: the text-size checks resize every row behind the
     ///     scenes, and the list is not always left where it was found.
-    private func audit(
+    func audit(
         _ screen: String, in app: XCUIApplication, sheet: XCUIElement? = nil,
         inATab: Bool = false, watching: XCUIElement? = nil, reposition: (() -> Void)? = nil,
         file: StaticString = #filePath, line: UInt = #line

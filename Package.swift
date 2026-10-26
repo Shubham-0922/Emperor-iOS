@@ -43,6 +43,9 @@ let package = Package(
                 // The web's icon tiles — the tool palette, the hash that picks a tool's colour, each
                 // tool's icon and each role's colour — from `scripts/generate-tile-fixtures.mjs`.
                 .copy("Resources/tool-tiles.json"),
+                // The parity packages' golden fixtures, one folder per package, each written by
+                // its own `scripts/generate-*-fixtures.mjs`; read with `parityFixture(_:_:)`.
+                .copy("Resources/parity"),
             ]),
     ]
 )

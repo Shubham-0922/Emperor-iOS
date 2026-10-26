@@ -149,6 +149,17 @@ enum UITestSupport {
             }
             // The profile write answers with the account as it was sent, as the platform does.
             if path == "/update-profile" { Fixtures.ProfileStub.shared.record(request) }
+            // A feature's own stub file answers first (`UITestStubs/`); `nil` falls through.
+            if let reply = Fixtures.packageReply(for: request, path: path) {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: reply.status,
+                    httpVersion: "HTTP/1.1",
+                    headerFields: ["Content-Type": reply.contentType])!
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: reply.data)
+                client?.urlProtocolDidFinishLoading(self)
+                return
+            }
             let body = Fixtures.itemBody(for: request.url) ?? Fixtures.body(for: path)
             let response = HTTPURLResponse(
                 url: request.url!, statusCode: 200,
@@ -485,14 +496,7 @@ enum UITestSupport {
             private var sent: [String: Any] = [:]
 
             func record(_ request: URLRequest) {
-                // `httpBody` is moved into a stream on its way through `URLSession`, so read both.
-                var data = request.httpBody
-                if data == nil, let stream = request.httpBodyStream {
-                    data = Self.drain(stream)
-                }
-                let object = data.flatMap {
-                    try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
-                } ?? [:]
+                let object = Fixtures.jsonBody(of: request) ?? [:]
                 lock.withLock { sent = object }
             }
 
@@ -510,19 +514,6 @@ enum UITestSupport {
                     return #"{"success":false}"#
                 }
                 return String(decoding: data, as: UTF8.self)
-            }
-
-            private static func drain(_ stream: InputStream) -> Data {
-                stream.open()
-                defer { stream.close() }
-                var data = Data()
-                var buffer = [UInt8](repeating: 0, count: 4096)
-                while stream.hasBytesAvailable {
-                    let read = stream.read(&buffer, maxLength: buffer.count)
-                    if read <= 0 { break }
-                    data.append(contentsOf: buffer[0..<read])
-                }
-                return data
             }
         }
 

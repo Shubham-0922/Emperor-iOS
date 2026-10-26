@@ -77,35 +77,6 @@ private func projectDetail(
     ProjectDetail(project: matter, updates: updates, courtHistory: courtHistory)
 }
 
-// MARK: - Fake
-
-private final class FakeProjects: ProjectProviding, @unchecked Sendable {
-    var list: [Project] = []
-    var detail: ProjectDetail?
-    var listError: Error?
-    var detailError: Error?
-
-    /// Every `includeArchived` value the view model actually asked the server for. The point of
-    /// recording it is that "filtered locally" and "re-fetched" look identical on screen.
-    private(set) var archivedRequests: [Bool] = []
-    private(set) var detailRequests: [String] = []
-
-    func projects(includeArchived: Bool) async throws -> [Project] {
-        archivedRequests.append(includeArchived)
-        if let listError { throw listError }
-        return list
-    }
-
-    func project(id: String) async throws -> ProjectDetail {
-        detailRequests.append(id)
-        if let detailError { throw detailError }
-        guard let detail else {
-            throw APIError.server(status: 404, message: ProjectService.projectGoneMessage)
-        }
-        return detail
-    }
-}
-
 /// Linux XCTest cannot invoke a `@MainActor` test method, and an `XCTestCase` is not `Sendable`
 /// so a `@MainActor` closure may not capture `self`. Hopping through a free function is the only
 /// shape that works on both platforms — see `ChatViewModelTests`.

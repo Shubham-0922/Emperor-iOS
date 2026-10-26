@@ -35,6 +35,10 @@ struct DocumentRoute: Hashable, Sendable {
     let path: String
     /// Which request asked for it, so asking again for the same document is still a change.
     var request: Int = 0
+    /// The page to open it on, 1-based, or `nil` for the first — a citation names its page.
+    var page: Int? = nil
+    /// The words to find on that page, or `nil` — a citation quotes its source.
+    var quote: String? = nil
 
     /// The folder the document is filed in, `""` for the top level.
     var folderPath: String {
@@ -49,6 +53,16 @@ struct DocumentRoute: Hashable, Sendable {
         let parts = folderPath.split(separator: "/").map(String.init)
         return parts.indices.map { parts[0...$0].joined(separator: "/") }
     }
+}
+
+/// A matter (a hand-made project) some other part of the app has asked the Matters tab to open.
+struct MatterRoute: Hashable, Sendable {
+    let projectID: String
+    /// The workspace section to open it on — `"court"`, `"tasks"`… — or `nil` for its overview.
+    var section: String? = nil
+    /// Which request asked for it, `0` for a row tapped in Matters itself. Part of the value for
+    /// the reason `CaseRoute.request` gives.
+    var request: Int = 0
 }
 
 /// Navigation that crosses tabs: which tab is showing, and a case some other tab has asked the
@@ -113,6 +127,26 @@ final class AppNavigator {
         return [route]
     }
 
+    // MARK: - Matters
+
+    /// A matter another tab has asked to open, not yet taken by the Matters tab.
+    private(set) var pendingMatter: MatterRoute?
+
+    /// Shows a matter on the Matters tab, on `section` when one is named. The latest request
+    /// wins, as with a case.
+    func openMatter(_ id: String, section: String? = nil) {
+        guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        requestCount += 1
+        pendingMatter = MatterRoute(projectID: id, section: section, request: requestCount)
+        selectedTab = .matters
+    }
+
+    /// The waiting matter, once. Taking it clears it.
+    func takePendingMatter() -> MatterRoute? {
+        defer { pendingMatter = nil }
+        return pendingMatter
+    }
+
     // MARK: - Documents
 
     /// A document waiting to be shown in My Files, not yet taken.
@@ -124,13 +158,23 @@ final class AppNavigator {
     /// being a tab, so there is nothing to switch to — and closing it returns the person to where
     /// they were. The latest request wins, as with a case.
     func openDocument(path: String) {
+        openDocument(path: path, page: nil, quote: nil)
+    }
+
+    /// Shows a document as `openDocument(path:)` does, opened on `page` with `quote` to find
+    /// there — where a citation points. A page below 1 and a blank quote are dropped.
+    func openDocument(path: String, page: Int?, quote: String?) {
         // Blank segments are dropped, so a stray or doubled slash still finds the document.
         let normalized = path.split(separator: "/")
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "/")
         guard !normalized.isEmpty else { return }
+        let trimmedQuote = quote?.trimmingCharacters(in: .whitespacesAndNewlines)
         requestCount += 1
-        pendingDocument = DocumentRoute(path: normalized, request: requestCount)
+        pendingDocument = DocumentRoute(
+            path: normalized, request: requestCount,
+            page: page.flatMap { $0 >= 1 ? $0 : nil },
+            quote: trimmedQuote.flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// The waiting document, once. Taking it clears it.

@@ -5,10 +5,10 @@ import SwiftUI
 /// Files, History, All Notifications and Library are the workspace management rows — each
 /// presents its screen the way You presents the Tools destinations (every one owns its own
 /// `NavigationStack`; see `ToolDestination`). Under them the web sidebar's **Case tools** and
-/// **Doc tools**: the case tools are drawn as cards — they are not built in this app yet, so
-/// each is a stand-in the same way the composer's wand and mic are — and the doc tools are wired
-/// to the screens they already have (OCR, the PDF tools). The search field filters every row
-/// on the screen, as a search on a screen of destinations should.
+/// **Doc tools**: the case tools are drawn as cards (`WorkspaceTool`) — a card opens its tool once
+/// the tool is built and is a stand-in until then, the same way the composer's wand and mic are —
+/// and the doc tools are wired to the screens they already have (OCR, the PDF tools). The
+/// search field filters every row on the screen, as a search on a screen of destinations should.
 struct MoreTabView: View {
     @Environment(\.theme) private var theme
 
@@ -17,6 +17,7 @@ struct MoreTabView: View {
     @State private var isShowingHistory = false
     @State private var isShowingNotifications = false
     @State private var tool: ToolDestination?
+    @State private var workspaceTool: WorkspaceTool?
 
     var body: some View {
         NavigationStack {
@@ -28,7 +29,7 @@ struct MoreTabView: View {
                 }
 
                 if matches("Files") || matches("History") || matches("Notifications")
-                    || matches("Library") {
+                    || matches("Library") || showsTeamRow {
                     Section {
                         if matches("Files") {
                             row("Files", systemImage: "folder",
@@ -45,6 +46,11 @@ struct MoreTabView: View {
                         if matches("Library") {
                             row("Library", systemImage: "books.vertical",
                                 subtitle: "Bare Acts, SCC digests, High Court compendiums") { tool = .library }
+                        }
+                        if showsTeamRow {
+                            row(WorkspaceTool.teams.title, systemImage: WorkspaceTool.teams.systemImage,
+                                subtitle: WorkspaceTool.teams.subtitle) { workspaceTool = .teams }
+                                .accessibilityIdentifier("workspace-row-teams")
                         }
                     } header: {
                         SectionHeader(title: "Workspace management")
@@ -96,6 +102,10 @@ struct MoreTabView: View {
                 chosen.screen
                     .pageSizedSheet()
             }
+            .sheet(item: $workspaceTool) { chosen in
+                chosen.screen
+                    .pageSizedSheet()
+            }
         }
     }
 
@@ -129,30 +139,14 @@ struct MoreTabView: View {
         .accessibilityLabel(Text(title))
     }
 
+    /// The Team row, once its screen is built — and, like every row, while the search matches it.
+    private var showsTeamRow: Bool {
+        WorkspaceTool.teams.isReady && matches(WorkspaceTool.teams.title)
+    }
+
     // MARK: - Case tools
 
-    /// One drawn case-tool card; nowhere to go yet, the same stand-in the doc rows were before
-    /// their screens were wired.
-    private struct CaseTool: Identifiable {
-        let title: String
-        let subtitle: String
-        let systemImage: String
-        let tag: String
-        var id: String { title }
-    }
-
-    private var caseToolItems: [CaseTool] {
-        [
-            CaseTool(title: "Fetch Orders", subtitle: "Autopull from SC & Delhi HC portals",
-                     systemImage: "doc.text.magnifyingglass", tag: "Live Court"),
-            CaseTool(title: "Devil's Advocate", subtitle: "AI adversary cross-exam prep",
-                     systemImage: "shield", tag: "Adversary AI"),
-            CaseTool(title: "Doc Index", subtitle: "Pagination & court filing indices",
-                     systemImage: "tablecells", tag: "E-Filing"),
-            CaseTool(title: "List of Dates", subtitle: "Chronology generator for SLP & writs",
-                     systemImage: "calendar", tag: "SLP Ready"),
-        ]
-    }
+    private var caseToolItems: [WorkspaceTool] { WorkspaceTool.caseTools }
 
     /// The mock's two-up cards, as a grid of Record panels — SF Symbol, title, one line of
     /// what it is, and the product tag, all in the kit's type and radii.
@@ -166,9 +160,10 @@ struct MoreTabView: View {
         }
     }
 
-    private func caseToolCard(_ item: CaseTool) -> some View {
+    /// A card opens its tool once the tool is built; until then the card is the promise.
+    private func caseToolCard(_ item: WorkspaceTool) -> some View {
         Button {
-            // Not built in this app yet — the card is the promise, the wiring is a later step.
+            if item.isReady { workspaceTool = item }
         } label: {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 IconTile(systemImage: item.systemImage)
@@ -182,8 +177,10 @@ struct MoreTabView: View {
                         .foregroundStyle(theme.textTertiary)
                         .dynamicLineLimit(2)
                 }
-                StatusPill(text: item.tag, tone: .accent)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let tag = item.tag {
+                    StatusPill(text: tag, tone: .accent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .padding(Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,6 +190,7 @@ struct MoreTabView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(item.title))
         .accessibilityHint(Text(item.subtitle))
+        .accessibilityIdentifier("case-tool-\(item.rawValue)")
     }
 
     // MARK: - Doc tools
