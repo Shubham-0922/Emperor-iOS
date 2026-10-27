@@ -246,13 +246,17 @@ final class ScreenshotTour: XCTestCase {
         }
 
         // The tab's other calendar: the same month grid, drawn once for both, with the statutory
-        // deadlines' agenda below it. Switched back, so the tab is left on My calendar.
-        let corporate = app.buttons["Corporate calendar"].firstMatch
-        if corporate.waitForExistence(timeout: 5) {
-            corporate.tap()
-            _ = app.staticTexts["GSTR-1"].waitForExistence(timeout: 10)
-            snap("corporate-calendar")
-            tapIfPresent(app.buttons["My calendar"].firstMatch)
+        // deadlines' agenda below it. Back to the Calendar first — opening the case above took the
+        // app to Matters — and switched back to My calendar afterwards, as the tab is left.
+        app.tab("Calendar").tap()
+        if app.navigationBars["Calendar"].waitForExistence(timeout: 10) {
+            let corporate = app.buttons["Corporate calendar"].firstMatch
+            if corporate.waitForExistence(timeout: 5) {
+                corporate.tap()
+                _ = app.staticTexts["GSTR-1"].waitForExistence(timeout: 10)
+                snap("corporate-calendar")
+                tapIfPresent(app.buttons["My calendar"].firstMatch)
+            }
         }
 
         // Files, from More: the folders, and one of them opened — its sub-folder above its
