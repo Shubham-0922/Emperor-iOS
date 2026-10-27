@@ -54,6 +54,9 @@ struct FilingAnnexureCards: View {
                 }
             }
         }
+        // A container of its own: an identifier on a plain stack is handed down to its
+        // children, and would replace each card's `filing-annexure-card-<mark>`.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("filing-annexure-cards")
     }
 
@@ -110,6 +113,9 @@ struct FilingSeedSection: View {
     @Environment(\.theme) private var theme
 
     let model: FilingAssemblyViewModel
+    /// Told the annexure a tap has just made, so the screen can bring it on screen: it lands in
+    /// the list above, which may be scrolled out of sight.
+    var onAdded: (FilingAnnexure) -> Void = { _ in }
 
     var body: some View {
         Section {
@@ -128,7 +134,7 @@ struct FilingSeedSection: View {
         // control's, wherever the row ends on a wide screen.
         return HStack(spacing: 0) {
             Button {
-                Task { await model.addSeed(file) }
+                Task { await add(file) }
             } label: {
                 ChipLabel(title: name, systemImage: "plus", isSelected: false)
             }
@@ -140,5 +146,13 @@ struct FilingSeedSection: View {
         }
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: Spacing.xxs, leading: 0, bottom: Spacing.xxs, trailing: 0))
+    }
+
+    private func add(_ file: ChatAttachment) async {
+        guard await model.addSeed(file) else { return }
+        let suffix = "/" + file.name
+        if let added = model.annexures.last(where: { $0.sourceFilePath.hasSuffix(suffix) }) {
+            onAdded(added)
+        }
     }
 }

@@ -36,6 +36,26 @@ extension XCUIApplication {
         return filingElement("filing-viewer").waitForExistence(timeout: 10)
     }
 
+    /// Drags the filing list down a little, at most three times, while `element` sits under the
+    /// sheet's bar or within a touch of it. A list scrolled to bring a row on screen can leave
+    /// it beneath the bar, where it still reads as hittable but a tap lands on the bar (as on an
+    /// iPad's form sheet). The drag starts at the row's own height but beside it, at the list's
+    /// trailing edge, so it never presses the control itself.
+    func bringBelowBar(_ element: XCUIElement, bar: XCUIElement) {
+        let list = filingElement("filing-screen")
+        for _ in 0..<3 {
+            guard element.exists, bar.exists, list.exists else { return }
+            let row = element.frame
+            guard row.minY < bar.frame.maxY + 24 else { return }
+            let edge = list.frame
+            let origin = coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            let y = max(row.midY, bar.frame.maxY + 30)
+            let start = origin.withOffset(CGVector(dx: edge.maxX - 24, dy: y))
+            let end = origin.withOffset(CGVector(dx: edge.maxX - 24, dy: y + 120))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+    }
+
     /// Closes the annexure viewer by its Done.
     func closeAnnexureViewer(_ mark: String) {
         let bar = navigationBars["Annexure \(mark)"]
@@ -91,17 +111,20 @@ final class FilingChatUITests: XCTestCase {
         XCTAssertTrue(app.waitAndReveal(seed, timeout: 15), "the conversation's file was not offered")
         XCTAssertFalse(
             app.buttons["filing-seed-Plaint.pdf"].exists, "a file already an annexure was offered")
+        let bar = app.navigationBars["Assemble court-ready filing"]
+        app.bringBelowBar(seed, bar: bar)
         seed.tap()
 
-        // The new row lands above the chips, on screen: waited for without scrolling, as a swipe
-        // down on a sheet already at its top would close it. A tap the sheet swallowed is given
-        // once more — the same file again answers with the annexure it already is, so it cannot
-        // add a second one (checked below).
+        // The screen scrolls the new row on screen itself, so it is waited for without swiping:
+        // a swipe down on a sheet already at its top would close it. A tap that did not land is
+        // given once more, clear of the bar — the same file again answers with the annexure it
+        // already is, so it cannot add a second one (checked below).
         let added = app.filingElement("filing-annexure-3")
         if !added.waitForExistence(timeout: 8), seed.exists, seed.isHittable, seed.isEnabled {
+            app.bringBelowBar(seed, bar: bar)
             seed.tap()
         }
-        XCTAssertTrue(app.waitAndReveal(added, timeout: 15), "the file did not become an annexure")
+        XCTAssertTrue(added.waitForExistence(timeout: 15), "the file did not become an annexure")
         XCTAssertTrue(poll { added.label.contains("P-10") }, "label: \(added.label)")
         XCTAssertTrue(app.waitGone(seed), "the file was still offered once added")
         XCTAssertFalse(app.filingElement("filing-annexure-4").exists, "the file was added twice")

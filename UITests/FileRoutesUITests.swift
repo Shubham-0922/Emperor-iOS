@@ -47,7 +47,29 @@ extension XCUIApplication {
             row.tap()
             if edit.waitForExistence(timeout: 5) { break }
         }
-        return edit.waitForExistence(timeout: 10)
+        // Until the reader has finished arriving: its bar slides up with it, and a tap aimed at
+        // a control still moving lands where the control no longer is.
+        return edit.waitForExistence(timeout: 10) && waitUntilSettled(edit)
+    }
+
+    /// Waits until `element` is hittable and has stopped moving — the same frame on two reads in
+    /// a row — and answers whether it did. A bar arriving with a full-screen cover, or one
+    /// riding the keyboard up, is hittable before it is where it will stay.
+    @discardableResult
+    func waitUntilSettled(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last: CGRect?
+        while Date() < deadline {
+            if element.exists, element.isHittable {
+                let frame = element.frame
+                if let last, last == frame { return true }
+                last = frame
+            } else {
+                last = nil
+            }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        return false
     }
 
     /// Edit, then type into the editable page: the web view is tapped until the keyboard is up,
@@ -138,12 +160,22 @@ final class FileRoutesUITests: XCTestCase {
         let app = XCUIApplication.launchedSignedIn(["-UITestDraftEdit", "-UITestLongToasts"])
         XCTAssertTrue(app.openStubDraft(), "the draft did not open in its reader")
         XCTAssertTrue(app.editStubDraft(typing: " amended"), "the draft could not be typed into")
-        app.buttons["draft-save"].tap()
 
+        // Save is tapped once its bar has stopped riding the keyboard up, and again — at most
+        // three taps in all — while nothing has come of it: no reader back, no reason given.
+        // A second save of the same text is no edit, so it cannot save twice.
+        let save = app.buttons["draft-save"].firstMatch
+        let reader = app.buttons["draft-edit"].firstMatch
+        let failure = app.fileRouteElement("draft-save-error")
         let toast = app.draftSavedToast
+        for _ in 0..<3 {
+            guard app.waitUntilSettled(save) else { break }
+            save.tap()
+            if poll(timeout: 8, until: { toast.exists || reader.exists || failure.exists }) { break }
+        }
+        XCTAssertFalse(failure.exists, "the save was refused: \(failure.label)")
         XCTAssertTrue(poll(timeout: 15) { toast.exists }, "no word that the draft was saved")
-        XCTAssertTrue(app.buttons["draft-edit"].waitForExistence(timeout: 10), "the reader did not come back")
-        XCTAssertFalse(app.fileRouteElement("draft-save-error").exists)
+        XCTAssertTrue(reader.waitForExistence(timeout: 10), "the reader did not come back")
         let edited = app.webViews.staticTexts
             .matching(NSPredicate(format: "label CONTAINS %@", "amended")).firstMatch
         XCTAssertTrue(edited.waitForExistence(timeout: 10), "the reader does not show the saved edit")
@@ -196,16 +228,19 @@ final class FileRoutesUITests: XCTestCase {
         XCTAssertTrue(app.openStubDraft(), "the draft did not open in its reader")
         let menu = app.buttons["Download this document"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 10), "the reader has no download menu")
-        // By identifier or by its words. Tapped again, up to three taps in all, while the menu
-        // has not opened: a tap as the full-screen reader is still arriving can be lost (and a
-        // second tap on an open menu closes it, for the third to open it again).
+        // By identifier or by its words. The menu is tapped once the reader has stopped moving,
+        // and again, up to three taps in all, while it has not opened: a tap as the full-screen
+        // reader is still arriving can be lost. A menu that did open leaves its button
+        // unhittable, which ends the loop rather than closing it again.
         let pdf = app.buttons.matching(NSPredicate(
             format: "identifier == %@ OR label == %@", "export-pdf", "PDF")).firstMatch
         for _ in 0..<3 {
-            guard menu.exists, menu.isHittable else { break }
+            guard app.waitUntilSettled(menu, timeout: 5) else { break }
             menu.tap()
             if pdf.waitForExistence(timeout: 5) { break }
         }
+        XCTAssertTrue(
+            app.buttons["draft-edit"].exists || pdf.exists, "the reader closed instead of opening its menu")
         XCTAssertTrue(pdf.exists, "the menu has no PDF")
         pdf.tap()
         XCTAssertTrue(app.shareSheetShows(), "the PDF was not offered to share")

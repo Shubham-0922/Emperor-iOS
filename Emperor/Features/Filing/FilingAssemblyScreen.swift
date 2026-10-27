@@ -68,6 +68,8 @@ private struct FilingAssemblyContent: View {
     @State private var renaming: FilingAnnexure?
     @State private var newTitle = ""
     @State private var removing: FilingAnnexure?
+    /// The annexure a seed chip has just made, to be scrolled to.
+    @State private var justAdded: Int?
 
     private var renameMessage: String {
         guard let annexure = renaming else { return "" }
@@ -92,6 +94,13 @@ private struct FilingAssemblyContent: View {
                     // failed is not left out of sight.
                     guard model.outcome != nil else { return }
                     withAnimation { proxy.scrollTo(FilingResultView.anchor, anchor: .top) }
+                }
+                .onChange(of: justAdded) {
+                    // The new row lands at the end of the annexures, above the chips, which a
+                    // list scrolled down to the chips has out of sight.
+                    guard let id = justAdded else { return }
+                    withAnimation { proxy.scrollTo(id, anchor: .center) }
+                    justAdded = nil
                 }
         }
     }
@@ -127,7 +136,7 @@ private struct FilingAssemblyContent: View {
                         },
                         onRemove: { removing = $0 })
                     if model.chat != nil, !model.seedFiles.isEmpty {
-                        FilingSeedSection(model: model)
+                        FilingSeedSection(model: model, onAdded: { justAdded = $0.id })
                     }
                     FilingCoverSection(model: model)
                     if let outcome = model.outcome {
