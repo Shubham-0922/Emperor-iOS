@@ -85,6 +85,10 @@ struct MatterCourtSection: View {
         }
         .padding(Spacing.lg)
         .panel()
+        // A container, not one element: an identifier on a plain stack is handed down to every
+        // control in it, and Refresh, Unlink and Open the case record would all answer to
+        // "matter-court-summary" instead of their own names.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("matter-court-summary")
     }
 

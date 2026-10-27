@@ -1622,8 +1622,17 @@ final class EmperorUITests: XCTestCase {
         let edit = app.buttons["edit-profile"].firstMatch
         app.reveal(edit)
         XCTAssertTrue(edit.waitForExistence(timeout: 10), "You has no Edit profile row")
-        edit.tap()
-        XCTAssertTrue(app.navigationBars["Edit profile"].waitForExistence(timeout: 10))
+        // Tapped again, up to three times in all, while the row is still there and nothing has
+        // opened: on an iPad, You's page sheet shows Connected services and the plan's standing
+        // at once, and their rows arrive from the server just as the sheet settles — a tap made
+        // while the list takes them in can be lost. A row that opens nothing fails all three.
+        let form = app.navigationBars["Edit profile"]
+        for _ in 0..<3 {
+            guard edit.exists, edit.isHittable else { break }
+            edit.tap()
+            if form.waitForExistence(timeout: 5) { break }
+        }
+        XCTAssertTrue(form.waitForExistence(timeout: 10), "Edit profile did not open")
 
         let name = app.textFields["profile-name"].firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 10), "no name field")

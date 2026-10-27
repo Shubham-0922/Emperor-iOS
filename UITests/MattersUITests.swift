@@ -45,10 +45,12 @@ final class MattersUITests: XCTestCase {
 
         XCTAssertTrue(app.matterElement("matter-header").waitForExistence(timeout: 10), "the banner is missing")
         XCTAssertTrue(app.matterElement("matter-next-hearing").exists, "the next hearing is not on the banner")
+        // The workspace opens on the overview. Checked first: walking the bar to its far chips
+        // chooses the chips it passes.
+        XCTAssertTrue(app.matterElement("matter-standing").waitForExistence(timeout: 5), "the overview is empty")
         for section in ["overview", "ask", "files", "drafts", "chronology", "court", "tasks", "fees", "people"] {
             XCTAssertTrue(app.revealSection(section).exists, "no \(section) section")
         }
-        XCTAssertTrue(app.matterElement("matter-standing").waitForExistence(timeout: 5), "the overview is empty")
     }
 
     func testEachSectionRenders() {
@@ -116,19 +118,18 @@ extension XCUIApplication {
 
     /// A workspace section's chip: by its identifier, or, should the identifier not reach the
     /// tree, by its name — the chip reads its name, then any count ("Tasks, 3, one or more
-    /// overdue").
+    /// overdue"). Ask's chip is named "Ask Emperor".
     func sectionChip(_ key: String) -> XCUIElement {
         let byID = buttons.matching(identifier: "matter-section-\(key)").firstMatch
         if byID.exists { return byID }
-        let title = key.prefix(1).uppercased() + key.dropFirst()
+        let title = key == "ask" ? "Ask Emperor" : key.prefix(1).uppercased() + key.dropFirst()
         let predicate = NSPredicate(format: "label == %@ OR label BEGINSWITH %@", title, "\(title), ")
         return buttons.matching(predicate).firstMatch
     }
 
     /// A workspace section, by its key. The bar scrolls sideways and centres the chosen chip, so
-    /// on a phone a chip far from it is off screen — and may not be in the tree at all until the
-    /// bar is dragged towards it. Dragged from the chip nearest that side, a bounded number of
-    /// times, until the wanted chip can be tapped.
+    /// on a phone (and in an iPad's column) a chip far from it is off screen — and not in the
+    /// tree at all until the bar is moved towards it. See `revealSection`.
     func openSection(_ key: String) {
         let chip = revealSection(key)
         XCTAssertTrue(chip.waitForExistence(timeout: 5), "no \(key) chip on the section bar")
@@ -136,15 +137,19 @@ extension XCUIApplication {
         chip.tap()
     }
 
-    /// A section's chip, the bar dragged sideways (bounded) until it can be tapped; not tapped.
+    /// A section's chip, brought on screen; not tapped.
+    ///
+    /// The bar is walked rather than dragged: the chip on screen nearest the wanted one is
+    /// tapped, and the bar centres it, which brings the chips beyond it into view — a bounded
+    /// number of times. A drag towards the start of the bar (a finger moving right) did not move
+    /// it on the simulators, so a section to the left of the chosen one was never reached.
     @discardableResult
     func revealSection(_ key: String) -> XCUIElement {
         // The bar's order, left to right.
         let keys = ["overview", "ask", "files", "drafts", "chronology", "court", "tasks", "fees", "people"]
         let target = keys.firstIndex(of: key) ?? 0
         _ = matterElement("matter-header").waitForExistence(timeout: 10)
-        var drags = 0
-        while drags < 8 {
+        for _ in 0..<keys.count {
             let chip = sectionChip(key)
             if chip.waitForExistence(timeout: 1), chip.isHittable { break }
             let onScreen = keys.indices.filter { index in
@@ -152,15 +157,24 @@ extension XCUIApplication {
                 return other.exists && other.isHittable
             }
             guard let first = onScreen.first, let last = onScreen.last else { break }
-            // Wanted to the right of everything shown: drag the rightmost chip left, and the
-            // other way round.
-            let towardsRight = target > last
-            let from = sectionChip(keys[towardsRight ? last : first])
-            let end = CGVector(dx: towardsRight ? -1.5 : 2.5, dy: 0.5)
-            from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-                .press(forDuration: 0.05, thenDragTo: from.coordinate(withNormalizedOffset: end))
-            drags += 1
+            let step = target > last ? last : first
+            guard step != target else { break }
+            let nearest = sectionChip(keys[step])
+            nearest.tap()
+            waitForBarToSettle(nearest)
         }
         return sectionChip(key)
+    }
+
+    /// Polls until `element` stops moving — the bar's centring animation over — or 3 seconds.
+    func waitForBarToSettle(_ element: XCUIElement) {
+        var last = element.exists ? element.frame : .zero
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.25)
+            let now = element.exists ? element.frame : .zero
+            if now == last { return }
+            last = now
+        }
     }
 }

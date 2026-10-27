@@ -19,9 +19,11 @@ final class MattersWriteUITests: XCTestCase {
         let create = app.openSheet(app.matterElement("matters-new"), showing: "new-matter-create")
         XCTAssertTrue(create.exists, "New matter did not open")
         app.type("Kapoor v. Kapoor", into: app.matterElement("new-matter-name"))
+        // Low in the form, under the keyboard the name left up: scrolled to inside the sheet.
         let notFiled = app.buttons["Not filed yet"].firstMatch
-        XCTAssertTrue(app.waitAndReveal(notFiled, timeout: 5))
+        XCTAssertTrue(app.revealInForm(notFiled), "the court case choice has no Not filed yet")
         notFiled.tap()
+        XCTAssertTrue(poll(timeout: 5) { notFiled.isSelected }, "Not filed yet was not chosen")
         create.tap()
 
         XCTAssertTrue(app.waitGone(create), "the sheet stayed up")
@@ -199,10 +201,41 @@ extension XCUIApplication {
         }
     }
 
-    /// Focuses a field and types into it.
+    /// Focuses a field and types into it. The fields are in a matter form's sheet, so a field
+    /// out of sight is scrolled to inside the form (`revealInForm`).
     func type(_ text: String, into field: XCUIElement) {
-        guard waitAndReveal(field, timeout: 10) else { return }
+        guard revealInForm(field) else { return }
         field.tap()
         field.typeText(text)
+    }
+
+    /// Waits for `element` in the open matter form (`MatterFormSheet`, named "matter-form") and
+    /// drags the form until it can be tapped, answering whether it can. A form builds only the
+    /// rows near what it shows, so a row below the fold is not there until scrolled to; and a
+    /// swipe from the middle of the screen — `reveal` — lands on the sheet's footer, the keyboard
+    /// or the screen behind the sheet once the keyboard is up, and scrolls nothing. So the drag
+    /// is made inside the form, between its top and the keyboard's.
+    @discardableResult
+    func revealInForm(_ element: XCUIElement, tries: Int = 8) -> Bool {
+        if element.waitForExistence(timeout: 3), element.isHittable { return true }
+        let named = collectionViews["matter-form"].firstMatch
+        let form = named.waitForExistence(timeout: 5)
+            ? named : collectionViews.allElementsBoundByIndex.last ?? named
+        guard form.exists else { return waitAndReveal(element) }
+        var drags = 0
+        while !(element.exists && element.isHittable), drags < tries {
+            let frame = form.frame
+            let keyboard = keyboards.firstMatch
+            let keyboardTop: CGFloat = keyboard.exists ? keyboard.frame.minY : frame.maxY
+            let bottom: CGFloat = min(frame.maxY, keyboardTop)
+            let height: CGFloat = bottom - frame.minY
+            guard height > 60 else { break }
+            let origin = coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            let start = origin.withOffset(CGVector(dx: frame.midX, dy: frame.minY + height * 0.8))
+            let end = origin.withOffset(CGVector(dx: frame.midX, dy: frame.minY + height * 0.25))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
+            drags += 1
+        }
+        return element.waitForExistence(timeout: 2) && element.isHittable
     }
 }
