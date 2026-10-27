@@ -40,6 +40,9 @@ struct MatterFormSheet<Content: View>: View {
             }
             .font(.brand(.body))
             .scrollContentBackground(.hidden)
+            // Named so the UI tests can scroll this form, never the screen behind the sheet, and
+            // drag inside it above the keyboard rather than from the middle of the screen.
+            .accessibilityIdentifier("matter-form")
             footer
         }
         .background(theme.groupedBackground.ignoresSafeArea())
