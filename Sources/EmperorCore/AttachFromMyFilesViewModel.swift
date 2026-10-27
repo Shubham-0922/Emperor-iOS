@@ -36,7 +36,7 @@ final class AttachFromMyFilesViewModel {
     }
 
     /// A folder's documents, in the order the picker lists them.
-    struct Group: Equatable, Identifiable, Sendable {
+    struct Folder: Equatable, Identifiable, Sendable {
         /// Relative to the user's root; "" for My Files' own root.
         let folder: String
         let rows: [Row]
@@ -119,7 +119,7 @@ final class AttachFromMyFilesViewModel {
 
     /// The documents by folder — My Files' root first, then the folders by name — or, while
     /// searching, the matches in one list.
-    var groups: [Group] {
+    var groups: [Folder] {
         let q = JSCompat.trim(query).lowercased()
         let shown = q.isEmpty ? rows : rows.filter {
             $0.file.name.lowercased().contains(q) || $0.folder.lowercased().contains(q)
@@ -132,7 +132,7 @@ final class AttachFromMyFilesViewModel {
         }
         return keys.map { key in
             let list = (byFolder[key] ?? []).sorted { JSCompat.localeCompare($0.file.name, $1.file.name) < 0 }
-            return Group(folder: key, rows: list)
+            return Folder(folder: key, rows: list)
         }
     }
 

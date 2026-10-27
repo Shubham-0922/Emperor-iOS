@@ -101,6 +101,18 @@ struct LedgerEntrySheet: View {
                 receiptSection(model)
             }
         }
+        .sheet(isPresented: $isPickingReceipt) {
+            LedgerReceiptFilePicker(projectID: projectID, current: model.draft.receiptFile) { picked in
+                model.draft.receiptFile = picked
+            }
+        }
+        .sheet(isPresented: $isViewingReceipt) {
+            let path = model.draft.receiptFile
+            SourceDocumentView(
+                attachment: Self.attachment(forPath: path),
+                mention: AnnexureMention(fileName: Ledger.receiptFileName(path), mark: "", startPage: nil, endPage: nil),
+                isCitation: false)
+        }
     }
 
     /// The receipt or challan: one of the matter's own files, picked from them, and opened from here.
@@ -122,17 +134,6 @@ struct LedgerEntrySheet: View {
             }
         }
         .listRowBackground(theme.surface)
-        .sheet(isPresented: $isPickingReceipt) {
-            LedgerReceiptFilePicker(projectID: projectID, current: path) { picked in
-                model.draft.receiptFile = picked
-            }
-        }
-        .sheet(isPresented: $isViewingReceipt) {
-            SourceDocumentView(
-                attachment: Self.attachment(forPath: path),
-                mention: AnnexureMention(fileName: name, mark: "", startPage: nil, endPage: nil),
-                isCitation: false)
-        }
     }
 
     /// A stored path, relative to the user's root, as the viewer addresses a document.
