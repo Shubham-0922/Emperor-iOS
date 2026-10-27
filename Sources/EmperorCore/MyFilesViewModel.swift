@@ -105,19 +105,22 @@ final class MyFilesViewModel {
     private let cache: ResponseCache?
     private let offline: OfflineDocuments?
     private let officePreview: (any OfficePreviewProviding)?
+    private let fileRoutes: (any FileRouteProviding)?
 
     /// - Parameters:
     ///   - cache: where the library is kept between launches, so it can be browsed offline.
     ///   - offline: where this account keeps documents for reading offline.
     ///   - officePreview: the converter, so a Word document is saved for offline as the viewer
     ///     shows it.
+    ///   - fileRoutes: where a folder is packed into one archive for sharing.
     init(
         service: any FileProviding,
         manager: any FileManaging,
         now: @escaping @Sendable () -> Date = { Date() },
         cache: ResponseCache? = nil,
         offline: OfflineDocuments? = nil,
-        officePreview: (any OfficePreviewProviding)? = nil
+        officePreview: (any OfficePreviewProviding)? = nil,
+        fileRoutes: (any FileRouteProviding)? = nil
     ) {
         self.service = service
         self.manager = manager
@@ -125,6 +128,7 @@ final class MyFilesViewModel {
         self.cache = cache
         self.offline = offline
         self.officePreview = officePreview
+        self.fileRoutes = fileRoutes
         refreshOfflineStatus()
     }
 
@@ -395,6 +399,49 @@ final class MyFilesViewModel {
                 throw APIError.server(status: 200, message: "That document arrived empty, so there is nothing to share.")
             }
             self.sharing = SharedDocument(fileName: file.name, data: data)
+            return nil
+        }
+    }
+
+    // MARK: - A folder as one archive
+
+    /// The most documents one archive may hold here: the whole archive is held in memory before
+    /// it is shared.
+    nonisolated static let zipLimit = 200
+
+    nonisolated static let emptyZipNotice = "Nothing to share — this folder holds no documents."
+    nonisolated static let tooManyToZip = "Too many documents to zip on a phone. Share a smaller folder, or download it from the web."
+
+    /// Every document under `path`, at any depth, as the archive route names them — the web's
+    /// `filesUnder` (`src/pages/MyFilesPage.jsx`): each document with the folder it sits in, the
+    /// storage root spelled `"."`.
+    nonisolated static func zipEntries(under path: String, in tree: [FileNode]) -> [ZipEntry] {
+        let base = FileBrowser.normalized(path)
+        return FileService.allFiles(in: tree).compactMap { file in
+            let folder = FileBrowser.normalized(file.folderPath)
+            let inside = base.isEmpty || folder == base || folder.hasPrefix(base + "/")
+            guard inside else { return nil }
+            return ZipEntry(folderName: folder.isEmpty ? "." : folder, fileName: file.name)
+        }
+    }
+
+    /// Packs a folder into `<folder>.zip` for the share sheet.
+    func prepareZip(_ folder: FolderSummary) async {
+        let entries = Self.zipEntries(under: folder.path, in: tree)
+        guard !entries.isEmpty else {
+            actionError = nil
+            actionNotice = Self.emptyZipNotice
+            return
+        }
+        guard entries.count <= Self.zipLimit else {
+            actionNotice = nil
+            actionError = Self.tooManyToZip
+            return
+        }
+        guard let fileRoutes else { return }
+        await perform(on: folder.path) { [weak self] _ in
+            let data = try await fileRoutes.zip(entries)
+            self?.sharing = SharedDocument(fileName: "\(folder.name).zip", data: data)
             return nil
         }
     }

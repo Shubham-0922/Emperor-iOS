@@ -7,11 +7,12 @@ import Foundation
 /// the account was actually entitled to — someone on a plan whose default is Thinking got Quick
 /// on the phone and Thinking on the web, which reads as the phone being a lesser product.
 ///
-/// ## Read only, deliberately
+/// ## Read here, written by the answer-mode choice
 ///
-/// There is a setter route. Neither this client nor the web one calls it, and adding a writer
-/// here would make the phone the only place the value can be changed — a setting that exists in
-/// one client and nowhere else is worse than no setting.
+/// The web writes the value whenever its Home model toggle changes (`setSelectedModel`,
+/// `src/lib/store.js`), and so does this client when the answer mode is chosen on Home or Ask —
+/// `FileRouteService.setPreferredModel`, then `Session.refreshPreferredModel` to read it back.
+/// The write is best-effort: a failure leaves the choice for this question only.
 ///
 /// ## The stored value is usually null, and that is not a missing answer
 ///
