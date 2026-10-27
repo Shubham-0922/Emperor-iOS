@@ -94,6 +94,7 @@ enum ArtifactDocument {
           .ex-loe-notes p { margin: 0 0 0.3em; text-align: left; }
           /* Wide tables of contents must scroll rather than force the page sideways. */
           .scroll { overflow-x: auto; }
+          .scroll[contenteditable] { min-height: 70vh; outline: none; }
           @media (min-width: \(tabletBreakpointPx)px) {
             body { font-size: \(wide)px; padding: 48px; }
           }

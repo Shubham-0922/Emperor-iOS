@@ -60,10 +60,17 @@ extension XCUIApplication {
         guard buttons["draft-save"].waitForExistence(timeout: 10) else { return false }
         let page = webViews.firstMatch
         guard page.waitForExistence(timeout: 10) else { return false }
+        let field = page.textViews.firstMatch
         let heading = page.staticTexts["Draft text"].firstMatch
-        _ = heading.waitForExistence(timeout: 10)
+        _ = field.waitForExistence(timeout: 5) || heading.waitForExistence(timeout: 10)
         for _ in 0..<3 {
-            if heading.exists, heading.isHittable { heading.tap() } else { page.tap() }
+            if field.exists, field.isHittable {
+                field.tap()
+            } else if heading.exists, heading.isHittable {
+                heading.tap()
+            } else {
+                page.tap()
+            }
             if keyboards.firstMatch.waitForExistence(timeout: 5) { break }
         }
         guard keyboards.firstMatch.exists else { return false }
