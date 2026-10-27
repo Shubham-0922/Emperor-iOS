@@ -16,33 +16,50 @@ struct CourtSearchView: View {
     /// Pick mode: the chosen result is handed back (a new matter, a matter's Court section)
     /// instead of being added to the dashboard here.
     var onPick: ((CourtSearchResult) -> Void)? = nil
+    /// Pick mode's button words; nil keeps "Use this case". Fetch Orders says "Fetch this case".
+    var pickLabel: String? = nil
+    /// Drawn inside a host's own navigation stack (Fetch Orders), with no stack, title or Done of
+    /// its own.
+    var embedded = false
+    /// Sections a host draws above the form when embedded — a heading, say.
+    var leadingSections: AnyView? = nil
+    /// Sections a host draws under the results when embedded — how it works, recent lookups.
+    var trailingSections: AnyView? = nil
 
     @State private var model: CourtSearchViewModel?
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let model {
-                    content(model)
-                } else {
-                    ProgressView()
-                }
+        if embedded {
+            loaded
+        } else {
+            NavigationStack {
+                loaded
+                    .navigationTitle(onPick == nil ? CourtSearchViewModel.Copy.title : "Find the case")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { dismiss() }
+                        }
+                    }
             }
-            .navigationTitle(onPick == nil ? CourtSearchViewModel.Copy.title : "Find the case")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
+        }
+    }
+
+    private var loaded: some View {
+        Group {
+            if let model {
+                content(model)
+            } else {
+                ProgressView()
             }
-            .task {
-                guard model == nil else { return }
-                model = CourtSearchViewModel(
-                    service: session.courtSearch,
-                    metadata: session.courtMetadata,
-                    onSaved: onSaved,
-                    onPick: onPick)
-            }
+        }
+        .task {
+            guard model == nil else { return }
+            model = CourtSearchViewModel(
+                service: session.courtSearch,
+                metadata: session.courtMetadata,
+                onSaved: onSaved,
+                onPick: onPick)
         }
     }
 
@@ -50,6 +67,10 @@ struct CourtSearchView: View {
         @Bindable var model = model
 
         return Form {
+            if let leadingSections {
+                leadingSections
+            }
+
             Section {
                 NavigationLink {
                     CourtPicker(model: model)
@@ -70,12 +91,14 @@ struct CourtSearchView: View {
                 // Only where there is a choice. Ten tribunals and three consumer fora publish no
                 // pre-registration lookup, so offering the pill and refusing it would be worse
                 // than never showing it.
-                if model.query.forum.availableModes.count > 1 {
+                // A High Court on its own portal is searched by case number only, so it offers
+                // no choice either.
+                if model.query.availableModes.count > 1 {
                     Picker("Search by", selection: Binding(
                         get: { model.query.mode },
                         set: { model.setMode($0) }
                     )) {
-                        ForEach(model.query.forum.availableModes) { mode in
+                        ForEach(model.query.availableModes) { mode in
                             Text(mode.label(for: model.query.forum)).tag(mode)
                         }
                     }
@@ -106,6 +129,10 @@ struct CourtSearchView: View {
             }
 
             resultsSection(model)
+
+            if let trailingSections {
+                trailingSections
+            }
         }
         .font(.brand(.body))
         .scrollContentBackground(.hidden)
@@ -377,7 +404,8 @@ struct CourtSearchView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                    Text(CourtSearchViewModel.Copy.pickButton)
+                        .accessibilityHidden(true)
+                    Text(pickLabel ?? CourtSearchViewModel.Copy.pickButton)
                 }
                 .font(.brand(.caption, weight: .semibold))
                 .foregroundStyle(theme.accentText)
@@ -387,6 +415,8 @@ struct CourtSearchView: View {
                 .overlay(Capsule().strokeBorder(theme.accentMuted, lineWidth: 1))
             }
             .buttonStyle(.borderless)
+            // On the button itself: an identifier inside a button's label is not reachable.
+            .accessibilityIdentifier("court-result-pick")
         } else if model.isSaved(result) {
             Label(CourtSearchViewModel.Copy.savedLabel, systemImage: "checkmark.circle.fill")
                 .font(.brand(.caption, weight: .medium))

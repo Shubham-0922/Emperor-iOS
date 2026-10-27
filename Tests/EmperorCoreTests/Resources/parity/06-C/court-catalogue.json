@@ -1,0 +1,705 @@
+{
+ "courts": [
+  {
+   "id": "sc",
+   "name": "Supreme Court of India",
+   "category": "sc"
+  },
+  {
+   "id": "hc-allahabad",
+   "name": "High Court — Allahabad",
+   "category": "hc"
+  },
+  {
+   "id": "hc-andhra",
+   "name": "High Court — Andhra Pradesh",
+   "category": "hc"
+  },
+  {
+   "id": "hc-bombay",
+   "name": "High Court — Bombay",
+   "category": "hc"
+  },
+  {
+   "id": "hc-calcutta",
+   "name": "High Court — Calcutta",
+   "category": "hc"
+  },
+  {
+   "id": "hc-chhattisgarh",
+   "name": "High Court — Chhattisgarh",
+   "category": "hc"
+  },
+  {
+   "id": "hc-delhi",
+   "name": "High Court — Delhi",
+   "category": "hc"
+  },
+  {
+   "id": "hc-gauhati",
+   "name": "High Court — Gauhati",
+   "category": "hc"
+  },
+  {
+   "id": "hc-gujarat",
+   "name": "High Court — Gujarat",
+   "category": "hc"
+  },
+  {
+   "id": "hc-himachal",
+   "name": "High Court — Himachal Pradesh",
+   "category": "hc"
+  },
+  {
+   "id": "hc-jk",
+   "name": "High Court — Jammu & Kashmir and Ladakh",
+   "category": "hc"
+  },
+  {
+   "id": "hc-jharkhand",
+   "name": "High Court — Jharkhand",
+   "category": "hc"
+  },
+  {
+   "id": "hc-karnataka",
+   "name": "High Court — Karnataka",
+   "category": "hc"
+  },
+  {
+   "id": "hc-kerala",
+   "name": "High Court — Kerala",
+   "category": "hc"
+  },
+  {
+   "id": "hc-mp",
+   "name": "High Court — Madhya Pradesh",
+   "category": "hc"
+  },
+  {
+   "id": "hc-madras",
+   "name": "High Court — Madras",
+   "category": "hc"
+  },
+  {
+   "id": "hc-manipur",
+   "name": "High Court — Manipur",
+   "category": "hc"
+  },
+  {
+   "id": "hc-meghalaya",
+   "name": "High Court — Meghalaya",
+   "category": "hc"
+  },
+  {
+   "id": "hc-orissa",
+   "name": "High Court — Orissa",
+   "category": "hc"
+  },
+  {
+   "id": "hc-patna",
+   "name": "High Court — Patna",
+   "category": "hc"
+  },
+  {
+   "id": "hc-punjab-haryana",
+   "name": "High Court — Punjab & Haryana",
+   "category": "hc"
+  },
+  {
+   "id": "hc-rajasthan",
+   "name": "High Court — Rajasthan",
+   "category": "hc"
+  },
+  {
+   "id": "hc-sikkim",
+   "name": "High Court — Sikkim",
+   "category": "hc"
+  },
+  {
+   "id": "hc-telangana",
+   "name": "High Court — Telangana",
+   "category": "hc"
+  },
+  {
+   "id": "hc-tripura",
+   "name": "High Court — Tripura",
+   "category": "hc"
+  },
+  {
+   "id": "hc-uttarakhand",
+   "name": "High Court — Uttarakhand",
+   "category": "hc"
+  },
+  {
+   "id": "dist-sessions",
+   "name": "District & Sessions Court",
+   "category": "district"
+  },
+  {
+   "id": "dist-civil",
+   "name": "Civil Court (Junior/Senior Division)",
+   "category": "district"
+  },
+  {
+   "id": "dist-cjm",
+   "name": "CJM / Metropolitan Magistrate Court",
+   "category": "district"
+  },
+  {
+   "id": "dist-family",
+   "name": "Family Court",
+   "category": "district"
+  },
+  {
+   "id": "dist-commercial",
+   "name": "Commercial Court",
+   "category": "district"
+  },
+  {
+   "id": "dist-labour",
+   "name": "Labour Court / Industrial Tribunal",
+   "category": "district"
+  },
+  {
+   "id": "dist-mact",
+   "name": "Motor Accident Claims Tribunal (MACT)",
+   "category": "district"
+  },
+  {
+   "id": "trib-nclt",
+   "name": "National Company Law Tribunal (NCLT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-nclat",
+   "name": "National Company Law Appellate Tribunal (NCLAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-ngt",
+   "name": "National Green Tribunal (NGT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-cat",
+   "name": "Central Administrative Tribunal (CAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-itat",
+   "name": "Income Tax Appellate Tribunal (ITAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-drt",
+   "name": "Debts Recovery Tribunal (DRT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-drat",
+   "name": "Debts Recovery Appellate Tribunal (DRAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-cestat",
+   "name": "Customs, Excise & Service Tax Appellate Tribunal (CESTAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-tdsat",
+   "name": "Telecom Disputes Settlement & Appellate Tribunal (TDSAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-aft",
+   "name": "Armed Forces Tribunal (AFT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-sat",
+   "name": "Securities Appellate Tribunal (SAT)",
+   "category": "tribunal"
+  },
+  {
+   "id": "trib-aptel",
+   "name": "Appellate Tribunal for Electricity (APTEL)",
+   "category": "tribunal"
+  },
+  {
+   "id": "forum-ncdrc",
+   "name": "National Consumer Disputes Redressal Commission (NCDRC)",
+   "category": "forum"
+  },
+  {
+   "id": "forum-scdrc",
+   "name": "State Consumer Disputes Redressal Commission (SCDRC)",
+   "category": "forum"
+  },
+  {
+   "id": "forum-dcdrc",
+   "name": "District Consumer Disputes Redressal Commission (DCDRC)",
+   "category": "forum"
+  }
+ ],
+ "scCaseTypes": [
+  {
+   "value": "1",
+   "label": "Special Leave Petition (Civil)"
+  },
+  {
+   "value": "2",
+   "label": "Special Leave Petition (Criminal)"
+  },
+  {
+   "value": "3",
+   "label": "Civil Appeal"
+  },
+  {
+   "value": "4",
+   "label": "Criminal Appeal"
+  },
+  {
+   "value": "5",
+   "label": "Writ Petition (Civil)"
+  },
+  {
+   "value": "6",
+   "label": "Writ Petition (Criminal)"
+  },
+  {
+   "value": "7",
+   "label": "Transfer Petition (Civil)"
+  },
+  {
+   "value": "8",
+   "label": "Transfer Petition (Criminal)"
+  },
+  {
+   "value": "9",
+   "label": "Review Petition (Civil)"
+  },
+  {
+   "value": "10",
+   "label": "Review Petition (Criminal)"
+  },
+  {
+   "value": "11",
+   "label": "Transferred Case (Civil)"
+  },
+  {
+   "value": "12",
+   "label": "Transferred Case (Criminal)"
+  },
+  {
+   "value": "13",
+   "label": "Special Leave to Petition (Civil)"
+  },
+  {
+   "value": "14",
+   "label": "Special Leave to Petition (Criminal)"
+  },
+  {
+   "value": "15",
+   "label": "Writ to Petition (Civil)"
+  },
+  {
+   "value": "16",
+   "label": "Writ to Petition (Criminal)"
+  },
+  {
+   "value": "17",
+   "label": "Original Suit"
+  },
+  {
+   "value": "18",
+   "label": "Death Reference Case"
+  },
+  {
+   "value": "19",
+   "label": "Contempt Petition (Civil)"
+  },
+  {
+   "value": "20",
+   "label": "Contempt Petition (Criminal)"
+  },
+  {
+   "value": "21",
+   "label": "Tax Reference Case"
+  },
+  {
+   "value": "22",
+   "label": "Special Reference Case"
+  },
+  {
+   "value": "23",
+   "label": "Election Petition (Civil)"
+  },
+  {
+   "value": "24",
+   "label": "Arbitration Petition"
+  },
+  {
+   "value": "25",
+   "label": "Curative Petition (Civil)"
+  },
+  {
+   "value": "26",
+   "label": "Curative Petition (Criminal)"
+  },
+  {
+   "value": "27",
+   "label": "Ref. U/A 317(1)"
+  },
+  {
+   "value": "28",
+   "label": "Motion (Criminal)"
+  },
+  {
+   "value": "32",
+   "label": "Suo Moto Writ Petition (Civil)"
+  },
+  {
+   "value": "33",
+   "label": "Suo Moto Writ Petition (Criminal)"
+  },
+  {
+   "value": "34",
+   "label": "Suo Moto Contempt Petition (Civil)"
+  },
+  {
+   "value": "35",
+   "label": "Suo Moto Contempt Petition (Criminal)"
+  },
+  {
+   "value": "37",
+   "label": "Ref. U/S 14 RTI"
+  },
+  {
+   "value": "38",
+   "label": "Ref. U/S 17 RTI"
+  },
+  {
+   "value": "39",
+   "label": "Miscellaneous Application"
+  },
+  {
+   "value": "40",
+   "label": "Suo Moto Transfer Petition (Civil)"
+  },
+  {
+   "value": "41",
+   "label": "Suo Moto Transfer Petition (Criminal)"
+  }
+ ],
+ "ncltBenches": [
+  {
+   "value": "ahmedabad",
+   "label": "Ahmedabad"
+  },
+  {
+   "value": "allahabad",
+   "label": "Allahabad"
+  },
+  {
+   "value": "amravati",
+   "label": "Amaravati"
+  },
+  {
+   "value": "bengaluru",
+   "label": "Bengaluru"
+  },
+  {
+   "value": "chandigarh",
+   "label": "Chandigarh"
+  },
+  {
+   "value": "chennai",
+   "label": "Chennai"
+  },
+  {
+   "value": "cuttack",
+   "label": "Cuttack"
+  },
+  {
+   "value": "guwahati",
+   "label": "Guwahati"
+  },
+  {
+   "value": "hyderabad",
+   "label": "Hyderabad"
+  },
+  {
+   "value": "indore",
+   "label": "Indore"
+  },
+  {
+   "value": "jaipur",
+   "label": "Jaipur"
+  },
+  {
+   "value": "kochi",
+   "label": "Kochi"
+  },
+  {
+   "value": "kolkata",
+   "label": "Kolkata"
+  },
+  {
+   "value": "mumbai",
+   "label": "Mumbai"
+  },
+  {
+   "value": "delhi",
+   "label": "New Delhi"
+  }
+ ],
+ "ncltCaseTypes": [
+  {
+   "value": "43",
+   "label": "Execution Petition (IBC)"
+  },
+  {
+   "value": "42",
+   "label": "Rule 63 Appeal"
+  },
+  {
+   "value": "41",
+   "label": "IA (Liq.) Progress Report"
+  },
+  {
+   "value": "40",
+   "label": "Interlocutory Application(IBC)(Dis.)"
+  },
+  {
+   "value": "39",
+   "label": "Interlocutory Application(IBC)(Liq.)"
+  },
+  {
+   "value": "38",
+   "label": "Interlocutory Application(IBC)(Plan)"
+  },
+  {
+   "value": "37",
+   "label": "Restored Company Petition (Companies Act)"
+  },
+  {
+   "value": "36",
+   "label": "Restored Company Petition (IBC)"
+  },
+  {
+   "value": "35",
+   "label": "Voluntary Liquidation (IBC)"
+  },
+  {
+   "value": "34",
+   "label": "Transfer Application (IBC)"
+  },
+  {
+   "value": "33",
+   "label": "Insolvency & Bankruptcy (Pre-Packaged)"
+  },
+  {
+   "value": "32",
+   "label": "Transfer Application"
+  },
+  {
+   "value": "31",
+   "label": "Interlocutory Application (I.B.C)"
+  },
+  {
+   "value": "30",
+   "label": "Execution Petition"
+  },
+  {
+   "value": "29",
+   "label": "Transfer Petition (IBC)"
+  },
+  {
+   "value": "28",
+   "label": "Cross Appeal (IBC)"
+  },
+  {
+   "value": "27",
+   "label": "Company Appeal (IBC)"
+  },
+  {
+   "value": "26",
+   "label": "Miscellaneous Application (IBC)"
+  },
+  {
+   "value": "25",
+   "label": "Contempt Petition (IBC)"
+  },
+  {
+   "value": "24",
+   "label": "Cross Application (IBC)"
+  },
+  {
+   "value": "23",
+   "label": "Intervention Petition (IBC)"
+  },
+  {
+   "value": "22",
+   "label": "Restoration Application (IBC)"
+  },
+  {
+   "value": "21",
+   "label": "Review Application (IBC)"
+  },
+  {
+   "value": "20",
+   "label": "Interlocatory Application (IBC)"
+  },
+  {
+   "value": "19",
+   "label": "Rehabilitation petition(IBC)"
+  },
+  {
+   "value": "18",
+   "label": "Company Application(IBC)"
+  },
+  {
+   "value": "16",
+   "label": "Company Petition IB (IBC)"
+  },
+  {
+   "value": "15",
+   "label": "CP(AA) Merger and Amalgamation(Companies Act)"
+  },
+  {
+   "value": "14",
+   "label": "CA(A) Merger and Amalgamation(Companies Act)"
+  },
+  {
+   "value": "13",
+   "label": "Company Application(Companies Act)"
+  },
+  {
+   "value": "12",
+   "label": "Cross Appeal(Companies Act)"
+  },
+  {
+   "value": "11",
+   "label": "Company Appeal(Companies Act)"
+  },
+  {
+   "value": "10",
+   "label": "Miscellaneous Application(Companies Act)"
+  },
+  {
+   "value": "9",
+   "label": "Contempt Petition(Companies Act)"
+  },
+  {
+   "value": "8",
+   "label": "Cross Application (Companies Act)"
+  },
+  {
+   "value": "7",
+   "label": "Intervention Petition(Companies Act)"
+  },
+  {
+   "value": "6",
+   "label": "Restoration Application (Companies Act)"
+  },
+  {
+   "value": "5",
+   "label": "Review Application (Companies Act)"
+  },
+  {
+   "value": "4",
+   "label": "Interlocatory Application(Companies Act)"
+  },
+  {
+   "value": "3",
+   "label": "Rehabilitation petition (Companies Act)"
+  },
+  {
+   "value": "2",
+   "label": "Company Petition (Companies Act)"
+  },
+  {
+   "value": "1",
+   "label": "Transfer Petition(Companies Act)"
+  }
+ ],
+ "nclatBenches": [
+  {
+   "value": "delhi",
+   "label": "Principal Bench, New Delhi"
+  },
+  {
+   "value": "chennai",
+   "label": "Chennai Bench"
+  }
+ ],
+ "nclatCaseTypes": [
+  {
+   "value": "32",
+   "label": "Company Appeal (AT)"
+  },
+  {
+   "value": "33",
+   "label": "Company Appeal (AT)(Ins)"
+  },
+  {
+   "value": "34",
+   "label": "Competition Appeal (AT)"
+  },
+  {
+   "value": "35",
+   "label": "Interlocutory Application"
+  },
+  {
+   "value": "36",
+   "label": "Compensation Application"
+  },
+  {
+   "value": "37",
+   "label": "Contempt Case (AT)"
+  },
+  {
+   "value": "38",
+   "label": "Review Application"
+  },
+  {
+   "value": "39",
+   "label": "Restoration Application"
+  },
+  {
+   "value": "40",
+   "label": "Transfer Appeal"
+  },
+  {
+   "value": "61",
+   "label": "Transfer Original Petition (MRTP-AT)"
+  }
+ ],
+ "hcStateCode": {
+  "hc-allahabad": "13",
+  "hc-andhra": "2",
+  "hc-bombay": "1",
+  "hc-calcutta": "16",
+  "hc-chhattisgarh": "18",
+  "hc-delhi": "26",
+  "hc-gauhati": "6",
+  "hc-gujarat": "17",
+  "hc-himachal": "5",
+  "hc-jk": "12",
+  "hc-jharkhand": "7",
+  "hc-karnataka": "3",
+  "hc-kerala": "4",
+  "hc-mp": "23",
+  "hc-madras": "10",
+  "hc-manipur": "25",
+  "hc-meghalaya": "21",
+  "hc-orissa": "11",
+  "hc-patna": "8",
+  "hc-punjab-haryana": "22",
+  "hc-rajasthan": "9",
+  "hc-sikkim": "24",
+  "hc-telangana": "29",
+  "hc-tripura": "20",
+  "hc-uttarakhand": "15"
+ }
+}
