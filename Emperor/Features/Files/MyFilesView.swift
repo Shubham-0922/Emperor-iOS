@@ -160,8 +160,8 @@ private struct LibraryScreen: View {
     @State private var cloud: CloudConnectionsModel?
     @State private var cloudExport: CloudExportModel?
     @State private var isImportingFromCloud = false
-    /// What the import did, applied once its sheet has gone so the toast and any alert are not
-    /// drawn under it.
+    /// What the import did, kept until its sheet has gone so a failure's alert is not drawn
+    /// under it.
     @State private var cloudSummary: CloudImportSummary?
 
     /// `FileNode.StoredFile` has no identity of its own, and inventing one for a wire type would
@@ -996,7 +996,7 @@ private struct LibraryScreen: View {
                 CloudImportSheet(
                     destination: isRoot ? nil : path,
                     folders: FileBrowser.allFolders(in: model.tree),
-                    onFinished: { cloudSummary = $0 })
+                    onFinished: { summary in finishCloudImport(summary) })
                     .pageSizedSheet()
             }
             .alert(cloudExportTitle, isPresented: cloudExportShown) {
@@ -1030,15 +1030,27 @@ private struct LibraryScreen: View {
             set: { if !$0 { cloudExport?.error = nil } })
     }
 
-    /// The import's toast, its first failure, and a fresh read of the library to show what came.
-    private func applyCloudSummary() {
-        guard let summary = cloudSummary else { return }
-        cloudSummary = nil
+    /// An import has run: its toast and a fresh read of the library at once, and the sheet
+    /// closed from here, through its binding.
+    ///
+    /// Neither waits on the sheet's own `dismiss()` or on `onDismiss`; when both did, the UI
+    /// tests never saw the word that the files arrived. The toast is an overlay on this screen, not a
+    /// presentation, so it can be set while the sheet slides away. Only a failure, which is an
+    /// alert, waits for the sheet to be gone (`applyCloudSummary`).
+    private func finishCloudImport(_ summary: CloudImportSummary) {
         if let toast = summary.toast { model.actionNotice = toast }
-        if let failure = summary.firstFailure { uploadError = failure }
         if summary.imported > 0 {
             Task { await model.uploadDidFinish() }
         }
+        cloudSummary = summary
+        isImportingFromCloud = false
+    }
+
+    /// The import's first failure, once its sheet has gone, so the alert is not drawn under it.
+    private func applyCloudSummary() {
+        guard let summary = cloudSummary else { return }
+        cloudSummary = nil
+        if let failure = summary.firstFailure { uploadError = failure }
     }
 
     // MARK: - Sharing

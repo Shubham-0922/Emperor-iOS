@@ -14,7 +14,8 @@ struct CloudImportSheet: View {
     let destination: String?
     /// Every folder the files could go into.
     let folders: [FolderSummary]
-    /// Called once an import has run, before the sheet closes.
+    /// Called once an import has run. The presenter closes the sheet, through the binding that
+    /// opened it.
     let onFinished: (CloudImportSummary) -> Void
 
     @State private var model: CloudImportModel?
@@ -205,7 +206,6 @@ struct CloudImportSheet: View {
             Task {
                 let summary = await model.run()
                 onFinished(summary)
-                dismiss()
             }
         } label: {
             HStack(spacing: Spacing.sm) {
