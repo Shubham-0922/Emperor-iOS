@@ -17,8 +17,7 @@ final class FilingUITests: XCTestCase {
         XCTAssertTrue(app.filingElement("filing-annexure-2").waitForExistence(timeout: 10))
 
         let change = app.buttons["filing-change-draft"].firstMatch
-        app.reveal(change)
-        XCTAssertTrue(change.waitForExistence(timeout: 5), "no way back to the draft list")
+        XCTAssertTrue(app.waitAndReveal(change, timeout: 5), "no way back to the draft list")
         change.tap()
         XCTAssertTrue(
             app.buttons["filing-draft-canvas_1"].firstMatch.waitForExistence(timeout: 10),
@@ -32,8 +31,7 @@ final class FilingUITests: XCTestCase {
         XCTAssertTrue(app.pickFilingDraft())
 
         let add = app.buttons["filing-add-annexure"].firstMatch
-        app.reveal(add)
-        XCTAssertTrue(add.waitForExistence(timeout: 10), "no Add annexure button")
+        XCTAssertTrue(app.waitAndReveal(add, timeout: 10), "no Add annexure button")
         add.tap()
         // A file at the storage root: sent from the folder ".".
         let file = app.buttons["filing-file-Engagement_Letter.pdf"].firstMatch
@@ -53,8 +51,7 @@ final class FilingUITests: XCTestCase {
         XCTAssertTrue(app.pickFilingDraft())
 
         let verify = app.buttons["filing-verify-2"].firstMatch
-        app.reveal(verify)
-        XCTAssertTrue(verify.waitForExistence(timeout: 10), "no verify control on the typed copy")
+        XCTAssertTrue(app.waitAndReveal(verify, timeout: 10), "no verify control on the typed copy")
         XCTAssertTrue(verify.label.contains("pending"), "label: \(verify.label)")
         verify.tap()
         XCTAssertTrue(
@@ -63,8 +60,7 @@ final class FilingUITests: XCTestCase {
 
         // P-1 goes from its original pages to a typed copy, which then needs its own check.
         let treatment = app.filingElement("filing-treatment-1")
-        app.reveal(treatment)
-        XCTAssertTrue(treatment.waitForExistence(timeout: 10), "no treatment control")
+        XCTAssertTrue(app.waitAndReveal(treatment, timeout: 10), "no treatment control")
         let typed = treatment.buttons["Typed copy"].firstMatch
         XCTAssertTrue(typed.waitForExistence(timeout: 5), "no Typed copy segment")
         typed.tap()
@@ -104,8 +100,7 @@ final class FilingUITests: XCTestCase {
         XCTAssertTrue(app.filingElement("filing-checklist-affidavit").waitForExistence(timeout: 5))
 
         let open = app.buttons["filing-open-bundle"].firstMatch
-        app.reveal(open)
-        XCTAssertTrue(open.waitForExistence(timeout: 5), "no Open bundle")
+        XCTAssertTrue(app.waitAndReveal(open, timeout: 5), "no Open bundle")
         open.tap()
         let bar = app.navigationBars["Bundle #7"]
         XCTAssertTrue(bar.waitForExistence(timeout: 15), "the bundle did not open")
@@ -140,8 +135,7 @@ final class FilingUITests: XCTestCase {
         app.fillFilingField("filing-forum", "Arbitral Tribunal")
 
         let assemble = app.buttons["filing-assemble"].firstMatch
-        app.reveal(assemble)
-        XCTAssertTrue(assemble.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.waitAndReveal(assemble, timeout: 10))
         XCTAssertTrue(poll { !assemble.isEnabled }, "Assemble stayed available for this forum")
         let hint = app.filingElement("filing-assemble-hint")
         XCTAssertTrue(hint.waitForExistence(timeout: 5), "no reason given")
@@ -167,8 +161,7 @@ extension XCUIApplication {
     @discardableResult
     func pickFilingDraft() -> Bool {
         let draft = buttons["filing-draft-canvas_1"].firstMatch
-        guard draft.waitForExistence(timeout: 15) else { return false }
-        reveal(draft)
+        guard waitAndReveal(draft, timeout: 15) else { return false }
         draft.tap()
         return filingElement("filing-annexure-1").waitForExistence(timeout: 15)
     }
@@ -176,8 +169,7 @@ extension XCUIApplication {
     /// Types into one of the cover's fields and ends with Return, which puts the keyboard away.
     func fillFilingField(_ id: String, _ text: String) {
         let field = textFields[id].firstMatch
-        reveal(field)
-        guard field.waitForExistence(timeout: 10) else { return }
+        guard waitAndReveal(field, timeout: 10) else { return }
         field.focusForTyping()
         field.typeText(text + "\n")
     }
@@ -186,8 +178,7 @@ extension XCUIApplication {
     @discardableResult
     func assembleFiling() -> Bool {
         let button = buttons["filing-assemble"].firstMatch
-        reveal(button)
-        guard button.waitForExistence(timeout: 10) else { return false }
+        guard waitAndReveal(button, timeout: 10) else { return false }
         let deadline = Date().addingTimeInterval(10)
         while !button.isEnabled, Date() < deadline { Thread.sleep(forTimeInterval: 0.25) }
         guard button.isEnabled else { return false }

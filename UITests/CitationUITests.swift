@@ -10,8 +10,7 @@ extension XCUIApplication {
         guard home.waitForExistence(timeout: 10) else { return false }
         home.tap()
         let row = stubConversationRow
-        guard row.waitForExistence(timeout: 10) else { return false }
-        reveal(row)
+        guard waitAndReveal(row, timeout: 10) else { return false }
         row.tap()
         return navigationBars["Conversation"].waitForExistence(timeout: 10)
     }
@@ -19,8 +18,7 @@ extension XCUIApplication {
     /// The reference's Open chip, scrolled to.
     func citedOpenChip() -> XCUIElement? {
         let chip = buttons["cite-open-1"].firstMatch
-        guard chip.waitForExistence(timeout: 15) else { return nil }
-        reveal(chip)
+        guard waitAndReveal(chip, timeout: 15) else { return nil }
         return chip
     }
 
@@ -69,8 +67,7 @@ final class CitationUITests: XCTestCase {
         XCTAssertTrue(app.openCitedConversation(), "the conversation did not open")
         XCTAssertNotNil(app.citedOpenChip(), "the answer did not load")
         let badge = app.buttons["Reference 1"].firstMatch
-        XCTAssertTrue(badge.waitForExistence(timeout: 10), "the reference has no number badge")
-        app.reveal(badge)
+        XCTAssertTrue(app.waitAndReveal(badge, timeout: 10), "the reference has no number badge")
         badge.tap()
 
         let open = app.buttons["cite-card-open"].firstMatch
@@ -85,8 +82,7 @@ final class CitationUITests: XCTestCase {
         let app = XCUIApplication.launchedSignedIn(["-UITestCitedSource"])
         XCTAssertTrue(app.openCitedConversation(), "the conversation did not open")
         let line = app.descendants(matching: .any).matching(identifier: "citation-meta-m2").firstMatch
-        XCTAssertTrue(line.waitForExistence(timeout: 15), "the answer has no citation line")
-        app.reveal(line)
+        XCTAssertTrue(app.waitAndReveal(line, timeout: 15), "the answer has no citation line")
         XCTAssertTrue(
             poll(timeout: 15) { line.label.contains("1 citation · checked against source") },
             "the line says: \(line.label)")

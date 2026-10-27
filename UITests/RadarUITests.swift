@@ -74,8 +74,7 @@ final class RadarUITests: XCTestCase {
     private func addDates(_ app: XCUIApplication) {
         for id in ["radar-cause", "radar-filing"] {
             let add = app.buttons[id].firstMatch
-            app.reveal(add)
-            XCTAssertTrue(add.waitForExistence(timeout: 10), "no \(id) field")
+            XCTAssertTrue(app.waitAndReveal(add, timeout: 10), "no \(id) field")
             add.tap()
             // The button is replaced by a date picker and its clear button.
             XCTAssertTrue(
@@ -86,8 +85,7 @@ final class RadarUITests: XCTestCase {
 
     private func choose(_ prefix: String, in app: XCUIApplication) {
         let menu = app.buttons["radar-profile"].firstMatch
-        app.reveal(menu)
-        XCTAssertTrue(menu.waitForExistence(timeout: 10), "no suit picker")
+        XCTAssertTrue(app.waitAndReveal(menu, timeout: 10), "no suit picker")
         menu.tap()
         let option = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
@@ -97,8 +95,7 @@ final class RadarUITests: XCTestCase {
 
     private func run(_ app: XCUIApplication) {
         let button = app.buttons["radar-run"].firstMatch
-        app.reveal(button)
-        XCTAssertTrue(button.waitForExistence(timeout: 10), "no run button")
+        XCTAssertTrue(app.waitAndReveal(button, timeout: 10), "no run button")
         button.tap()
     }
 }

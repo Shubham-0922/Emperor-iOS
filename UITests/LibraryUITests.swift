@@ -11,8 +11,7 @@ extension XCUIApplication {
         guard more.waitForExistence(timeout: 10) else { return false }
         more.tap()
         let row = buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Library")).firstMatch
-        guard row.waitForExistence(timeout: 10) else { return false }
-        reveal(row)
+        guard waitAndReveal(row, timeout: 10) else { return false }
         let bar = navigationBars["Library"]
         for _ in 0..<3 {
             guard row.exists, row.isHittable else { break }
@@ -39,8 +38,7 @@ extension XCUIApplication {
         guard shelfElement.waitForExistence(timeout: 15) else { return false }
         let card = library("library-doc-\(id)")
         if !card.waitForExistence(timeout: 15) { reveal(card) }
-        guard card.waitForExistence(timeout: 5) else { return false }
-        reveal(card)
+        guard waitAndReveal(card, timeout: 5) else { return false }
         guard card.isHittable else { return false }
         card.tap()
         return true
@@ -106,8 +104,7 @@ final class LibraryUITests: XCTestCase {
         XCTAssertFalse(next.isEnabled, "no page after the last")
 
         let delhi = app.library("library-court-delhi")
-        app.reveal(delhi)
-        XCTAssertTrue(delhi.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.waitAndReveal(delhi, timeout: 10))
         delhi.tap()
         let count = app.library("library-count")
         XCTAssertTrue(poll(timeout: 15) { count.exists && count.label.contains("15 judgments") && count.label.contains("Delhi") },

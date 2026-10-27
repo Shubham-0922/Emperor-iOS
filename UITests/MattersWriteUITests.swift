@@ -20,8 +20,7 @@ final class MattersWriteUITests: XCTestCase {
         XCTAssertTrue(create.exists, "New matter did not open")
         app.type("Kapoor v. Kapoor", into: app.matterElement("new-matter-name"))
         let notFiled = app.buttons["Not filed yet"].firstMatch
-        XCTAssertTrue(notFiled.waitForExistence(timeout: 5))
-        app.reveal(notFiled)
+        XCTAssertTrue(app.waitAndReveal(notFiled, timeout: 5))
         notFiled.tap()
         create.tap()
 
@@ -99,8 +98,7 @@ final class MattersWriteUITests: XCTestCase {
         XCTAssertTrue(app.waitGone(save), "the form stayed up")
 
         let tick = app.buttons["Mark Inspect the record done"].firstMatch
-        XCTAssertTrue(tick.waitForExistence(timeout: 10), "the new task is not listed")
-        app.reveal(tick)
+        XCTAssertTrue(app.waitAndReveal(tick, timeout: 10), "the new task is not listed")
         tick.tap()
         XCTAssertTrue(app.buttons["Reopen Inspect the record"].firstMatch.waitForExistence(timeout: 10),
                       "the task did not move to Done")
@@ -121,8 +119,7 @@ final class MattersWriteUITests: XCTestCase {
         XCTAssertTrue(app.waitGone(save), "the form stayed up")
 
         let receipt = app.matterElement("ledger-receipt-led-payment")
-        XCTAssertTrue(receipt.waitForExistence(timeout: 10), "a payment offers no receipt")
-        app.reveal(receipt)
+        XCTAssertTrue(app.waitAndReveal(receipt, timeout: 10), "a payment offers no receipt")
         receipt.tap()
         XCTAssertTrue(app.matterElement("receipt-preview").waitForExistence(timeout: 15), "the receipt did not open")
     }
@@ -148,8 +145,7 @@ final class MattersWriteUITests: XCTestCase {
         app.openSection("court")
 
         let refresh = app.matterElement("court-refresh")
-        XCTAssertTrue(refresh.waitForExistence(timeout: 10), "there is no refresh")
-        app.reveal(refresh)
+        XCTAssertTrue(app.waitAndReveal(refresh, timeout: 10), "there is no refresh")
         refresh.tap()
         XCTAssertTrue(app.labelled("Court record refreshed").waitForExistence(timeout: 10), "the first refresh did not land")
 
@@ -168,8 +164,7 @@ extension XCUIApplication {
     @discardableResult
     func openSheet(_ trigger: XCUIElement, showing action: String) -> XCUIElement {
         let target = descendants(matching: .any).matching(identifier: action).firstMatch
-        guard trigger.waitForExistence(timeout: 10) else { return target }
-        reveal(trigger)
+        guard waitAndReveal(trigger, timeout: 10) else { return target }
         for _ in 0..<3 {
             guard trigger.exists, trigger.isHittable else { break }
             trigger.tap()
@@ -206,8 +201,7 @@ extension XCUIApplication {
 
     /// Focuses a field and types into it.
     func type(_ text: String, into field: XCUIElement) {
-        guard field.waitForExistence(timeout: 10) else { return }
-        reveal(field)
+        guard waitAndReveal(field, timeout: 10) else { return }
         field.tap()
         field.typeText(text)
     }

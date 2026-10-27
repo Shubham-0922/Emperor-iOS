@@ -66,6 +66,18 @@ extension XCUIApplication {
         }
     }
 
+    /// Waits for `element` and scrolls it on screen, answering whether it is there. A List or a
+    /// lazy stack builds only the rows near what it shows, so on a phone a row below the fold
+    /// does not exist until it is scrolled to: waiting first and scrolling only after would wait
+    /// for nothing. A short wait lets a screen still loading arrive, then `reveal` scrolls
+    /// (bounded), then the full wait.
+    @discardableResult
+    func waitAndReveal(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        if element.waitForExistence(timeout: min(timeout, 3)), element.isHittable { return true }
+        reveal(element)
+        return element.waitForExistence(timeout: timeout)
+    }
+
     /// Waits until `e` has gone — a sheet's bar after Done, say — and returns whether it did.
     @discardableResult
     func waitGone(_ e: XCUIElement, timeout: TimeInterval = 10) -> Bool {

@@ -14,10 +14,12 @@ final class OCRBillingUITests: XCTestCase {
         let more = app.tab("More")
         XCTAssertTrue(more.waitForExistence(timeout: 10), "More is not on screen")
         more.tap()
+        // The Doc tools rows sit under the case-tool cards — below the fold on a phone, where the
+        // List has not built them yet: scrolled to, not waited on.
         let row = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "OCR & Translate")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "More has no OCR & Translate row")
-        app.reveal(row)
+        XCTAssertTrue(app.waitAndReveal(row), "More has no OCR & Translate row")
+        XCTAssertTrue(row.isHittable, "the OCR & Translate row could not be scrolled on screen")
         row.tap()
         let modes = app.segmentedControls.firstMatch
         XCTAssertTrue(modes.waitForExistence(timeout: 10), "the OCR | Translate switch is missing")
@@ -69,8 +71,7 @@ final class OCRBillingUITests: XCTestCase {
         XCTAssertTrue(storage.label.contains("2.4 GB of 50 GB"), "storage reads: \(storage.label)")
 
         let includes = app.buttons["plan-includes"].firstMatch
-        XCTAssertTrue(includes.waitForExistence(timeout: 10), "no \"What your plan includes\" row")
-        app.reveal(includes)
+        XCTAssertTrue(app.waitAndReveal(includes, timeout: 10), "no \"What your plan includes\" row")
         includes.tap()
         let support = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch
         XCTAssertTrue(poll { support.exists }, "the inclusions did not open")

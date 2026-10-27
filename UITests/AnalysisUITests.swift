@@ -22,12 +22,14 @@ final class AnalysisUITests: XCTestCase {
         let placeholder = "Search every column"
         let field = app.textViews[placeholder].exists
             ? app.textViews[placeholder] : app.textFields[placeholder]
-        app.reveal(field)
-        XCTAssertTrue(field.waitForExistence(timeout: 5), "no search field")
+        XCTAssertTrue(app.waitAndReveal(field, timeout: 5), "no search field")
         field.focusForTyping()
         field.typeText("notice")
-        XCTAssertTrue(poll { rows(app).count == 1 }, "search left \(rows(app).count) rows")
-        XCTAssertTrue(poll { element(app, "di-showing").label.hasPrefix("Showing 1 of 3 documents") })
+        // The count line is the authority; the rows are counted by distinct identifier, as a
+        // row's identifier can reach more than one element of it.
+        XCTAssertTrue(poll { element(app, "di-showing").label.hasPrefix("Showing 1 of 3 documents") },
+                      "showing: \(element(app, "di-showing").label)")
+        XCTAssertTrue(poll { rowIDs(app).count == 1 }, "search left rows \(rowIDs(app).sorted())")
     }
 
     func testListOfDatesFiltersAndCopies() {
@@ -59,8 +61,7 @@ final class AnalysisUITests: XCTestCase {
         XCTAssertTrue(report.waitForExistence(timeout: 15), "the report did not arrive")
 
         let pin = app.buttons["da-pin-2"].firstMatch
-        app.reveal(pin)
-        XCTAssertTrue(pin.waitForExistence(timeout: 5), "no pin for weak spot 2")
+        XCTAssertTrue(app.waitAndReveal(pin, timeout: 5), "no pin for weak spot 2")
         pin.tap()
         let spot = element(app, "da-spot-2")
         XCTAssertTrue(poll { spot.exists && spot.isHittable }, "the pin did not bring weak spot 2 into view")
@@ -72,8 +73,7 @@ final class AnalysisUITests: XCTestCase {
         app.reveal(counter)
         XCTAssertTrue(poll { counter.label == "1 of 3 done" }, "checklist: \(counter.label)")
         let check = app.switches["da-check-c2"].firstMatch
-        app.reveal(check)
-        XCTAssertTrue(check.waitForExistence(timeout: 5), "no checklist item c2")
+        XCTAssertTrue(app.waitAndReveal(check, timeout: 5), "no checklist item c2")
         // The switch itself, at the trailing edge: a tap on the row's words does not toggle it.
         check.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -26, dy: 0)).tap()
         XCTAssertTrue(poll { counter.label == "2 of 3 done" }, "checklist after a tick: \(counter.label)")
@@ -124,8 +124,7 @@ final class AnalysisUITests: XCTestCase {
         let app = XCUIApplication.launchedSignedIn()
         app.openCaseTool("devilsAdvocate")
         let run = app.buttons["analysis-run"].firstMatch
-        app.reveal(run)
-        XCTAssertTrue(run.waitForExistence(timeout: 10), "no run button")
+        XCTAssertTrue(app.waitAndReveal(run, timeout: 10), "no run button")
         XCTAssertFalse(run.isEnabled, "the run button works with no document")
         XCTAssertTrue(poll { element(app, "analysis-cta-note").label == "Choose at least one document to begin." })
     }
@@ -134,6 +133,11 @@ final class AnalysisUITests: XCTestCase {
 
     private func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
         app.descendants(matching: .any)[id].firstMatch
+    }
+
+    /// The identifiers of the index rows on screen, each once.
+    private func rowIDs(_ app: XCUIApplication) -> Set<String> {
+        Set(rows(app).map { $0.identifier })
     }
 
     private func rows(_ app: XCUIApplication) -> [XCUIElement] {
@@ -150,8 +154,7 @@ final class AnalysisUITests: XCTestCase {
         let picker = app.navigationBars["Documents"]
         XCTAssertTrue(picker.waitForExistence(timeout: 10), "the My Files picker did not open")
         let folder = app.buttons["Choose every document in Bakshi"].firstMatch
-        app.reveal(folder)
-        XCTAssertTrue(folder.waitForExistence(timeout: 10), "no Bakshi folder")
+        XCTAssertTrue(app.waitAndReveal(folder, timeout: 10), "no Bakshi folder")
         folder.tap()
         let attach = picker.buttons["Attach"]
         XCTAssertTrue(attach.waitForExistence(timeout: 5), "nothing to attach")
