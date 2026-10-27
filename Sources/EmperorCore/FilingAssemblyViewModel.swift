@@ -66,20 +66,67 @@ final class FilingAssemblyViewModel {
     /// The account's plan does not include filing assembly.
     private(set) var refusal: Refusal?
 
+    /// Where the screen started: the drafts list, one saved draft, or a conversation's draft.
+    let scope: FilingScope
+    /// The conversation whose draft this is, in a conversation's scope.
+    var chat: FilingChatContext? {
+        if case .chat(let context) = scope { return context }
+        return nil
+    }
+    /// Whether the cover has been read from the draft's cause title, which happens once.
+    private var coverDerived = false
+
     private let service: any FilingProviding
     private let files: any FileProviding
     private let now: @Sendable () -> Date
 
     init(
-        service: any FilingProviding, files: any FileProviding,
+        service: any FilingProviding, files: any FileProviding, scope: FilingScope = .pick,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.service = service
         self.files = files
+        self.scope = scope
         self.now = now
+        if case .chat(let context) = scope {
+            // A conversation's draft is not a saved one: it stands in for one, as on the web.
+            draft = FilingDraft(
+                id: context.bundleKey, title: context.draftTitle, type: "doc", createdAtRaw: nil,
+                chatID: context.chatID)
+            deriveCover()
+        }
+    }
+
+    /// Opens the screen in its scope: the drafts list, the chosen draft, or the conversation's
+    /// annexures and bundles.
+    func start() async {
+        switch scope {
+        case .pick:
+            await loadDrafts()
+        case .draft(let chosen):
+            await pick(chosen)
+        case .chat:
+            await reloadAnnexures()
+            await refreshBundles()
+        }
     }
 
     // MARK: - Derived
+
+    /// Whether the binding order can be changed. A conversation's annexures keep the order they
+    /// were cited in, as on the web.
+    var canReorder: Bool { chat == nil }
+
+    /// The conversation's files not yet among its annexures, one tap each to add.
+    var seedFiles: [ChatAttachment] {
+        guard let chat else { return [] }
+        return FilingChatScope.unannexed(
+            attachments: chat.attachments, annexurePaths: annexures.map(\.sourceFilePath))
+    }
+
+    /// The step numbers, one fewer with no draft to choose.
+    var annexuresStep: Int { chat == nil ? 2 : 1 }
+    var coverStep: Int { chat == nil ? 3 : 2 }
 
     var filteredDrafts: [FilingDraft] {
         let q = draftQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -156,6 +203,7 @@ final class FilingAssemblyViewModel {
 
     /// Back to the list: the annexures and the last result go with the draft.
     func changeDraft() {
+        guard chat == nil else { return }
         draft = nil
         annexures = []
         annexState = .idle
@@ -170,7 +218,10 @@ final class FilingAssemblyViewModel {
         guard let current = draft else { return }
         if annexures.isEmpty { annexState = .loading }
         do {
-            let rows = try await service.annexures(draftID: current.id, chatID: current.chatID)
+            // A conversation's own annexures, by the conversation alone; a saved draft's with
+            // the chat it was written in.
+            let draftID: String? = chat == nil ? current.id : nil
+            let rows = try await service.annexures(draftID: draftID, chatID: current.chatID)
             guard draft?.id == current.id else { return }
             annexures = rows
             annexState = .loaded
@@ -201,8 +252,32 @@ final class FilingAssemblyViewModel {
         notice = nil
         defer { isAdding = false }
         do {
+            if let chat {
+                _ = try await service.addAnnexure(
+                    chatID: chat.chatID, folderName: file.folderPath, fileName: file.name)
+            } else {
+                _ = try await service.addAnnexure(
+                    draftID: current.id, folderName: file.folderPath, fileName: file.name)
+            }
+            toast = "Added \(file.name) as an annexure"
+            await reloadAnnexures()
+            return true
+        } catch {
+            notice = text(for: error, fallback: "Could not add annexure")
+            return false
+        }
+    }
+
+    /// Adds one of the conversation's files as its next annexure. Answers whether it was added.
+    @discardableResult
+    func addSeed(_ file: ChatAttachment) async -> Bool {
+        guard let chat, !isAdding else { return false }
+        isAdding = true
+        notice = nil
+        defer { isAdding = false }
+        do {
             _ = try await service.addAnnexure(
-                draftID: current.id, folderName: file.folderPath, fileName: file.name)
+                chatID: chat.chatID, folderName: file.folderName ?? "", fileName: file.name)
             toast = "Added \(file.name) as an annexure"
             await reloadAnnexures()
             return true
@@ -296,7 +371,7 @@ final class FilingAssemblyViewModel {
     }
 
     private func reorder(_ next: [FilingAnnexure]) async {
-        guard let current = draft, next.map(\.id) != annexures.map(\.id) else { return }
+        guard canReorder, let current = draft, next.map(\.id) != annexures.map(\.id) else { return }
         let ids = next.map(\.id)
         await mutate("Reorder failed", optimistic: { list in list = next }) { service in
             _ = try await service.reorder(draftID: current.id, orderedIDs: ids)
@@ -340,7 +415,15 @@ final class FilingAssemblyViewModel {
         notice = nil
         defer { isAssembling = false }
         do {
-            let result = try await service.assemble(draftID: current.id, cover: cover)
+            let result: FilingAssemblyResult
+            if let chat {
+                // The draft as it stands on screen, without the mentions that name its files.
+                result = try await service.assemble(
+                    chatID: chat.chatID, html: FilingChatScope.stripMentions(chat.draftHTML),
+                    title: Self.assemblyTitle(chat), cover: cover)
+            } else {
+                result = try await service.assemble(draftID: current.id, cover: cover)
+            }
             guard draft?.id == current.id else { return }
             outcome = result
             if result.success {
@@ -400,7 +483,29 @@ final class FilingAssemblyViewModel {
         return fresh.max { $0.id < $1.id }
     }
 
+    nonisolated private static func assemblyTitle(_ chat: FilingChatContext) -> String {
+        let trimmed = chat.draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Draft" : trimmed
+    }
+
     func dismissOutcome() { outcome = nil }
+
+    // MARK: - Cover from the draft
+
+    /// Fills the cover from the draft's cause title, once, and only the fields still empty —
+    /// never over something typed.
+    func deriveCover() {
+        guard let chat, !coverDerived else { return }
+        let derived = FilingChatScope.deriveCover(html: chat.draftHTML)
+        guard !derived.forum.isEmpty || !derived.parties.isEmpty || !derived.caseNumber.isEmpty
+        else { return }
+        coverDerived = true
+        if cover.forum.isEmpty { cover.forum = derived.forum }
+        if cover.caseType.isEmpty { cover.caseType = derived.caseType }
+        if cover.caseNumber.isEmpty { cover.caseNumber = derived.caseNumber }
+        if cover.parties.isEmpty { cover.parties = derived.parties }
+        if cover.filingType.isEmpty { cover.filingType = derived.filingType }
+    }
 
     func refreshBundles() async {
         guard let current = draft else { return }
@@ -415,7 +520,9 @@ final class FilingAssemblyViewModel {
 
     /// What the forum asks for before filing, from the server, once the forum is one it reads.
     func refreshChecklist() async {
-        guard let current = draft, forumSupported else {
+        // The checklist before assembly is read for a saved draft; a conversation's arrives
+        // with its bundle.
+        guard chat == nil, let current = draft, forumSupported else {
             checklist = nil
             return
         }

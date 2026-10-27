@@ -583,5 +583,745 @@
     "{\"mark\":\"P-1\",\"reason\":\"missing\"}"
    ]
   }
+ ],
+ "covers": [
+  {
+   "html": "<p style=\"text-align:center\"><strong>IN THE NATIONAL COMPANY LAW TRIBUNAL</strong></p><p>MUMBAI BENCH</p><p>C.P. (IB) No. 123 of 2026</p><p>IN THE MATTER OF:</p><p>ABC Steel Pvt. Ltd. …Petitioner</p><p>versus</p><p>XYZ Traders Ltd. …Respondent</p>",
+   "cover": {
+    "forum": "NCLT",
+    "caseType": "C.P. (IB)",
+    "caseNumber": "C.P. (IB) No. 123 of 2026",
+    "parties": "Petitioner versus XYZ Traders Ltd.",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<h2>BEFORE THE NATIONAL COMPANY LAW APPELLATE TRIBUNAL, NEW DELHI</h2><p>IN THE NATIONAL COMPANY LAW APPELLATE TRIBUNAL</p><p>Company Appeal (AT) (Insolvency) No. 45 of 2025</p><p>Rajesh Kumar vs. State Bank of India</p>",
+   "cover": {
+    "forum": "NCLAT",
+    "caseType": "ompany Appeal (AT) (Insolvency)",
+    "caseNumber": "ompany Appeal (AT) (Insolvency) No. 45 of 2025",
+    "parties": "E TRIBUNAL Company Appeal (AT) (Insolvency) No. 45 of 2025 Rajesh Kumar versus State Bank of India",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE HIGH COURT OF DELHI AT NEW DELHI</p><p>W.P.(C) 1234/2024</p><p>Anil Kumar Goel v. Union of India</p>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "Anil Kumar Goel versus Union of India",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE HIGH COURT OF DELHI AT NEW DELHI</p><p>W.P.(C) No. 1234/2024</p><p>Anil Kumar Goel v. Union of India</p>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "W.P.(C)",
+    "caseNumber": "W.P.(C) No. 1234/2024",
+    "parties": "Anil Kumar Goel versus Union of India",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE SUPREME COURT OF INDIA</p><p>CIVIL APPELLATE JURISDICTION</p><p>SLP (C) No. 9876 of 2025</p><p>Union of India versus M/s Popular Construction Co.</p>",
+   "cover": {
+    "forum": "Supreme Court",
+    "caseType": "SLP (C)",
+    "caseNumber": "SLP (C) No. 9876 of 2025",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE Data Protection Board of India</p><p>Complaint No. 12 of 2026</p><p>Priya Sharma versus Acme Fintech Pvt. Ltd.</p>",
+   "cover": {
+    "forum": "Data Protection Board of India",
+    "caseType": "ia Complaint",
+    "caseNumber": "ia Complaint No. 12 of 2026",
+    "parties": "HE Data Protection Board of India Complaint No. 12 of 2026 Priya Sharma versus Acme Fintech Pvt. Ltd.",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>in the high court of judicature at bombay</p><p>Writ Petition No. 55 of 2023</p>",
+   "cover": {
+    "forum": "High Court",
+    "caseType": "cature at bombay Writ Petition",
+    "caseNumber": "cature at bombay Writ Petition No. 55 of 2023",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE DEBTS RECOVERY TRIBUNAL-I, CHENNAI</p><p>O.A. No. 77 of 2022</p><p>Canara Bank v. Ravi Enterprises</p>",
+   "cover": {
+    "forum": "DEBTS RECOVERY TRIBUNAL",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "THE DEBTS RECOVERY TRIBUNAL-I, CHENNAI O.A. No. 77 of 2022 Canara Bank versus Ravi Enterprises",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE COURT OF THE DISTRICT JUDGE, SAKET</p><p>CS No. 301/2021</p><p>Mehta &amp; Sons versus Kapoor Textiles</p>",
+   "cover": {
+    "forum": "",
+    "caseType": "CS",
+    "caseNumber": "CS No. 301/2021",
+    "parties": "Mehta & Sons versus Kapoor Textiles",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE STATE CONSUMER DISPUTES REDRESSAL COMMISSION</p><p>Consumer Complaint No. 14 of 2024</p><p>Ramesh Gupta Vs Builder Ltd</p>",
+   "cover": {
+    "forum": "STATE CONSUMER DISPUTES REDRESSAL COMMISSION",
+    "caseType": "Complaint",
+    "caseNumber": "Complaint No. 14 of 2024",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE NATIONAL COMPANY LAW TRIBUNAL, NEW DELHI BENCH</p><p>I.A. No. 3 of 2026 in C.P. (IB) No. 123 of 2026</p>",
+   "cover": {
+    "forum": "NCLT",
+    "caseType": "I.A.",
+    "caseNumber": "I.A. No. 3 of 2026",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<div>IN&nbsp;THE&nbsp;HIGH&nbsp;COURT&nbsp;OF&nbsp;KARNATAKA</div><div>Criminal Petition No. 5512 of 2025</div><div>State of Karnataka &lt;Complainant&gt; versus Suresh</div>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "Petition",
+    "caseNumber": "Petition No. 5512 of 2025",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>MEMORANDUM OF APPEAL</p><p>Appeal No. XII of 2019</p><p>Before the Appellate Authority</p>",
+   "cover": {
+    "forum": "",
+    "caseType": "APPEAL Appeal",
+    "caseNumber": "APPEAL Appeal No. XII of 2019",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE ARBITRAL TRIBUNAL</p><p>Application No. : 4 / 2026</p>",
+   "cover": {
+    "forum": "ARBITRAL TRIBUNAL",
+    "caseType": "Application",
+    "caseNumber": "Application No. : 4 / 2026",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>Synopsis and list of dates for the petitioner.</p>",
+   "cover": {
+    "forum": "",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "",
+   "cover": {
+    "forum": "",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE HIGH COURT OF PUNJAB AND HARYANA AT CHANDIGARH</p><p>CWP-1234-2024</p><p>Harjit Singh   versus   State of Punjab and others</p>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "GH COURT OF PUNJAB AND HARYANA AT CHANDIGARH CWP-1234-2024 Harjit Singh versus State of Punjab and others",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE COMPANY LAW TRIBUNAL</p><p>Petition No. 9 of 2020</p>",
+   "cover": {
+    "forum": "NCLT",
+    "caseType": "OMPANY LAW TRIBUNAL Petition",
+    "caseNumber": "OMPANY LAW TRIBUNAL Petition No. 9 of 2020",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE SECURITIES APPELLATE TRIBUNAL, MUMBAI</p><p>Appeal No. 201 of 2025</p><p>Karvy Ltd. v. SEBI</p>",
+   "cover": {
+    "forum": "SECURITIES APPELLATE TRIBUNAL",
+    "caseType": "I Appeal",
+    "caseNumber": "I Appeal No. 201 of 2025",
+    "parties": "SECURITIES APPELLATE TRIBUNAL, MUMBAI Appeal No. 201 of 2025 Karvy Ltd. versus SEBI",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE SUPREME COURT OF INDIA</p><p>Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. </p><p>Civil Appeal No. 1 of 2026</p>",
+   "cover": {
+    "forum": "Supreme Court",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "",
+    "filingType": ""
+   }
+  }
+ ],
+ "seeds": [
+  {
+   "attachedFiles": [
+    {
+     "name": "Plaint.pdf",
+     "folderName": "Bakshi"
+    },
+    {
+     "name": "Reply.pdf",
+     "folderName": "Bakshi"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/Bakshi/Plaint.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "Reply.pdf",
+     "folderName": "Bakshi"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "EVIDENCE_LIST.pdf",
+     "folderName": "Vijay Kumar Goel"
+    },
+    {
+     "name": "EVIDENCE_LIST.pdf",
+     "folderName": "Anil Kumar Goel"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/Vijay Kumar Goel/EVIDENCE_LIST.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "EVIDENCE_LIST.pdf",
+     "folderName": "Anil Kumar Goel"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Order.pdf"
+    },
+    {
+     "name": "Notice.pdf",
+     "folderName": ""
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/Some Folder/Order.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "Notice.pdf",
+     "folderName": ""
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Order.pdf",
+     "folderName": "Orders/2026"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "Orders/2026/Order.pdf"
+    }
+   ],
+   "seed": []
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Order.pdf",
+     "folderName": "Orders"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/OldOrders/Order.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "Order.pdf",
+     "folderName": "Orders"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "",
+     "folderName": "X"
+    },
+    {
+     "name": "A.pdf",
+     "folderName": "X"
+    }
+   ],
+   "annexures": [],
+   "seed": [
+    {
+     "name": "A.pdf",
+     "folderName": "X"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [],
+   "annexures": [
+    {
+     "source_file_path": "/a/b.pdf"
+    }
+   ],
+   "seed": []
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Plaint.pdf",
+     "folderName": "Bakshi"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": null
+    }
+   ],
+   "seed": [
+    {
+     "name": "Plaint.pdf",
+     "folderName": "Bakshi"
+    }
+   ]
+  }
+ ],
+ "mentions": [
+  {
+   "input": "Annexure P-2: True copy of the order <@Final_Appeal.pdf:P-2:41-45> is filed.",
+   "output": "Annexure P-2: True copy of the order  is filed."
+  },
+  {
+   "input": "See <@Board Resolution.pdf:P-1> and <@Notice.pdf:R-3:7>.",
+   "output": "See  and ."
+  },
+  {
+   "input": "No mention here.",
+   "output": "No mention here."
+  },
+  {
+   "input": "<@bad:P2> stays, <@x.pdf:P-1:> stays, <@:P-1> stays",
+   "output": "<@bad:P2> stays, <@x.pdf:P-1:> stays, <@:P-1> stays"
+  },
+  {
+   "input": "<@a.pdf:AB-12:1-2><@b.pdf:p-3>",
+   "output": ""
+  },
+  {
+   "input": "",
+   "output": ""
+  }
+ ],
+ "ready": [
+  {
+   "name": "list, typed copies and originals",
+   "annexures": {
+    "success": true,
+    "annexures": [
+     {
+      "id": 1,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-1",
+      "title": "Board resolution",
+      "source_file_path": "/storage/1/Bakshi/P-1.pdf",
+      "treatment": "append",
+      "sort_order": 1,
+      "verify_status": "n/a",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     },
+     {
+      "id": 2,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-2",
+      "title": "Notice under Section 8",
+      "source_file_path": "/storage/1/Bakshi/P-2.pdf",
+      "treatment": "typed",
+      "sort_order": 2,
+      "verify_status": "pending",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     },
+     {
+      "id": 3,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-3",
+      "title": "Order dated 1.2.2026",
+      "source_file_path": "/storage/1/Bakshi/P-3.pdf",
+      "treatment": "append",
+      "sort_order": 3,
+      "verify_status": "n/a",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     }
+    ]
+   },
+   "typedCopies": {
+    "success": true,
+    "html": "<h3>ANNEXURE P-2 (TYPED COPY)</h3><p>Notice text</p>",
+    "marks": [
+     "P-2"
+    ]
+   },
+   "pages": {
+    "P-1": {
+     "success": true,
+     "pages": [
+      {
+       "base64": "JVBERi0xLjQ=",
+       "mime": "image/jpeg"
+      },
+      {
+       "base64": "QUJDRA==",
+       "mime": "image/png"
+      }
+     ]
+    },
+    "P-3": {
+     "success": true,
+     "pages": [
+      {
+       "base64": "JVBERi0xLjQ=",
+       "mime": "image/jpeg"
+      }
+     ]
+    }
+   },
+   "draft": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "html": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>\n          <div style=\"page-break-before:always\"></div>\n          <p style=\"text-align:center\"><strong><u>LIST OF ANNEXURES</u></strong></p>\n          <table style=\"width:100%;border-collapse:collapse\">\n            <thead><tr><th>S. No.</th><th>Mark</th><th>Particulars</th><th>Form</th></tr></thead>\n            <tbody><tr><td>1.</td><td>P-1</td><td>Board resolution</td><td>Original (attached below)</td></tr><tr><td>2.</td><td>P-2</td><td>Notice under Section 8</td><td>Typed copy (attached below)</td></tr><tr><td>3.</td><td>P-3</td><td>Order dated 1.2.2026</td><td>Original (attached below)</td></tr></tbody>\n          </table>\n          <p style=\"font-style:italic;font-size:0.9em;margin-top:1em\">For a real, physically-paginated PDF paperbook with folios reflected in the Index, use \"Assemble filing\" instead.</p><h3>ANNEXURE P-2 (TYPED COPY)</h3><p>Notice text</p><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-1 (ORIGINAL)</u></strong></p><img src=\"data:image/jpeg;base64,JVBERi0xLjQ=\" style=\"max-width:100%\"/><div style=\"page-break-before:always\"></div><img src=\"data:image/png;base64,QUJDRA==\" style=\"max-width:100%\"/><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-3 (ORIGINAL)</u></strong></p><img src=\"data:image/jpeg;base64,JVBERi0xLjQ=\" style=\"max-width:100%\"/>",
+   "progress": [
+    8,
+    25,
+    45,
+    60,
+    75,
+    75
+   ]
+  },
+  {
+   "name": "a repeated mark, a refused file and a lost answer",
+   "annexures": {
+    "success": true,
+    "annexures": [
+     {
+      "id": 1,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-1",
+      "title": "Order",
+      "source_file_path": "/storage/1/Bakshi/P-1.pdf",
+      "treatment": "append",
+      "sort_order": 1,
+      "verify_status": "n/a",
+      "page_from": 2,
+      "page_to": 4,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     },
+     {
+      "id": 2,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-2",
+      "title": "Order again",
+      "source_file_path": "/storage/1/Bakshi/P-2.pdf",
+      "treatment": "append",
+      "sort_order": 2,
+      "verify_status": "n/a",
+      "page_from": 2,
+      "page_to": 4,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null,
+      "duplicate_of": "P-1"
+     },
+     {
+      "id": 3,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-3",
+      "title": "Photo",
+      "source_file_path": "/storage/1/Bakshi/P-3.pdf",
+      "treatment": "append",
+      "sort_order": 3,
+      "verify_status": "n/a",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     },
+     {
+      "id": 4,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-4",
+      "title": "Scan",
+      "source_file_path": "/storage/1/Bakshi/P-4.pdf",
+      "treatment": "append",
+      "sort_order": 4,
+      "verify_status": "n/a",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     },
+     {
+      "id": 5,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-5",
+      "title": "Empty",
+      "source_file_path": "/storage/1/Bakshi/P-5.pdf",
+      "treatment": "append",
+      "sort_order": 5,
+      "verify_status": "n/a",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     }
+    ]
+   },
+   "typedCopies": {
+    "success": true,
+    "html": "",
+    "marks": []
+   },
+   "pages": {
+    "P-1": {
+     "success": true,
+     "pages": [
+      {
+       "base64": "QUJDRA==",
+       "mime": "image/png"
+      }
+     ]
+    },
+    "P-2": {
+     "success": true,
+     "duplicate_of": "P-1",
+     "pages": []
+    },
+    "P-3": {
+     "status": 415,
+     "body": {
+      "success": false,
+      "error": "original-page rendering not available for .heic"
+     }
+    },
+    "P-4": "throw",
+    "P-5": {
+     "success": true,
+     "pages": []
+    }
+   },
+   "draft": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "html": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>\n          <div style=\"page-break-before:always\"></div>\n          <p style=\"text-align:center\"><strong><u>LIST OF ANNEXURES</u></strong></p>\n          <table style=\"width:100%;border-collapse:collapse\">\n            <thead><tr><th>S. No.</th><th>Mark</th><th>Particulars</th><th>Form</th></tr></thead>\n            <tbody><tr><td>1.</td><td>P-1</td><td>Order</td><td>Original (attached below)</td></tr><tr><td>2.</td><td>P-2</td><td>Order again</td><td>Original (attached below)</td></tr><tr><td>3.</td><td>P-3</td><td>Photo</td><td>Original (attached below)</td></tr><tr><td>4.</td><td>P-4</td><td>Scan</td><td>Original (attached below)</td></tr><tr><td>5.</td><td>P-5</td><td>Empty</td><td>Original (attached below)</td></tr></tbody>\n          </table>\n          <p style=\"font-style:italic;font-size:0.9em;margin-top:1em\">For a real, physically-paginated PDF paperbook with folios reflected in the Index, use \"Assemble filing\" instead.</p><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-1 (ORIGINAL)</u></strong></p><img src=\"data:image/png;base64,QUJDRA==\" style=\"max-width:100%\"/><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-2 (ORIGINAL)</u></strong></p><p style=\"font-style:italic\">Same document and page range as Annexure P-1 above — see there for the full original, to avoid embedding it twice.</p><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-3 (ORIGINAL)</u></strong></p><p style=\"font-style:italic;color:#b00020\">original-page rendering not available for .heic</p><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-4 (ORIGINAL)</u></strong></p><p style=\"font-style:italic;color:#b00020\">Could not attach the original for this annexure.</p><div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE P-5 (ORIGINAL)</u></strong></p><p style=\"font-style:italic;color:#b00020\">Could not attach the original for this annexure.</p>",
+   "progress": [
+    8,
+    25,
+    45,
+    51,
+    57,
+    63,
+    69,
+    75,
+    75
+   ]
+  },
+  {
+   "name": "titles and marks escaped",
+   "annexures": {
+    "success": true,
+    "annexures": [
+     {
+      "id": 1,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "P-1",
+      "title": "Reply <draft> & notes",
+      "source_file_path": "/storage/1/Bakshi/P-1.pdf",
+      "treatment": "typed",
+      "sort_order": 1,
+      "verify_status": "pending",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     },
+     {
+      "id": 2,
+      "user_id": "1",
+      "draft_id": null,
+      "chat_id": "c1",
+      "mark": "R-1",
+      "title": "A > B",
+      "source_file_path": "/storage/1/Bakshi/R-1.pdf",
+      "treatment": "typed",
+      "sort_order": 2,
+      "verify_status": "pending",
+      "page_from": null,
+      "page_to": null,
+      "created_at": 1790000000000,
+      "updated_at": 1790000000000,
+      "pasted_at": null
+     }
+    ]
+   },
+   "typedCopies": {
+    "success": true,
+    "html": "<p>typed</p>",
+    "marks": [
+     "P-1",
+     "R-1"
+    ]
+   },
+   "pages": {},
+   "draft": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "html": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>\n          <div style=\"page-break-before:always\"></div>\n          <p style=\"text-align:center\"><strong><u>LIST OF ANNEXURES</u></strong></p>\n          <table style=\"width:100%;border-collapse:collapse\">\n            <thead><tr><th>S. No.</th><th>Mark</th><th>Particulars</th><th>Form</th></tr></thead>\n            <tbody><tr><td>1.</td><td>P-1</td><td>Reply &lt;draft&gt; &amp; notes</td><td>Typed copy (attached below)</td></tr><tr><td>2.</td><td>R-1</td><td>A &gt; B</td><td>Typed copy (attached below)</td></tr></tbody>\n          </table>\n          <p style=\"font-style:italic;font-size:0.9em;margin-top:1em\">For a real, physically-paginated PDF paperbook with folios reflected in the Index, use \"Assemble filing\" instead.</p><p>typed</p>",
+   "progress": [
+    8,
+    25,
+    45,
+    75
+   ]
+  },
+  {
+   "name": "register unreachable",
+   "annexures": "throw",
+   "typedCopies": "throw",
+   "pages": {},
+   "draft": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "html": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "progress": [
+    8,
+    25,
+    45,
+    75
+   ]
+  },
+  {
+   "name": "register refuses the list",
+   "annexures": {
+    "status": 400,
+    "body": {
+     "success": false,
+     "error": "chatId required"
+    }
+   },
+   "typedCopies": {
+    "success": true,
+    "html": "<p>typed only</p>",
+    "marks": [
+     "P-1"
+    ]
+   },
+   "pages": {},
+   "draft": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "html": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p><p>typed only</p>",
+   "progress": [
+    8,
+    25,
+    45,
+    75
+   ]
+  },
+  {
+   "name": "nothing cited",
+   "annexures": {
+    "success": true,
+    "annexures": []
+   },
+   "typedCopies": {
+    "success": true,
+    "html": "",
+    "marks": []
+   },
+   "pages": {},
+   "draft": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "html": "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>",
+   "progress": [
+    8,
+    25,
+    45,
+    75
+   ]
+  }
  ]
 }

@@ -476,3 +476,83 @@ struct FilingOKResponse: Decodable, Sendable {
     var success: Bool?
     var error: String?
 }
+
+// MARK: - A conversation's annexures, read one by one
+
+/// One annexure's typed true copy (`GET /filing/annexures/typed-copy`), or why there is none —
+/// an annexure bound as its original pages has no typed copy.
+struct FilingTypedCopy: Equatable, Sendable {
+    var html: String?
+    var skipped: Bool
+    var reason: String?
+}
+
+/// The original file behind an annexure (`GET /filing/annexures/original`): a PDF of its cited
+/// pages, or an image.
+struct FilingOriginal: Equatable, Sendable {
+    var data: Data
+    /// The media type without its parameters, lower-cased — `application/pdf`, `image/png`.
+    var mime: String
+
+    var isPDF: Bool { mime == "application/pdf" || data.starts(with: Data("%PDF".utf8)) }
+    var isImage: Bool { !isPDF && mime.hasPrefix("image/") }
+
+    static func mime(fromContentType header: String) -> String {
+        let first = header.split(separator: ";").first.map(String.init) ?? ""
+        let trimmed = first.trimmingCharacters(in: .whitespaces).lowercased()
+        return trimmed.isEmpty ? "application/octet-stream" : trimmed
+    }
+}
+
+/// An original's pages as images (`GET /filing/annexures/original-pages`) — or the earlier mark
+/// it repeats, or the sentence saying why it could not be read.
+struct FilingOriginalPages: Codable, Equatable, Sendable {
+    struct Page: Codable, Equatable, Sendable {
+        var base64: String
+        var mime: String
+    }
+
+    var success: Bool
+    var pages: [Page]
+    var duplicateOf: String?
+    var error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success, pages, error
+        case duplicateOf = "duplicate_of"
+    }
+
+    init(success: Bool, pages: [Page] = [], duplicateOf: String? = nil, error: String? = nil) {
+        self.success = success
+        self.pages = pages
+        self.duplicateOf = duplicateOf
+        self.error = error
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        success = ((try? c.decodeIfPresent(Bool.self, forKey: .success)) ?? nil) ?? false
+        pages = ((try? c.decodeIfPresent([Page].self, forKey: .pages)) ?? nil) ?? []
+        duplicateOf = (try? c.decodeIfPresent(String.self, forKey: .duplicateOf)) ?? nil
+        error = (try? c.decodeIfPresent(String.self, forKey: .error)) ?? nil
+    }
+}
+
+/// An annexure whose file is of a kind that cannot be shown here.
+enum FilingPreviewError: Error, Equatable {
+    case unpreviewable
+}
+
+struct FilingTypedCopyResponse: Decodable, Sendable {
+    var success: Bool?
+    var error: String?
+    var html: String?
+    var skipped: Bool?
+    var reason: String?
+}
+
+struct FilingTypedCopiesResponse: Decodable, Sendable {
+    var success: Bool?
+    var error: String?
+    var html: String?
+}

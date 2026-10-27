@@ -9,6 +9,9 @@
 // need the server's database. So each is cut out of its file by name, brace-matched, and
 // evaluated on its own; a renamed declaration fails this script loudly. Nothing is retyped: the
 // app's `FilingMarks`, `FilingForum` and `FilingAssemblyResult.errorList` are held to the answers.
+// For filing from a conversation's draft, the page's `deriveCover` and its seed filter, the
+// register's `stripMentions`, and `output.js`'s `buildReadyToFileHtml` (run against a stand-in
+// fetch) are cut out the same way and held to `FilingChatScope` and `FilingReadyExportModel`.
 //
 // `--check` writes nothing and exits 1 if the fixture differs.
 import fs from 'node:fs'
@@ -124,15 +127,198 @@ const results = [
 ]
 const errorLists = results.map((input) => ({ input, output: errorList(input) }))
 
+// ── Filing from a conversation's draft (13-F2) ───────────────────────────────────────────────
+// `deriveCover` is a top-level function of the page; it holds regular expressions with quotes in
+// them, so it is cut from its declaration to the first closing brace at the start of a line
+// rather than bracket-matched. The seed filter lives inside the component as two `useMemo`
+// statements; they are cut whole and run as a function of `(attachedFiles, annexures)` with a
+// `useMemo` that just calls its function. `MENTION_RE` and `stripMentions` come from
+// `lib/filing/registry.js`; `escapeText` and `buildReadyToFileHtml` from `src/lib/output.js`, the
+// latter run against a stand-in `fetch` answering as the annexure routes do.
+const outputFile = path.join(platform, 'src/lib/output.js')
+const registryFile = path.join(platform, 'lib/filing/registry.js')
+
+function cutToClosingLine(source, start, file, what) {
+  const at = source.indexOf(start)
+  if (at === -1) throw new Error(`could not find "${what}" in ${file}`)
+  const end = source.indexOf('\n}\n', at)
+  if (end === -1) throw new Error(`unterminated "${what}" in ${file}`)
+  return source.slice(at, end + 2).replace(/^export\s+/, '')
+}
+
+function cutLine(source, start, file) {
+  const at = source.indexOf(start)
+  if (at === -1) throw new Error(`could not find "${start}" in ${file}`)
+  const end = source.indexOf('\n', at)
+  return source.slice(at, end).replace(/^export\s+/, '')
+}
+
+// `const name = useMemo(…)`, the parentheses matched with quoted text skipped.
+function cutMemo(source, name, file) {
+  const start = source.indexOf(`const ${name} = useMemo(`)
+  if (start === -1) throw new Error(`could not find "${name}" in ${file}`)
+  let i = source.indexOf('(', start)
+  let depth = 0
+  let quote = null
+  for (; i < source.length; i++) {
+    const c = source[i]
+    if (quote) {
+      if (c === '\\') { i++; continue }
+      if (c === quote) quote = null
+      continue
+    }
+    if (c === '\'' || c === '"' || c === '`') { quote = c; continue }
+    if (c === '(') depth++
+    else if (c === ')') {
+      depth--
+      if (depth === 0) return source.slice(start, i + 1)
+    }
+  }
+  throw new Error(`unbalanced "${name}" in ${file}`)
+}
+
+const output = fs.readFileSync(outputFile, 'utf8')
+const registry = fs.readFileSync(registryFile, 'utf8')
+
+const deriveCover = new Function(
+  `${cutToClosingLine(page, 'function deriveCover(', 'FilingAssembly.jsx', 'deriveCover')}\nreturn deriveCover`)()
+const seedFilter = new Function('attachedFiles', 'annexures', [
+  'const useMemo = (fn) => fn()',
+  cutLine(page, 'const baseName =', 'FilingAssembly.jsx'),
+  cutMemo(page, 'annexPaths', 'FilingAssembly.jsx'),
+  cutMemo(page, 'seedFiles', 'FilingAssembly.jsx'),
+  'return seedFiles',
+].join('\n'))
+const stripMentions = new Function([
+  cutLine(registry, 'export const MENTION_RE', 'registry.js'),
+  cutToClosingLine(registry, 'export function stripMentions(', 'registry.js', 'stripMentions'),
+  'return stripMentions',
+].join('\n'))()
+const escapeAt = output.indexOf('const escapeText =')
+const escapeText = output.slice(escapeAt, output.indexOf('\n\n', escapeAt))
+const buildReadyToFile = (fetchImpl) => new Function('fetch', [
+  escapeText,
+  cutToClosingLine(output, 'async function buildReadyToFileHtml(', 'output.js', 'buildReadyToFileHtml'),
+  'return buildReadyToFileHtml',
+].join('\n'))(fetchImpl)
+
+const causeTitles = [
+  '<p style="text-align:center"><strong>IN THE NATIONAL COMPANY LAW TRIBUNAL</strong></p><p>MUMBAI BENCH</p><p>C.P. (IB) No. 123 of 2026</p><p>IN THE MATTER OF:</p><p>ABC Steel Pvt. Ltd. …Petitioner</p><p>versus</p><p>XYZ Traders Ltd. …Respondent</p>',
+  '<h2>BEFORE THE NATIONAL COMPANY LAW APPELLATE TRIBUNAL, NEW DELHI</h2><p>IN THE NATIONAL COMPANY LAW APPELLATE TRIBUNAL</p><p>Company Appeal (AT) (Insolvency) No. 45 of 2025</p><p>Rajesh Kumar vs. State Bank of India</p>',
+  '<p>IN THE HIGH COURT OF DELHI AT NEW DELHI</p><p>W.P.(C) 1234/2024</p><p>Anil Kumar Goel v. Union of India</p>',
+  '<p>IN THE HIGH COURT OF DELHI AT NEW DELHI</p><p>W.P.(C) No. 1234/2024</p><p>Anil Kumar Goel v. Union of India</p>',
+  '<p>IN THE SUPREME COURT OF INDIA</p><p>CIVIL APPELLATE JURISDICTION</p><p>SLP (C) No. 9876 of 2025</p><p>Union of India versus M/s Popular Construction Co.</p>',
+  '<p>IN THE Data Protection Board of India</p><p>Complaint No. 12 of 2026</p><p>Priya Sharma versus Acme Fintech Pvt. Ltd.</p>',
+  '<p>in the high court of judicature at bombay</p><p>Writ Petition No. 55 of 2023</p>',
+  '<p>IN THE DEBTS RECOVERY TRIBUNAL-I, CHENNAI</p><p>O.A. No. 77 of 2022</p><p>Canara Bank v. Ravi Enterprises</p>',
+  '<p>IN THE COURT OF THE DISTRICT JUDGE, SAKET</p><p>CS No. 301/2021</p><p>Mehta &amp; Sons versus Kapoor Textiles</p>',
+  '<p>IN THE STATE CONSUMER DISPUTES REDRESSAL COMMISSION</p><p>Consumer Complaint No. 14 of 2024</p><p>Ramesh Gupta Vs Builder Ltd</p>',
+  '<p>IN THE NATIONAL COMPANY LAW TRIBUNAL, NEW DELHI BENCH</p><p>I.A. No. 3 of 2026 in C.P. (IB) No. 123 of 2026</p>',
+  '<div>IN&nbsp;THE&nbsp;HIGH&nbsp;COURT&nbsp;OF&nbsp;KARNATAKA</div><div>Criminal Petition No. 5512 of 2025</div><div>State of Karnataka &lt;Complainant&gt; versus Suresh</div>',
+  '<p>MEMORANDUM OF APPEAL</p><p>Appeal No. XII of 2019</p><p>Before the Appellate Authority</p>',
+  '<p>IN THE ARBITRAL TRIBUNAL</p><p>Application No. : 4 / 2026</p>',
+  '<p>Synopsis and list of dates for the petitioner.</p>',
+  '',
+  '<p>IN THE HIGH COURT OF PUNJAB AND HARYANA AT CHANDIGARH</p><p>CWP-1234-2024</p><p>Harjit Singh   versus   State of Punjab and others</p>',
+  '<p>IN THE COMPANY LAW TRIBUNAL</p><p>Petition No. 9 of 2020</p>',
+  '<p>IN THE SECURITIES APPELLATE TRIBUNAL, MUMBAI</p><p>Appeal No. 201 of 2025</p><p>Karvy Ltd. v. SEBI</p>',
+  '<p>IN THE SUPREME COURT OF INDIA</p><p>' + 'Lorem ipsum dolor sit amet. '.repeat(100) + '</p><p>Civil Appeal No. 1 of 2026</p>',
+]
+const covers = causeTitles.map((html) => ({ html, cover: deriveCover(html) }))
+
+const seedCases = [
+  { attachedFiles: [{ name: 'Plaint.pdf', folderName: 'Bakshi' }, { name: 'Reply.pdf', folderName: 'Bakshi' }],
+    annexures: [{ source_file_path: '/storage/1/Bakshi/Plaint.pdf' }] },
+  { attachedFiles: [{ name: 'EVIDENCE_LIST.pdf', folderName: 'Vijay Kumar Goel' }, { name: 'EVIDENCE_LIST.pdf', folderName: 'Anil Kumar Goel' }],
+    annexures: [{ source_file_path: '/storage/1/Vijay Kumar Goel/EVIDENCE_LIST.pdf' }] },
+  { attachedFiles: [{ name: 'Order.pdf' }, { name: 'Notice.pdf', folderName: '' }],
+    annexures: [{ source_file_path: '/storage/1/Some Folder/Order.pdf' }] },
+  { attachedFiles: [{ name: 'Order.pdf', folderName: 'Orders/2026' }],
+    annexures: [{ source_file_path: 'Orders/2026/Order.pdf' }] },
+  { attachedFiles: [{ name: 'Order.pdf', folderName: 'Orders' }],
+    annexures: [{ source_file_path: '/storage/1/OldOrders/Order.pdf' }] },
+  { attachedFiles: [{ name: '', folderName: 'X' }, { name: 'A.pdf', folderName: 'X' }], annexures: [] },
+  { attachedFiles: [], annexures: [{ source_file_path: '/a/b.pdf' }] },
+  { attachedFiles: [{ name: 'Plaint.pdf', folderName: 'Bakshi' }], annexures: [{ source_file_path: null }] },
+]
+const seeds = seedCases.map((c) => ({ ...c, seed: seedFilter(c.attachedFiles, c.annexures) }))
+
+const mentionInputs = [
+  'Annexure P-2: True copy of the order <@Final_Appeal.pdf:P-2:41-45> is filed.',
+  'See <@Board Resolution.pdf:P-1> and <@Notice.pdf:R-3:7>.',
+  'No mention here.',
+  '<@bad:P2> stays, <@x.pdf:P-1:> stays, <@:P-1> stays',
+  '<@a.pdf:AB-12:1-2><@b.pdf:p-3>',
+  '',
+]
+const mentions = mentionInputs.map((input) => ({ input, output: stripMentions(input) }))
+
+const row = (id, mark, title, treatment, extra = {}) => ({
+  id, user_id: '1', draft_id: null, chat_id: 'c1', mark, title,
+  source_file_path: `/storage/1/Bakshi/${mark}.pdf`, treatment, sort_order: id,
+  verify_status: treatment === 'typed' ? 'pending' : 'n/a', page_from: null, page_to: null,
+  created_at: 1790000000000, updated_at: 1790000000000, pasted_at: null, ...extra,
+})
+const page1 = { base64: 'JVBERi0xLjQ=', mime: 'image/jpeg' }
+const page2 = { base64: 'QUJDRA==', mime: 'image/png' }
+const readyCases = [
+  { name: 'list, typed copies and originals',
+    annexures: { success: true, annexures: [row(1, 'P-1', 'Board resolution', 'append'), row(2, 'P-2', 'Notice under Section 8', 'typed'), row(3, 'P-3', 'Order dated 1.2.2026', 'append')] },
+    typedCopies: { success: true, html: '<h3>ANNEXURE P-2 (TYPED COPY)</h3><p>Notice text</p>', marks: ['P-2'] },
+    pages: { 'P-1': { success: true, pages: [page1, page2] }, 'P-3': { success: true, pages: [page1] } } },
+  { name: 'a repeated mark, a refused file and a lost answer',
+    annexures: { success: true, annexures: [row(1, 'P-1', 'Order', 'append', { page_from: 2, page_to: 4 }), row(2, 'P-2', 'Order again', 'append', { page_from: 2, page_to: 4, duplicate_of: 'P-1' }), row(3, 'P-3', 'Photo', 'append'), row(4, 'P-4', 'Scan', 'append'), row(5, 'P-5', 'Empty', 'append')] },
+    typedCopies: { success: true, html: '', marks: [] },
+    pages: { 'P-1': { success: true, pages: [page2] }, 'P-2': { success: true, duplicate_of: 'P-1', pages: [] }, 'P-3': { status: 415, body: { success: false, error: 'original-page rendering not available for .heic' } }, 'P-4': 'throw', 'P-5': { success: true, pages: [] } } },
+  { name: 'titles and marks escaped',
+    annexures: { success: true, annexures: [row(1, 'P-1', 'Reply <draft> & notes', 'typed'), row(2, 'R-1', 'A > B', 'typed')] },
+    typedCopies: { success: true, html: '<p>typed</p>', marks: ['P-1', 'R-1'] },
+    pages: {} },
+  { name: 'register unreachable',
+    annexures: 'throw', typedCopies: 'throw', pages: {} },
+  { name: 'register refuses the list',
+    annexures: { status: 400, body: { success: false, error: 'chatId required' } },
+    typedCopies: { success: true, html: '<p>typed only</p>', marks: ['P-1'] },
+    pages: {} },
+  { name: 'nothing cited',
+    annexures: { success: true, annexures: [] }, typedCopies: { success: true, html: '', marks: [] }, pages: {} },
+]
+
+const answer = (spec) => {
+  if (spec === 'throw') return Promise.reject(new Error('network'))
+  const body = spec && spec.body !== undefined ? spec.body : spec
+  return Promise.resolve({ ok: !(spec && spec.status), json: async () => body })
+}
+const ready = []
+for (const c of readyCases) {
+  const fakeFetch = (url) => {
+    const u = new URL(url, 'https://example.test')
+    if (u.pathname === '/api/filing/annexures') return answer(c.annexures)
+    if (u.pathname === '/api/filing/annexures/typed-copies') return answer(c.typedCopies)
+    if (u.pathname === '/api/filing/annexures/original-pages') {
+      return answer(c.pages[u.searchParams.get('mark')] ?? 'throw')
+    }
+    return Promise.reject(new Error(`unexpected ${u.pathname}`))
+  }
+  const progress = []
+  const draft = '<p style="text-align:center"><strong>IN THE HIGH COURT OF DELHI</strong></p><p>Body &amp; prayer.</p>'
+  const html = await buildReadyToFile(fakeFetch)({ html: draft, userId: '1', chatId: 'c1', onProgress: (n) => progress.push(n) })
+  ready.push({ ...c, draft, html, progress })
+}
+
 const fixture = {
   forumOptions: FORUM_OPTIONS,
   marks: { parse, compare, sort },
   forums,
   errorLists,
+  covers,
+  seeds,
+  mentions,
+  ready,
 }
 const text = JSON.stringify(fixture, null, 1) + '\n'
 const before = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : null
-const summary = `${parse.length} marks, ${compare.length} pairs, ${sort.length} orders, ${forums.length} forums, ${errorLists.length} error lists`
+const summary = `${parse.length} marks, ${compare.length} pairs, ${sort.length} orders, ${forums.length} forums, ${errorLists.length} error lists, ${covers.length} covers, ${seeds.length} seeds, ${mentions.length} mentions, ${ready.length} filing-ready packages`
 if (before === text) { console.log(`${summary}, unchanged`); process.exit(0) }
 if (checkOnly) { console.log('filing.json differs from the platform'); process.exit(1) }
 fs.mkdirSync(path.dirname(out), { recursive: true })
