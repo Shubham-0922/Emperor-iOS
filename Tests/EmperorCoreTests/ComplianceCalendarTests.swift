@@ -392,9 +392,11 @@ final class ComplianceCalendarViewModelTests: XCTestCase {
 
             model.select(day: "2026-10-11")
             XCTAssertEqual(model.deadlines(on: "2026-10-11").map(\.id), ["stat:GSTR1:2026-10-11"])
+            // The first day the agenda still has, not the first row: two deadlines fall on the
+            // 15th and their order within the day is the feed's, not the agenda's.
             let october = model.groups.first { $0.kind == .month("2026-10") }
             XCTAssertEqual(
-                october?.deadlines.first?.id, "stat:ESIC:2026-10-15",
+                october?.deadlines.first?.dueDay, "2026-10-15",
                 "October starts at the next deadline after the selected day")
         }
     }

@@ -216,11 +216,14 @@ struct YouView: View {
             }
             .padding(.vertical, Spacing.xxs)
             .contentShape(Rectangle())
+            // One element for the label, not for the link: the link itself stays a button, so
+            // VoiceOver announces it as one — replacing the link's own element with
+            // `.ignore` drops the button trait and it reads as plain text.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current role, \(practice.role.label)")
+            .accessibilityHint("Opens the role picker")
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Current role, \(practice.role.label)")
-        .accessibilityHint("Opens the role picker")
         .accessibilityIdentifier("Role selector")
     }
 

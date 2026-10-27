@@ -764,8 +764,9 @@ final class EmperorUITests: XCTestCase {
         let app = signedIn()
         openYou(app)
 
-        // Below the account and its plan, so off screen on a phone until scrolled to.
-        let selector = app.buttons["Role selector"].firstMatch
+        // Below the appearance card, so off screen on a phone until scrolled to. Matched as any
+        // element: a list row's link can surface as a cell rather than a button.
+        let selector = app.descendants(matching: .any)["Role selector"].firstMatch
         app.reveal(selector)
         XCTAssertTrue(selector.waitForExistence(timeout: 5), "You has no role row")
         selector.tap()

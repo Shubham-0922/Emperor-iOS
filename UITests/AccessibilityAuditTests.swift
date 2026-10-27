@@ -263,12 +263,12 @@ final class AccessibilityAuditTests: XCTestCase {
         let app = launch()
         guard signIn(app), openYou(app) else { return }
         let settings = app.navigationBars["Account & Profile"]
-        _ = app.buttons["Role selector"].firstMatch.waitForExistence(timeout: 10)
+        _ = app.descendants(matching: .any)["Role selector"].firstMatch.waitForExistence(timeout: 10)
         audit("you", in: app)
 
         // Each row scrolled to before it is looked for: You is a long list, and a list builds only
         // the rows near what it shows.
-        let selector = app.buttons["Role selector"].firstMatch
+        let selector = app.descendants(matching: .any)["Role selector"].firstMatch
         app.reveal(selector)
         if reached(selector, "the role selector") {
             selector.tap()
