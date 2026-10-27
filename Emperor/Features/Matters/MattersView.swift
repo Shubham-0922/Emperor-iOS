@@ -103,6 +103,11 @@ struct MattersView: View {
                             reloadMatters()
                         })
                         .toolbar(.hidden, for: .tabBar)
+                case .matterChat(let chat):
+                    // A matter's conversation: every turn carries the matter, and it is not
+                    // listed in History.
+                    ChatThreadView(chatID: chat.chatID, projectID: chat.projectID)
+                        .toolbar(.hidden, for: .tabBar)
                 }
             }
             .sheet(item: $openHearing) { listing in
@@ -516,9 +521,17 @@ struct MattersView: View {
         }
     }
 
+    /// A case asked for from elsewhere. A case one of the user's matters links opens as that
+    /// matter, on its Court section — the web's `/cases/<id>`; any other opens its own page.
     private func openRequestedCase() {
         guard let stack = navigator.takePendingCaseStack() else { return }
         segment = .all
+        let projects = matters?.projects ?? []
+        if let last = stack.last,
+           let projectID = CaseToMatter.matterID(forCase: last.caseID, in: projects) {
+            path = [.matter(MatterRoute(projectID: projectID, section: CaseToMatter.section, request: last.request))]
+            return
+        }
         path = stack.map { MattersRoute.legalCase($0) }
     }
 
@@ -635,8 +648,10 @@ enum MatterListSheet: Identifiable {
     }
 }
 
-/// What the Matters tab's stack can hold: a tracked case's page, or a matter's workspace.
+/// What the Matters tab's stack can hold: a tracked case's page, a matter's workspace, or one of
+/// a matter's conversations.
 enum MattersRoute: Hashable {
     case legalCase(CaseRoute)
     case matter(MatterRoute)
+    case matterChat(MatterChatRoute)
 }

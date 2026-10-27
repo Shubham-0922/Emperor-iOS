@@ -96,6 +96,11 @@ struct CaseDetailView: View {
                 // behind it.
                 .disabled(!model.canWrite)
             }
+            // The case's matter — its own, made now if there is none — on its Court section.
+            ToolbarItem(placement: .primaryAction) {
+                OpenAsMatterButton(caseID: caseID)
+                    .disabled(!model.canWrite)
+            }
         }
         .sheet(isPresented: $isAddingNote) {
             CaseWriteSheet(kind: .note) { title, body, _ in

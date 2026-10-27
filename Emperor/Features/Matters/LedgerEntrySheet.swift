@@ -17,6 +17,8 @@ struct LedgerEntrySheet: View {
     let onSaved: () -> Void
 
     @State private var model: LedgerEditor?
+    @State private var isPickingReceipt = false
+    @State private var isViewingReceipt = false
 
     var body: some View {
         Group {
@@ -93,7 +95,51 @@ struct LedgerEntrySheet: View {
                     .accessibilityLabel("Notes")
             }
             .listRowBackground(theme.surface)
+
+            // A fee is billed, not paid, so it has no slip to point to.
+            if model.draft.kind != "fee" {
+                receiptSection(model)
+            }
         }
+    }
+
+    /// The receipt or challan: one of the matter's own files, picked from them, and opened from here.
+    private func receiptSection(_ model: LedgerEditor) -> some View {
+        let path = model.draft.receiptFile
+        let name = Ledger.receiptFileName(path)
+        let shown: String = name.isEmpty ? "None" : DisplayText.fileName(name)
+        return Section {
+            Button {
+                isPickingReceipt = true
+            } label: {
+                IconRowLabel(title: "Receipt or challan", systemImage: "paperclip", value: shown)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("ledger-receipt-file")
+            if !name.isEmpty {
+                Button("Open \(DisplayText.fileName(name))") { isViewingReceipt = true }
+                    .accessibilityIdentifier("ledger-receipt-open")
+            }
+        }
+        .listRowBackground(theme.surface)
+        .sheet(isPresented: $isPickingReceipt) {
+            LedgerReceiptFilePicker(projectID: projectID, current: path) { picked in
+                model.draft.receiptFile = picked
+            }
+        }
+        .sheet(isPresented: $isViewingReceipt) {
+            SourceDocumentView(
+                attachment: Self.attachment(forPath: path),
+                mention: AnnexureMention(fileName: name, mark: "", startPage: nil, endPage: nil),
+                isCitation: false)
+        }
+    }
+
+    /// A stored path, relative to the user's root, as the viewer addresses a document.
+    static func attachment(forPath path: String) -> ChatAttachment {
+        let clean = path.replacingOccurrences(of: "\\", with: "/")
+        guard let cut = clean.lastIndex(of: "/") else { return ChatAttachment(name: clean) }
+        return ChatAttachment(name: String(clean[clean.index(after: cut)...]), folderName: String(clean[..<cut]))
     }
 
     private func save(_ model: LedgerEditor) {
