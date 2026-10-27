@@ -247,9 +247,9 @@ final class BackgroundUploader {
                 // take a quarter of an hour — awaiting it here would stall the rest of this
                 // loop, so an upload still needing chunks would not be re-enqueued until an
                 // unrelated one had finished being indexed.
-                // The completing chunk's answer is gone with the process that received it, so
-                // the stored name is the best guess — a photo's PDF twin.
-                Task { await finish(manifest, stored: StoredUpload.assumed(requested: manifest.fileName)) }
+                // The completing chunk's stored name was written to the manifest when it
+                // landed, so it survives the process that received it.
+                Task { await finish(manifest) }
                 continue
             }
             let missing = manifest.pending.filter {
@@ -331,7 +331,11 @@ final class BackgroundUploader {
         try? FileManager.default.removeItem(
             at: store.chunkBodyURL(for: id, index: index))
 
-        guard let updated = store.recordCompletion(id: id, index: index) else { return }
+        // The reply that completes the file names where it was stored; it need not be the last
+        // index to land, so every delivered body is read.
+        let storedName = ChunkOutcome.storedName(status: statusCode, body: body)
+        guard let updated = store.recordCompletion(
+            id: id, index: index, storedName: storedName) else { return }
         if let position = inFlight.firstIndex(where: { $0.id == id }) {
             if updated.isComplete {
                 inFlight.remove(at: position)
@@ -345,12 +349,11 @@ final class BackgroundUploader {
             batch.setLoaded(updated.bytesSent, of: id, at: Date())
         }
 
-        // The completing chunk's answer names the file as stored — for a photo, the PDF it was
-        // made into. Read here, from the only response the background session hands over, and
-        // carried into the poll: asked about the photo, `/upload-status` would answer "reading"
-        // until this gave up.
+        // The manifest now carries the stored name — for a photo, the PDF it was made into —
+        // and the poll asks after that (`pollName`): asked about the photo, `/upload-status`
+        // would answer "reading" until this gave up.
         if updated.isComplete {
-            await finish(updated, stored: StoredUpload.parse(body: body, requested: updated.fileName))
+            await finish(updated)
         }
     }
 
@@ -360,7 +363,7 @@ final class BackgroundUploader {
     /// failure in any of them produces no HTTP error at all — so this polls, exactly as the
     /// foreground path does. Doing it here rather than in a view model matters: the screen that
     /// started the upload may never be opened again.
-    private func finish(_ manifest: UploadManifest, stored: StoredUpload) async {
+    private func finish(_ manifest: UploadManifest) async {
         // `resume()` runs on every activation, so without this a document that takes a while to
         // index gets a second poller on each return to the app — and the first one to come back
         // discards the manifest out from under the others.
@@ -375,7 +378,7 @@ final class BackgroundUploader {
         let id = manifest.id
         batch.markProcessing(id)
         let state = try? await UploadService(client: client).waitForIngestion(
-            fileName: stored.name, folderName: manifest.folderName,
+            fileName: manifest.pollName, folderName: manifest.folderName,
             // `@Sendable` and hopping explicitly, because the poll runs off the main actor and
             // the batch lives on it.
             onProgress: { @Sendable message in
@@ -385,7 +388,7 @@ final class BackgroundUploader {
             })
         switch state {
         case .some(.ready), .some(.scanned):
-            batch.markDone(id, savedAs: stored.wasConverted ? stored.name : nil)
+            batch.markDone(id, savedAs: manifest.storedName)
         case .some(.failed(let reason)):
             batch.markProcessingFailed(
                 id, message: reason.replacingOccurrences(of: "ERROR: ", with: ""))

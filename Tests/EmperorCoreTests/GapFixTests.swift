@@ -167,6 +167,19 @@ final class GapFixTests: XCTestCase {
         }
     }
 
+    func testAConvertedUploadShowsItsStoredNameAndRefreshesTheLibrary() async {
+        await withLibrary { files, uploads, model in
+            uploads.events = [.stored(name: "scan (1).pdf"), .finished(.ready)]
+            files.tree = [folder("Uploads", [.file(readyFile("Uploads/scan (1).pdf"))])]
+
+            await model.upload(data: Data("x".utf8), fileName: "scan.png")
+
+            XCTAssertEqual(model.storedName, "scan (1).pdf")
+            XCTAssertEqual(model.files.count, 1)
+            XCTAssertNil(model.uploadError)
+        }
+    }
+
     /// Ingestion failures arrive with no HTTP error at all — only as an `ERROR:` status.
     func testAnIngestionFailureIsSurfacedAndTheLibraryIsNotReRead() async {
         await withLibrary { files, uploads, model in

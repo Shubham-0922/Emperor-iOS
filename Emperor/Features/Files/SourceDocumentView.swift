@@ -207,7 +207,7 @@ struct SourceDocumentView: View {
             // searchable, so the words can be found and copied in any reader.
             if SearchableCopyViewModel.isOffered(for: attachment) {
                 Button {
-                    let fetcher = searchable ?? SearchableCopyViewModel(downloads: session.fileDownloads)
+                    let fetcher = searchable ?? SearchableCopyViewModel(files: session.fileManagement)
                     searchable = fetcher
                     Task { await fetcher.fetch(attachment) }
                 } label: {

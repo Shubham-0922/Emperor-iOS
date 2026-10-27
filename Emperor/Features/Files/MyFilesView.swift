@@ -33,8 +33,9 @@ struct MyFilesView: View {
     private let opening: DocumentRoute?
     /// How Done closes the screen when it was not presented by SwiftUI — see `TopPresenter`.
     private let onDone: (() -> Void)?
-    /// Whether this is the Files tab — no Done, and the tab's own title — rather than a
-    /// presented screen.
+    /// Whether this is the Files tab — the tab's own title — rather than a presented screen.
+    /// Done is drawn whenever `onDone` is set, even here: More presents Files in a sheet and
+    /// needs both the title and the way out.
     private let isTab: Bool
 
     init(isTab: Bool = false, opening: DocumentRoute? = nil, onDone: (() -> Void)? = nil) {
@@ -57,9 +58,10 @@ struct MyFilesView: View {
             .navigationTitle(rootTitle)
             // On the root rather than inside the screen, so it is there in every state —
             // including the spinner before the first load returns. Presented over the app for a
-            // search result, iOS gives it no back button; as the Files tab it needs none.
+            // search result, iOS gives it no back button; as the Files tab it needs none — but
+            // More's sheet carries its own Done through `onDone`.
             .toolbar {
-                if !isTab {
+                if !isTab || onDone != nil {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") {
                             if let onDone { onDone() } else { dismiss() }
@@ -135,6 +137,7 @@ private struct LibraryScreen: View {
     @State private var renamingFolder: FolderSummary?
     @State private var renameText = ""
     @State private var moving: Moving?
+    @State private var movingFolder: MovingFolder?
     @State private var isNamingFolder = false
     @State private var newFolderName = ""
     @State private var isImporting = false
@@ -174,6 +177,11 @@ private struct LibraryScreen: View {
     private struct Moving: Identifiable {
         let id = UUID()
         let file: FileNode.StoredFile
+    }
+
+    private struct MovingFolder: Identifiable {
+        let id = UUID()
+        let folder: FolderSummary
     }
 
     private var isRoot: Bool { path.isEmpty }
@@ -356,6 +364,15 @@ private struct LibraryScreen: View {
                     destinations: model.moveDestinations(for: item.file)
                 ) { destination in
                     Task { await model.move(item.file, to: destination) }
+                }
+            }
+            .sheet(item: $movingFolder) { item in
+                MoveFolderSheet(
+                    folder: item.folder,
+                    destinations: model.folderMoveDestinations(for: item.folder),
+                    canChooseTopLevel: model.canMoveToTopLevel(item.folder)
+                ) { destination in
+                    Task { await model.moveFolder(item.folder, to: destination) }
                 }
             }
             .sheet(item: Binding(
@@ -747,6 +764,9 @@ private struct LibraryScreen: View {
             renameText = folder.name
             renamingFolder = folder
         }
+        .accessibilityAction(named: "Move") {
+            movingFolder = MovingFolder(folder: folder)
+        }
         .accessibilityAction(named: "Delete folder") {
             model.requestDeletion(of: folder)
         }
@@ -766,6 +786,11 @@ private struct LibraryScreen: View {
                 } label: {
                     Label("Download as zip", systemImage: "doc.zipper")
                 }
+            }
+            Button {
+                movingFolder = MovingFolder(folder: folder)
+            } label: {
+                Label("Move to…", systemImage: "folder")
             }
             Divider()
             Button(role: .destructive) {
@@ -839,13 +864,6 @@ private struct LibraryScreen: View {
                 Label("Share…", systemImage: "square.and.arrow.up")
             }
             cloudSaveActions(file)
-            if model.offersSearchableCopy(of: file) {
-                Button {
-                    Task { await model.shareSearchableCopy(of: file) }
-                } label: {
-                    Label("Searchable PDF", systemImage: "doc.text.magnifyingglass")
-                }
-            }
             Button {
                 Task { await model.toggleFavorite(file) }
             } label: {
@@ -854,6 +872,20 @@ private struct LibraryScreen: View {
                     systemImage: file.favorite == true ? "star.slash" : "star")
             }
             offlineAction(file)
+            if file.name.lowercased().hasSuffix(".pdf") {
+                Button {
+                    Task { await model.prepareSearchableCopy(file) }
+                } label: {
+                    Label("Share searchable PDF…", systemImage: "doc.text.magnifyingglass")
+                }
+            }
+            if MyFilesViewModel.readingFailed(file) {
+                Button {
+                    Task { await model.readAgain(file) }
+                } label: {
+                    Label("Read again", systemImage: "arrow.clockwise")
+                }
+            }
             Divider()
             Button {
                 renameText = file.name
@@ -1075,6 +1107,76 @@ private struct LibraryScreen: View {
                 message: "There was no room to save a copy to share. Free some space and try again.",
                 tone: .warning)
         }
+    }
+}
+
+/// Choosing where a folder goes. Unlike a document, a folder may go to the top level, offered
+/// first when it is not already there; `nil` is chosen for it.
+private struct MoveFolderSheet: View {
+    @Environment(\.theme) private var theme
+    @Environment(\.dismiss) private var dismiss
+
+    let folder: FolderSummary
+    let destinations: [FolderSummary]
+    let canChooseTopLevel: Bool
+    let onChoose: (FolderSummary?) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if destinations.isEmpty && !canChooseTopLevel {
+                    EmptyStateView(
+                        "Nowhere else to put it",
+                        systemImage: "folder",
+                        message: "Create another folder first, then move this one into it.")
+                } else {
+                    List {
+                        Section {
+                            if canChooseTopLevel {
+                                row("Top level", path: nil, depth: 0)
+                            }
+                            ForEach(destinations) { destination in
+                                row(
+                                    destination.displayName, path: destination,
+                                    depth: max(0, destination.path.split(separator: "/").count - 1))
+                            }
+                        } header: {
+                            SectionHeader(title: "Move \(folder.displayName) to")
+                        }
+                        .listRowBackground(theme.surface)
+                    }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .background(theme.canvas)
+            .navigationTitle("Move to")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func row(_ title: String, path: FolderSummary?, depth: Int) -> some View {
+        Button {
+            onChoose(path)
+            dismiss()
+        } label: {
+            HStack(spacing: Spacing.md) {
+                IconTile(systemImage: "folder", hue: .gold, size: .small)
+                Text(title)
+                    .foregroundStyle(theme.textPrimary)
+                    .dynamicLineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, CGFloat(depth) * 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(path?.breadcrumb ?? "Top level")
     }
 }
 

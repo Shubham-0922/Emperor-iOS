@@ -6,6 +6,7 @@ struct ChatThreadView: View {
     @Environment(\.practice) private var practice
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var model: ChatViewModel?
     /// Owns the composer's text as well as the rewrite over it — see the type's own note on
@@ -89,6 +90,13 @@ struct ChatThreadView: View {
         .onReceive(NotificationCenter.default.publisher(for: .emperorConnectivityChanged)) { _ in
             guard let model else { return }
             Task { await model.connectivityChanged() }
+        }
+        // Back in the foreground: a followed run polls at once, and an idle screen asks again
+        // whether a run is live or has finished while the app was away.
+        .onDisappear { model?.leave() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let model else { return }
+            Task { await model.becameActive() }
         }
         .task {
             guard model == nil else { return }
@@ -218,7 +226,7 @@ struct ChatThreadView: View {
                                 tint: theme.warning)
                         }
 
-                        if stoppedByReader && !model.isStreaming {
+                        if (stoppedByReader || model.wasStopped) && !model.isStreaming {
                             Notice(
                                 icon: "xmark",
                                 text: "Stopped. What was written so far is kept.",
@@ -227,6 +235,28 @@ struct ChatThreadView: View {
 
                         if let busy = model.busyNotice {
                             Notice(icon: "clock", text: busy, tint: theme.textSecondary)
+                        }
+
+                        // A run that could not be followed to an answer, with the way on.
+                        if let issue = model.runIssue, !model.isStreaming {
+                            VStack(alignment: .leading, spacing: Spacing.sm) {
+                                Notice(
+                                    icon: "exclamationmark.triangle",
+                                    text: issue,
+                                    tint: theme.warning)
+                                Button {
+                                    stoppedByReader = false
+                                    model.retryRun()
+                                } label: {
+                                    Text("Retry")
+                                        .font(.brand(.caption, weight: .semibold))
+                                        .foregroundStyle(theme.accentText)
+                                        .frame(minWidth: 44, minHeight: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(model.sendBlockedReason != nil)
+                            }
                         }
 
                         // A send that failed outright. Shown in the transcript rather than as
@@ -642,6 +672,9 @@ struct ChatThreadView: View {
                     composer.clear()
                 },
                 onStop: {
+                    // One stop at a time: the button stays while the server is told, and
+                    // further taps do nothing.
+                    guard !model.isStopping else { return }
                     stoppedByReader = true
                     model.stop()
                 },

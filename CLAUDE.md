@@ -156,16 +156,31 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   `screenshot-tour` and `screenshot-tour-ipad` artifacts hold the pictures as plain PNGs —
   `gh run download <run> -n screenshot-tour-ipad`. Look at both after any visible change; an
   iPad turns sheets into form sheets and confirmation dialogs into popovers.
-- **The app's shape (the Record design).** Four tabs — **Ask · Matters · Files · You**
+- **The app's shape (the redesign).** Five tabs — **Home · Matters · Ask · Calendar · More**
   (`MainTabView`). Sign-in opens with the password behind a Password | Sign in with code
-  segmented control; the one-time code ("Email me a sign-in code") is the other segment. Matters
-  holds the cause list and the docket, and opens the Calendar as a
-  sheet from its bar. Settings and Tools (every tool, the file tools, OCR, Translate, the
-  Corporate Calendar, Library) live under You. UI tests sign in through the shared
-  `signInWithACode` helper and reach tabs through `app.tab(_:)`, both in `UITests/Tabs.swift`.
-- **iPad layouts.** At regular width only History's conversation list (`ChatListView`, a sheet
-  from Ask) shows the list beside what it opens (`ListBesideDetail`, reading one navigation path,
-  `ListDetailPath`); Matters is a single stack on every device. A UI test that taps a
+  segmented control; the one-time code ("Email me a sign-in code") is the other segment. Home is
+  the dashboard: the design's own bar — the mark, the plan pill (plan & usage as a sheet),
+  Updates, and the profile button, whose sheet is **Account & Profile** — the account card
+  (avatar, name, standing and plan pills), the demo-tour stand-in, its plan, Settings and Tools
+  (every tool, the file tools, OCR, Translate, the Corporate Calendar, Library), having left the
+  bar. Under the bar the composer, whose send carries the question, its files and its answer
+  mode to Ask (`AppNavigator.ask`) — nothing is sent from Home; the quick actions; the
+  cause list and the Precedents Vault as the two cards; and the recent conversations, each
+  pushing its thread on Home's own stack. **Ask** greets the reader by name in the design's serif,
+  then the composer and the role's suggestions — a question sent from here opens a fresh
+  conversation. **Matters** holds the cause list and the docket (the next sitting, what is
+  upcoming, every matter) and opens the court lookup from "Add a matter". **Calendar** is both
+  calendars behind one segmented switch — **My calendar** (the matters day by day, the diary,
+  Subscribe in the bar) and **Corporate calendar** (`ComplianceCalendarView(embedded:)`, no stack
+  of its own). **More** is workspace management — Files, History, All Notifications, Library,
+  each a sheet — then the web sidebar's Case tools as drawn cards (not yet wired) and Doc tools
+  wired to OCR and the PDF tools, under a search field that filters the screen. UI tests sign in
+  through the shared `signInWithACode` helper and reach tabs through `app.tab(_:)`, both in
+  `UITests/Tabs.swift`.
+- **iPad layouts.** At regular width History's conversation list (`ChatListView` — presented
+  from More → History) shows the list beside what it opens (`ListBesideDetail`,
+  reading one navigation path, `ListDetailPath`); Matters is a single stack on every device. A UI
+  test that taps a
   conversation in History and then goes Back must branch on
   `UIDevice.current.userInterfaceIdiom` — on iPad there is no Back. On iPad the tabs are a row
   of buttons across the top, not a tab bar element; `app.tab(_:)` finds them on both. Drag inside
@@ -282,9 +297,9 @@ Full detail in `README.md`. The short list:
     is never posted back — see `OfflineReading`.
 31. **A photo is stored as a PDF.** Since the searchable-PDF change, a PNG or JPEG sent to
     `/upload-chunk` is converted on arrival and the image never reaches storage; the completing
-    chunk's answer names the file (`storedName`, `convertedFrom`). Poll, attach and open by that
-    name — asked about the image, `/upload-status` reads "Reading…" for as long as it is asked.
-    See `StoredUpload`.
+    chunk's answer names the file (`storedName`, `convertedFrom`) — and that chunk need not be the
+    last one sent. Poll, attach and open by that name — asked about the image, `/upload-status`
+    reads "Reading…" for as long as it is asked. See `UploadReply` and `UploadManifest.pollName`.
 32. **A matter's conversations and drafts carry `project_id`** and are scoped to the matter: a
     turn sent without `projectId` drops the matter's attachments. Until this client opens a
     matter's own conversations, rows with a `project_id` stay out of its lists
@@ -321,7 +336,8 @@ Full detail in `README.md`. The short list:
 39. **`POST /download-files` leaves out what it cannot find and still answers 200** — 404 only
     when none is found. Count the zip's entries (`FileDownloadWording.zipEntryCount`) rather than
     trusting the status. `/download-searchable` answers its errors in plain text, and sends a PDF
-    that is already its searchable version as stored. See `FileDownloadService`.
+    that is already its searchable version as stored. See `FileDownloadService` (zips) and
+    `FileManagementService.downloadSearchable` (the searchable copy, from My Files and the viewer).
 40. **A folder upload's structure is its `folderName`** — `Clients/Wadhwa/Orders`, slashes and
     all; the folders are made on arrival. Operating-system files are refused (415), so
     `FolderUploadPlan` drops them first by `junkNames.js`' rules (`UploadJunk`, golden-tested).

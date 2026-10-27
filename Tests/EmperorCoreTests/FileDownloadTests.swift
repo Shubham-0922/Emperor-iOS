@@ -10,7 +10,6 @@ import FoundationNetworking
 private final class RecordingDownloads: FileDownloading, @unchecked Sendable {
     var failure: Error?
     private(set) var zips: [(files: [FileZipEntry], name: String?)] = []
-    private(set) var searchables: [(name: String, folder: String?)] = []
 
     func zip(files: [FileZipEntry], suggestedName: String?) async throws -> DownloadedFile {
         zips.append((files, suggestedName))
@@ -18,13 +17,6 @@ private final class RecordingDownloads: FileDownloading, @unchecked Sendable {
         return DownloadedFile(
             fileName: suggestedName.map(FileDownloadWording.zipName(for:)) ?? "documents.zip",
             data: Data("PK".utf8))
-    }
-
-    func searchablePDF(name: String, folderName: String?) async throws -> DownloadedFile {
-        searchables.append((name, folderName))
-        if let failure { throw failure }
-        return DownloadedFile(
-            fileName: FileDownloadWording.searchableName(for: name), data: Data("%PDF".utf8))
     }
 }
 
@@ -189,65 +181,74 @@ final class MyFilesDownloadTests: XCTestCase {
         XCTAssertEqual(paths, ["Loose.pdf"])
     }
 
-    func testOnlyAPDFOffersASearchableCopy() async {
-        await withLibrary { model, downloads in
-            XCTAssertTrue(model.offersSearchableCopy(of: zipStored("Bakshi/Plaint.pdf")))
-            XCTAssertTrue(model.offersSearchableCopy(of: zipStored("Bakshi/SCAN.PDF")))
-            XCTAssertFalse(model.offersSearchableCopy(of: zipStored("Arora/Notice.docx")))
-
-            await model.shareSearchableCopy(of: zipStored("Bakshi/2025/Order.pdf"))
-            XCTAssertEqual(downloads?.searchables.first?.name, "Order.pdf")
-            XCTAssertEqual(downloads?.searchables.first?.folder, "Bakshi/2025")
-            XCTAssertEqual(model.sharing?.fileName, "Order_searchable.pdf")
-        }
-    }
-
     func testWithoutTheServiceNoDownloadIsOffered() async {
         await withLibrary(downloads: nil) { model, _ in
             XCTAssertFalse(model.offersDownloads)
-            XCTAssertFalse(model.offersSearchableCopy(of: zipStored("Bakshi/Plaint.pdf")))
         }
     }
 }
 
 // MARK: - The viewer's searchable copy
 
+/// Answers `downloadSearchable` with fixed bytes or a fixed failure, and records what it was
+/// asked for. Nothing else is expected of it.
+private final class SearchableFiles: FileManaging, @unchecked Sendable {
+    var failure: Error?
+    private(set) var searchables: [(name: String, folder: String?)] = []
+
+    func downloadSearchable(name: String, folderName: String?) async throws -> Data {
+        searchables.append((name, folderName))
+        if let failure { throw failure }
+        return Data("%PDF".utf8)
+    }
+    func delete(name: String, folderName: String?) async throws { XCTFail("unexpected delete") }
+    func rename(name: String, in folderName: String?, to newName: String) async throws -> FileOperationResult {
+        XCTFail("unexpected rename"); return FileOperationResult(fileName: newName, folderName: "")
+    }
+    func move(name: String, from folderName: String?, to destination: String?) async throws { XCTFail("unexpected move") }
+    func setFavorite(_ favorite: Bool, name: String, folderName: String?) async throws -> Bool { favorite }
+    func createFolder(named path: String) async throws {}
+    func renameFolder(at path: String, to newName: String) async throws -> String { newName }
+    func deleteFolder(named path: String) async throws { XCTFail("unexpected folder delete") }
+}
+
 final class SearchableCopyViewModelTests: XCTestCase {
 
     @MainActor
     private static func run(
-        _ downloads: RecordingDownloads, _ body: @MainActor (SearchableCopyViewModel) async -> Void
+        _ files: SearchableFiles, _ body: @MainActor (SearchableCopyViewModel) async -> Void
     ) async {
-        await body(SearchableCopyViewModel(downloads: downloads))
+        await body(SearchableCopyViewModel(files: files))
     }
 
     func testAPDFsCopyArrivesForTheShareSheet() async {
-        let downloads = RecordingDownloads()
-        await Self.run(downloads) { model in
+        let files = SearchableFiles()
+        await Self.run(files) { model in
             await model.fetch(ChatAttachment(name: "Award.pdf", folderName: "Bakshi"))
             XCTAssertEqual(model.copy?.fileName, "Award_searchable.pdf")
             XCTAssertNil(model.errorMessage)
             XCTAssertFalse(model.isFetching)
         }
-        XCTAssertEqual(downloads.searchables.first?.folder, "Bakshi")
+        XCTAssertEqual(files.searchables.first?.folder, "Bakshi")
     }
 
     func testAWordDocumentHasNone() async {
-        let downloads = RecordingDownloads()
+        let files = SearchableFiles()
         XCTAssertFalse(SearchableCopyViewModel.isOffered(for: ChatAttachment(name: "Reply.docx", folderName: nil)))
-        await Self.run(downloads) { model in
+        await Self.run(files) { model in
             await model.fetch(ChatAttachment(name: "Reply.docx", folderName: nil))
             XCTAssertNil(model.copy)
         }
-        XCTAssertTrue(downloads.searchables.isEmpty)
+        XCTAssertTrue(files.searchables.isEmpty)
     }
 
     func testAFailureIsWorded() async {
-        let downloads = RecordingDownloads()
-        downloads.failure = FileDownloadWording.searchableNotFound
-        await Self.run(downloads) { model in
+        let files = SearchableFiles()
+        files.failure = APIError.server(
+            status: 404, message: "A searchable copy is not available for this document.")
+        await Self.run(files) { model in
             await model.fetch(ChatAttachment(name: "Award.pdf", folderName: nil))
-            XCTAssertEqual(model.errorMessage, "That document is no longer in your library.")
+            XCTAssertEqual(model.errorMessage, "A searchable copy is not available for this document.")
             XCTAssertNil(model.copy)
         }
     }
@@ -432,69 +433,6 @@ final class FileDownloadWireTests: XCTestCase {
             XCTFail("expected an error")
         } catch let error as APIError {
             XCTAssertEqual(error, .invalidCredentials)
-        }
-    }
-
-    // MARK: download-searchable
-
-    private static func pdfReply(named name: String) -> HTTPStub.Reply {
-        HTTPStub.Reply(
-            status: 200, body: Data("%PDF-1.7\n".utf8),
-            headers: [
-                "Content-Type": "application/pdf",
-                "Content-Disposition": "attachment; filename=\"\(name)\"",
-            ])
-    }
-
-    /// `GET /download-searchable?userId&folderName&fileName`, the root spelled `"."`.
-    func testASearchableCopyIsAskedForByFolderAndName() async throws {
-        HTTPStub.always(Self.pdfReply(named: "Loose_searchable.pdf"))
-        let copy = try await service().searchablePDF(name: "Loose.pdf", folderName: nil)
-
-        let sent = try XCTUnwrap(HTTPStub.lastRequest)
-        XCTAssertEqual(sent.httpMethod, "GET")
-        XCTAssertEqual(sent.path, "/api/download-searchable")
-        XCTAssertEqual(sent.queryItems, ["userId": "42", "folderName": ".", "fileName": "Loose.pdf"])
-        XCTAssertEqual(sent.header("Authorization"), "Bearer tok-abc")
-        XCTAssertEqual(copy.fileName, "Loose_searchable.pdf")
-    }
-
-    func testTheNameFallsBackToTheServersRule() async throws {
-        HTTPStub.always(HTTPStub.Reply(
-            status: 200, body: Data("%PDF-1.4".utf8), headers: ["Content-Type": "application/pdf"]))
-        let copy = try await service().searchablePDF(name: "Final Order.pdf", folderName: "Bakshi")
-        XCTAssertEqual(copy.fileName, "Final_Order_searchable.pdf")
-        XCTAssertEqual(HTTPStub.lastRequest?.queryItems["folderName"], "Bakshi")
-    }
-
-    func testAPlainText404SaysTheDocumentIsGone() async throws {
-        HTTPStub.always(.text("File not found", status: 404))
-        do {
-            _ = try await service().searchablePDF(name: "Gone.pdf", folderName: "A")
-            XCTFail("expected an error")
-        } catch let error as APIError {
-            XCTAssertEqual(error, FileDownloadWording.searchableNotFound)
-        }
-    }
-
-    func testANonPDFIsNeverAskedFor() async throws {
-        HTTPStub.always(Self.pdfReply(named: "x.pdf"))
-        do {
-            _ = try await service().searchablePDF(name: "Reply.docx", folderName: "A")
-            XCTFail("expected an error")
-        } catch let error as APIError {
-            XCTAssertEqual(error, FileDownloadWording.notAPDF)
-        }
-        XCTAssertTrue(HTTPStub.seen.isEmpty)
-    }
-
-    func testAServerFailureCarriesItsSentence() async throws {
-        HTTPStub.always(.text("disk full", status: 500))
-        do {
-            _ = try await service().searchablePDF(name: "A.pdf", folderName: "A")
-            XCTFail("expected an error")
-        } catch let error as APIError {
-            XCTAssertEqual(error, .server(status: 500, message: "disk full"))
         }
     }
 }

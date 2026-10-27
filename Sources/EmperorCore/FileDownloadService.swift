@@ -28,22 +28,19 @@ struct FileZipEntry: Encodable, Equatable, Hashable, Sendable {
     }
 }
 
-/// The downloads the server assembles rather than serves as stored: several documents as one
-/// zip, and a PDF with an invisible text layer over its scanned pages.
+/// A download the server assembles rather than serves as stored: several documents as one zip.
+/// A PDF's searchable copy is `FileManaging.downloadSearchable`.
 protocol FileDownloading: Sendable {
     /// - Parameter suggestedName: what to call the archive — the web names a folder's zip after
     ///   the folder. `nil` takes the server's name, `documents.zip`.
     func zip(files: [FileZipEntry], suggestedName: String?) async throws -> DownloadedFile
-    /// The searchable copy of a PDF. Only a PDF has one.
-    func searchablePDF(name: String, folderName: String?) async throws -> DownloadedFile
 }
 
-/// `POST /download-files` and `GET /download-searchable`.
+/// `POST /download-files`.
 ///
-/// Both answer with the file itself — `application/zip` or `application/pdf`, each with a
-/// `Content-Disposition` naming it — and with an error otherwise: the zip route in JSON, the
-/// searchable route in plain text. The zip route takes its credential from the bearer header and
-/// nothing else, which this client always sends.
+/// Answers with the zip itself — `application/zip`, with a `Content-Disposition` naming it — and
+/// with a JSON error otherwise. It takes its credential from the bearer header and nothing else,
+/// which this client always sends.
 struct FileDownloadService: FileDownloading {
     let client: APIClient
 
@@ -81,39 +78,6 @@ struct FileDownloadService: FileDownloading {
             throw APIError.classify(status: response.statusCode, body: data)
         }
     }
-
-    func searchablePDF(name: String, folderName: String?) async throws -> DownloadedFile {
-        guard FileDownloadWording.offersSearchableCopy(fileName: name) else {
-            throw FileDownloadWording.notAPDF
-        }
-        let folder = folderName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        // Like `/view-file`, this route refuses an empty folder, so the root is `"."`.
-        let request = try await client.makeRequest(
-            "GET", "/download-searchable",
-            query: ["folderName": folder.isEmpty ? "." : folder, "fileName": name])
-        let (data, response) = try await client.perform(request)
-        switch response.statusCode {
-        case 200..<300:
-            guard data.starts(with: Array("%PDF".utf8)) else { throw FileDownloadWording.incomplete }
-            let named = FileDownloadWording.filename(fromContentDisposition: response.value(forHTTPHeaderField: "Content-Disposition"))
-                ?? FileDownloadWording.searchableName(for: name)
-            return DownloadedFile(fileName: named, data: data)
-        case 404:
-            throw FileDownloadWording.searchableNotFound
-        case 400:
-            throw FileDownloadWording.incomplete
-        case 401:
-            throw APIError.invalidCredentials
-        default:
-            // A plain-text body: the server's sentence, when it sent one.
-            let text = String(decoding: data, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw APIError.server(
-                status: response.statusCode,
-                message: text.isEmpty || text.count > 200
-                    ? "The searchable copy could not be made. Try again in a moment." : text)
-        }
-    }
 }
 
 /// Names and sentences for the two downloads, apart from the service so the screens and the tests
@@ -124,10 +88,6 @@ enum FileDownloadWording {
         status: 400, message: "Choose at least one document to download.")
     static let incomplete = APIError.server(
         status: 200, message: "The download arrived incomplete. Try again.")
-    static let notAPDF = APIError.server(
-        status: 400, message: "Only a PDF has a searchable copy.")
-    static let searchableNotFound = APIError.server(
-        status: 404, message: "That document is no longer in your library.")
 
     static func noneFound(count: Int) -> APIError {
         .server(status: 404, message: count == 1

@@ -74,15 +74,13 @@ final class Session {
     let analysis: AnalysisService
     /// The Limitation Radar's audit.
     let limitationRadar: LimitationRadarService
-    /// "Report a bug" — the support inbox the web's Help menu writes to.
-    let supportFeedback: SupportFeedbackService
     /// The List of Annexures under a draft, and the filing-ready package — see `FilingPackage`.
     let filingAnnexures: FilingAnnexureService
     /// Shared conversations, read without an account — the web's `/share/:shareId` (share package).
     let sharedChats: SharedChatService
     /// Connected services: Google Drive and OneDrive, import and export — see `CloudDriveService`.
     let cloudDrives: CloudDriveService
-    /// Several documents as one zip, and a PDF's searchable copy (My Files package).
+    /// Several documents as one zip (My Files package).
     let fileDownloads: FileDownloadService
     /// Draft editing: an edited draft written back to its conversation and its Drafts row.
     let draftEdits: DraftEditService
@@ -142,7 +140,6 @@ final class Session {
         self.calendarFeed = CalendarFeedService(client: client, baseURL: config.baseURL)
         self.analysis = AnalysisService(client: client)
         self.limitationRadar = LimitationRadarService(client: client)
-        self.supportFeedback = SupportFeedbackService(client: client)
         self.filingAnnexures = FilingAnnexureService(client: client)
         self.sharedChats = SharedChatService(client: client)
         self.cloudDrives = CloudDriveService(client: client)  // Connected services package
@@ -258,6 +255,15 @@ final class Session {
         case suspended
     }
 
+    /// The administrator's stated reason for a pause, trimmed, or nil when there is none or the
+    /// account is not paused. Shown beside the paused banner.
+    var suspendedReason: String? {
+        guard standing == .suspended,
+              let reason = currentUser?.suspendedReason?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !reason.isEmpty else { return nil }
+        return reason
+    }
+
     /// From the account as last read: at sign-in, at launch (`refreshAccount`), and whenever the
     /// server refuses something for one of these two reasons.
     var standing: Standing? {
@@ -346,6 +352,7 @@ final class Session {
         if let phone = saved.phone { user.phone = phone }
         if let needsPlan = saved.needsPlan { user.needsPlan = needsPlan }
         if let suspended = saved.suspended { user.suspended = suspended }
+        if saved.suspended != nil { user.suspendedReason = saved.suspendedReason }
         persist(user)
         state = .signedIn(user)
     }

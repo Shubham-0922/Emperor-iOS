@@ -222,7 +222,7 @@ struct UploadBatch: Equatable, Sendable {
     /// The server finished reading the file and it can be asked about.
     ///
     /// - Parameter savedAs: the stored name, when the server changed it — a photo that is now
-    ///   a PDF (`StoredUpload`). Shown under the row; `nil` when the name is the one sent.
+    ///   a PDF (`UploadManifest.storedName`). Shown under the row; `nil` when the name is the one sent.
     mutating func markDone(_ id: String, savedAs: String? = nil) {
         update(id) { file in
             file.loaded = file.size

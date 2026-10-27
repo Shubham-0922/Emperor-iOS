@@ -197,6 +197,72 @@ final class FeedbackTests: XCTestCase {
         }
     }
 
+    // MARK: - Support feedback
+
+    func testSupportMessageBodyIsByteExact() async throws {
+        let service = await makeService()
+        HTTPStub.always(.json(#"{"success":true,"id":3}"#))
+        let shot = SupportScreenshot(data: Data([0x01, 0x02]), fileName: "a.jpg", mimeType: "image/jpeg")
+
+        try await service.submitSupportFeedback(
+            kind: .bug, description: "  It froze.  ", screenshots: [shot],
+            pageURL: "ios:settings", boundary: "BND")
+
+        let sent = try XCTUnwrap(HTTPStub.lastRequest)
+        XCTAssertEqual(sent.path, "/api/support-feedback")
+        XCTAssertEqual(sent.header("Content-Type"), "multipart/form-data; boundary=BND")
+        var expected = Data()
+        func add(_ s: String) { expected.append(Data(s.utf8)) }
+        add("--BND\r\nContent-Disposition: form-data; name=\"description\"\r\n\r\nIt froze.\r\n")
+        add("--BND\r\nContent-Disposition: form-data; name=\"userId\"\r\n\r\n42\r\n")
+        add("--BND\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\nbug\r\n")
+        add("--BND\r\nContent-Disposition: form-data; name=\"pageUrl\"\r\n\r\nios:settings\r\n")
+        add("--BND\r\nContent-Disposition: form-data; name=\"file_0\"; filename=\"a.jpg\"\r\n")
+        add("Content-Type: image/jpeg\r\n\r\n")
+        expected.append(Data([0x01, 0x02]))
+        add("\r\n--BND--\r\n")
+        XCTAssertEqual(sent.httpBody, expected)
+    }
+
+    func testKindIsLimitedToBugAndFeedback() {
+        XCTAssertEqual(SupportFeedbackKind.allCases.map(\.rawValue), ["bug", "feedback"])
+        XCTAssertNil(SupportFeedbackKind(rawValue: "other"))
+    }
+
+    func testAnEmptyDescriptionIsRefusedWithoutARequest() async throws {
+        let service = await makeService()
+        HTTPStub.always(.json(#"{"success":true,"id":1}"#))
+        do {
+            try await service.submitSupportFeedback(
+                kind: .feedback, description: " \n ", screenshots: [])
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual(error as? SupportFeedbackError, .emptyDescription)
+        }
+        XCTAssertNil(HTTPStub.lastRequest)
+    }
+
+    func testStatus413IsMappedToTooLarge() async throws {
+        let service = await makeService()
+        HTTPStub.always(.json(#"{"error":"Attachments exceed the size limit"}"#, status: 413))
+        do {
+            try await service.submitSupportFeedback(kind: .bug, description: "x", screenshots: [])
+            XCTFail("expected an error")
+        } catch {
+            XCTAssertEqual(error as? SupportFeedbackError, .tooLarge)
+        }
+    }
+
+    func testOtherErrorsSurfaceTheServerMessage() async throws {
+        let service = await makeService()
+        HTTPStub.always(.json(#"{"error":"boom"}"#, status: 500))
+        do {
+            try await service.submitSupportFeedback(kind: .bug, description: "x", screenshots: [])
+            XCTFail("expected an error")
+        } catch {
+            XCTAssertEqual(error as? APIError, .server(status: 500, message: "boom"))
+        }
+    }
     func testCategoriesKeepTheChipOrder() async {
         await onFeedbackMainActor {
             let model = DraftFeedbackViewModel(target: Self.documentTarget, service: RecordingFeedback())

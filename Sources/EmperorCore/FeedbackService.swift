@@ -167,3 +167,152 @@ struct FeedbackService: FeedbackProviding {
         return body.id
     }
 }
+
+// MARK: - Support feedback and bug reports
+
+/// What a support message is. Closed to these two: anything else is filed as feedback, so a
+/// third value would land somewhere a reviewer does not look.
+enum SupportFeedbackKind: String, CaseIterable, Identifiable, Sendable {
+    case bug
+    case feedback
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .bug: return "Report a bug"
+        case .feedback: return "Send feedback"
+        }
+    }
+}
+
+/// One already-compressed image attached to a support message.
+struct SupportScreenshot: Equatable, Sendable {
+    let data: Data
+    let fileName: String
+    let mimeType: String
+
+    init(data: Data, fileName: String = "screenshot.jpg", mimeType: String = "image/jpeg") {
+        self.data = data
+        self.fileName = fileName
+        self.mimeType = mimeType
+    }
+}
+
+enum SupportFeedbackLimits {
+    /// The request body is refused above 60 MB. Screenshots are compressed far below that, so
+    /// this count is what keeps a message comfortably inside it.
+    static let maxScreenshots = 5
+    static let screenshotTargetBytes = 500 * 1024
+}
+
+enum SupportFeedbackError: LocalizedError, Equatable {
+    case emptyDescription
+    case tooLarge
+    case tooManyScreenshots
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyDescription:
+            return "Please describe what happened before sending."
+        case .tooLarge:
+            return "The screenshots are too large to send. Remove some and try again."
+        case .tooManyScreenshots:
+            return "You can attach up to \(SupportFeedbackLimits.maxScreenshots) screenshots."
+        }
+    }
+}
+
+/// The seam the support form is built against.
+protocol SupportFeedbackSubmitting: Sendable {
+    func submitSupportFeedback(
+        kind: SupportFeedbackKind, description: String, screenshots: [SupportScreenshot],
+        pageURL: String
+    ) async throws
+}
+
+extension SupportFeedbackSubmitting {
+    func submitSupportFeedback(
+        kind: SupportFeedbackKind, description: String, screenshots: [SupportScreenshot] = []
+    ) async throws {
+        try await submitSupportFeedback(
+            kind: kind, description: description, screenshots: screenshots, pageURL: "ios:settings")
+    }
+}
+
+/// `POST /support-feedback`: a multipart message with optional screenshots.
+extension FeedbackService: SupportFeedbackSubmitting {
+
+    /// Screenshots go in as `file_<i>` parts, each with a `filename` — a part without one is
+    /// read as a plain text field and dropped.
+    static func supportBody(
+        kind: SupportFeedbackKind, description: String, userID: String?, pageURL: String,
+        screenshots: [SupportScreenshot], boundary: String
+    ) -> Data {
+        var body = Data()
+        func append(_ string: String) { body.append(Data(string.utf8)) }
+        var fields: [(String, String)] = [("description", description)]
+        if let userID { fields.append(("userId", userID)) }
+        fields.append(("kind", kind.rawValue))
+        fields.append(("pageUrl", pageURL))
+        for (name, value) in fields {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            append("\(value)\r\n")
+        }
+        for (index, shot) in screenshots.enumerated() {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"file_\(index)\"; filename=\"\(shot.fileName)\"\r\n")
+            append("Content-Type: \(shot.mimeType)\r\n\r\n")
+            body.append(shot.data)
+            append("\r\n")
+        }
+        append("--\(boundary)--\r\n")
+        return body
+    }
+
+    /// 413 is the size limit; otherwise the body's `error` string is what the user reads,
+    /// because statuses on this API are not reliable on their own.
+    static func supportError(status: Int, data: Data) -> Error {
+        if status == 413 { return SupportFeedbackError.tooLarge }
+        let message = (try? JSONDecoder().decode(Body.self, from: data))?.error
+        if message == "Description is required" { return SupportFeedbackError.emptyDescription }
+        return APIError.server(
+            status: status, message: message ?? "Your message could not be sent.")
+    }
+
+    func submitSupportFeedback(
+        kind: SupportFeedbackKind, description: String, screenshots: [SupportScreenshot],
+        pageURL: String
+    ) async throws {
+        try await submitSupportFeedback(
+            kind: kind, description: description, screenshots: screenshots, pageURL: pageURL,
+            boundary: MultipartChunk.boundary())
+    }
+
+    func submitSupportFeedback(
+        kind: SupportFeedbackKind, description: String, screenshots: [SupportScreenshot],
+        pageURL: String, boundary: String
+    ) async throws {
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SupportFeedbackError.emptyDescription }
+        guard screenshots.count <= SupportFeedbackLimits.maxScreenshots else {
+            throw SupportFeedbackError.tooManyScreenshots
+        }
+
+        // A signed-out visitor may still report, so auth is optional; when signed in, the bearer
+        // token names the sender and the id is sent alongside it.
+        var request = try await client.makeRequest("POST", "/support-feedback", requiresAuth: false)
+        request.setValue(
+            MultipartChunk.contentType(boundary: boundary), forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.supportBody(
+            kind: kind, description: trimmed,
+            userID: await client.currentCredentials()?.userIDString,
+            pageURL: pageURL, screenshots: screenshots, boundary: boundary)
+
+        let (data, response) = try await client.perform(request)
+        guard (200..<300).contains(response.statusCode) else {
+            throw Self.supportError(status: response.statusCode, data: data)
+        }
+    }
+}

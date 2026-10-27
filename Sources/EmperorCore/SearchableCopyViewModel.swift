@@ -24,10 +24,10 @@ final class SearchableCopyViewModel {
     /// The copy, once it has arrived; the screen hands it to the share sheet and clears it.
     var copy: DownloadedFile?
 
-    private let downloads: any FileDownloading
+    private let files: any FileManaging
 
-    init(downloads: any FileDownloading) {
-        self.downloads = downloads
+    init(files: any FileManaging) {
+        self.files = files
     }
 
     /// Whether the document has a searchable copy to offer — a PDF, by its stored name. A Word
@@ -42,8 +42,13 @@ final class SearchableCopyViewModel {
         errorMessage = nil
         defer { isFetching = false }
         do {
-            copy = try await downloads.searchablePDF(
+            let data = try await files.downloadSearchable(
                 name: attachment.name, folderName: attachment.folderName)
+            guard !data.isEmpty else {
+                throw DocumentNotViewable(message: "The searchable copy arrived empty.")
+            }
+            copy = DownloadedFile(
+                fileName: FileDownloadWording.searchableName(for: attachment.name), data: data)
         } catch {
             errorMessage = DisplayText.message(for: error)
         }

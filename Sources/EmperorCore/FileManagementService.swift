@@ -84,10 +84,40 @@ protocol FileManaging: Sendable {
     ///   everything indexed from it, with no undo. The confirmation states how many documents go
     ///   with it, and the storage root is refused before the round trip (`FileDeletion`).
     func deleteFolder(named path: String) async throws
+    /// Moves a folder, and everything in it, under another folder. An empty or nil `parent` is
+    /// the storage root. Reached from My Files' folder menu.
+    /// - Returns: the folder's new path, as the server reports it.
+    func moveFolder(at path: String, toParent parent: String?) async throws -> String
+    /// Asks for a document to be read again, for one whose reading failed.
+    func reprocess(name: String, folderName: String?) async throws
+    /// Follows a document's reading until it ends, with the same polling the upload path uses.
+    func awaitIngestion(name: String, folderName: String?) async throws -> IngestState
+    /// The searchable copy of a PDF: the original with its recognised text laid over it.
+    func downloadSearchable(name: String, folderName: String?) async throws -> Data
+}
+
+/// Defaults, so a stand-in written before these existed still conforms. The live service
+/// overrides all four.
+extension FileManaging {
+    func moveFolder(at path: String, toParent parent: String?) async throws -> String {
+        throw APIError.server(status: 501, message: "Moving folders is not available here.")
+    }
+    func reprocess(name: String, folderName: String?) async throws {
+        throw APIError.server(
+            status: 501, message: "Reading a document again is not available here.")
+    }
+    func awaitIngestion(name: String, folderName: String?) async throws -> IngestState {
+        .ready
+    }
+    func downloadSearchable(name: String, folderName: String?) async throws -> Data {
+        throw APIError.server(status: 501, message: "Searchable copies are not available here.")
+    }
 }
 
 struct FileManagementService: FileManaging {
     let client: APIClient
+    /// Between reads of the ingestion status; the upload path's own interval.
+    var pollInterval: Duration = .seconds(2)
 
     /// How these routes spell "the storage root".
     ///
@@ -243,6 +273,88 @@ struct FileManagementService: FileManaging {
             "POST", "/delete-folder",
             body: FolderPayload(userId: userID, folderName: path))
         _ = try await sendExpectingSuccess(request)
+    }
+
+    private struct MoveFolderPayload: Encodable {
+        let userId: String
+        let fromPath: String
+        let toParentPath: String
+    }
+
+    /// - Note: the target is required but may be empty, which is the storage root; it is sent
+    ///   as `""`, never `"."`. The caller refetches the tree afterwards: the reply describes one
+    ///   folder, not the library.
+    func moveFolder(at path: String, toParent parent: String?) async throws -> String {
+        let userID = try await requireUserID()
+        let request = try await client.makeRequest(
+            "POST", "/move-folder",
+            body: MoveFolderPayload(
+                userId: userID, fromPath: path,
+                toParentPath: folder(parent, root: Self.rootForRename)))
+        let body = try await sendExpectingSuccess(request)
+        if let echoed = body.folderName, !echoed.isEmpty { return echoed }
+        let leaf = String(path.split(separator: "/").last ?? Substring(path))
+        let target = folder(parent, root: "")
+        return target.isEmpty ? leaf : "\(target)/\(leaf)"
+    }
+
+    private struct ReprocessPayload: Encodable {
+        let userId: String
+        let folderName: String
+        let fileName: String
+    }
+
+    /// - Note: `folderName` must be non-empty here, so the root is `"."`. A 404 means the
+    ///   document is no longer in the library.
+    func reprocess(name: String, folderName: String?) async throws {
+        let userID = try await requireUserID()
+        let request = try await client.makeRequest(
+            "POST", "/re-ocr",
+            body: ReprocessPayload(
+                userId: userID, folderName: folder(folderName, root: Self.rootForDelete),
+                fileName: name))
+        let (data, response) = try await client.perform(request)
+        let body = try? JSONDecoder().decode(FileOperationBody.self, from: data)
+        guard (200..<300).contains(response.statusCode), body?.success == true else {
+            throw APIError.server(
+                status: response.statusCode,
+                message: response.statusCode == 404
+                    ? "That document is no longer in your library."
+                    : Self.message(from: body, status: response.statusCode))
+        }
+    }
+
+    /// Waits one interval before the first read: until the job starts, the status still holds
+    /// the previous failure, which would end the wait before it began.
+    func awaitIngestion(name: String, folderName: String?) async throws -> IngestState {
+        try await Task.sleep(for: pollInterval)
+        return try await UploadService(client: client).waitForIngestion(
+            fileName: name, folderName: folder(folderName, root: Self.rootForDelete),
+            pollInterval: pollInterval)
+    }
+
+    /// - Important: PDFs only; anything else is refused before the round trip. A 404 means no
+    ///   searchable copy exists for it.
+    func downloadSearchable(name: String, folderName: String?) async throws -> Data {
+        guard name.lowercased().hasSuffix(".pdf") else {
+            throw APIError.server(
+                status: 400, message: "A searchable copy is only available for PDF documents.")
+        }
+        let request = try await client.makeRequest(
+            "GET", "/download-searchable",
+            query: [
+                "folderName": folder(folderName, root: Self.rootForDelete), "fileName": name,
+            ])
+        let (data, response) = try await client.perform(request)
+        guard (200..<300).contains(response.statusCode) else {
+            // A bare text body, not the JSON envelope.
+            throw APIError.server(
+                status: response.statusCode,
+                message: response.statusCode == 404
+                    ? "A searchable copy is not available for this document."
+                    : String(decoding: data, as: UTF8.self))
+        }
+        return data
     }
 
     // MARK: - Plumbing
