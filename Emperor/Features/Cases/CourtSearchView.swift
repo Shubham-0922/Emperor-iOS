@@ -219,7 +219,9 @@ struct CourtSearchView: View {
                     SectionHeader(title: court.name)
                 } footer: {
                     if model.expectsLongWait {
-                        Text(CourtSearchViewModel.Copy.captchaWait)
+                        Text(model.query.highCourtDedicated
+                             ? "The court’s own website can take up to a minute to answer."
+                             : CourtSearchViewModel.Copy.captchaWait)
                             .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                     }

@@ -145,6 +145,8 @@ struct LookupDossierView: View {
                 toast = "\(label) copied"
             } label: {
                 StatusPill(text: "\(label) \(identity)", tone: .accent, systemImage: "doc.on.doc")
+                    .frame(minHeight: Layout.touchTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Copy \(label) \(identity)"))
@@ -298,9 +300,7 @@ struct LookupDossierView: View {
                 yearChips
             }
             if record.orders.isEmpty {
-                quietLine(
-                    "The court has not published any order for this case yet. Add it to Matters and we will "
-                        + "tell you the moment one appears.")
+                quietLine("The court has not published any order for this case yet. Add it to Matters and we will tell you the moment one appears.")
             } else {
                 RecordGroup {
                     ForEach(Array(model.visibleOrders.enumerated()), id: \.offset) { pair in
