@@ -6,6 +6,11 @@ import SwiftUI
 /// The steps follow the web's `/filing` page: choose a draft, arrange its annexures, fill in the
 /// cover, assemble. Every rule and sentence lives in `FilingAssemblyViewModel`. One list rather
 /// than a scroll view of cards, so the annexures can be dragged into order in place.
+///
+/// Opened on a conversation's draft (`.chat`), it is the web's inline assembler: no draft to
+/// choose, the conversation's own annexures in the order cited, its files one tap from being
+/// annexures, and the cover read from the cause title. Opened on a saved draft (`.draft`), that
+/// draft is already chosen.
 struct FilingAssemblyScreen: View {
     static let isReady = true
 
@@ -13,7 +18,14 @@ struct FilingAssemblyScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(Session.self) private var session
 
+    var scope: FilingScope = .pick
+
     @State private var model: FilingAssemblyViewModel?
+
+    private var title: String {
+        if case .chat = scope { return FilingChatScope.title }
+        return "Filing Assembly"
+    }
 
     var body: some View {
         NavigationStack {
@@ -26,7 +38,7 @@ struct FilingAssemblyScreen: View {
                 }
             }
             .background(theme.groupedBackground)
-            .navigationTitle("Filing Assembly")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -35,9 +47,10 @@ struct FilingAssemblyScreen: View {
             }
             .task {
                 guard model == nil else { return }
-                let created = FilingAssemblyViewModel(service: session.filing, files: session.files)
+                let created = FilingAssemblyViewModel(
+                    service: session.filing, files: session.files, scope: scope)
                 model = created
-                await created.loadDrafts()
+                await created.start()
             }
         }
     }
@@ -61,10 +74,20 @@ private struct FilingAssemblyContent: View {
         return "The title \(annexure.mark) carries in the Index and List of Annexures."
     }
 
+    @ViewBuilder
+    private var header: some View {
+        if let chat = model.chat {
+            SerifHeader(title: FilingChatScope.title, subtitle: FilingChatScope.lead(for: chat.draftTitle))
+                .accessibilityIdentifier("filing-chat-header")
+        } else {
+            SerifHeader(title: "Filing Assembly", subtitle: FilingAssemblyViewModel.subtitle)
+        }
+    }
+
     var body: some View {
         List {
             Section {
-                SerifHeader(title: "Filing Assembly", subtitle: FilingAssemblyViewModel.subtitle)
+                header
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: Spacing.sm, leading: 0, bottom: 0, trailing: 0))
             }
@@ -76,7 +99,9 @@ private struct FilingAssemblyContent: View {
                         .listRowInsets(EdgeInsets())
                 }
             } else {
-                FilingDraftPicker(model: model)
+                if model.chat == nil {
+                    FilingDraftPicker(model: model)
+                }
                 if model.draft != nil {
                     FilingAnnexureSection(
                         model: model, isEditing: editMode.isEditing,
@@ -89,6 +114,9 @@ private struct FilingAssemblyContent: View {
                             renaming = annexure
                         },
                         onRemove: { removing = $0 })
+                    if model.chat != nil, !model.seedFiles.isEmpty {
+                        FilingSeedSection(model: model)
+                    }
                     FilingCoverSection(model: model)
                     if let outcome = model.outcome {
                         FilingResultView(

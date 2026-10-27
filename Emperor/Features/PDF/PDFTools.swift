@@ -165,6 +165,44 @@ enum PDFTools {
         return try write(output, named: name.hasSuffix(".pdf") ? name : "\(name).pdf")
     }
 
+    /// Joins documents held in memory, in the order given, pages copied as they are — the
+    /// filing-ready package's draft followed by each annexure's own pages. A document that
+    /// cannot be read is skipped; `nil` when nothing could be.
+    static func merge(documents: [Data]) -> Data? {
+        let output = PDFDocument()
+        var position = 0
+        for data in documents {
+            guard let source = PDFDocument(data: data) else { continue }
+            for index in 0..<source.pageCount {
+                guard let page = source.page(at: index) else { continue }
+                output.insert(page, at: position)
+                position += 1
+            }
+        }
+        guard position > 0 else { return nil }
+        return output.dataRepresentation()
+    }
+
+    /// One A4 page holding `image`, fitted inside the margins — a photographed annexure as a page
+    /// of the paperbook.
+    static func page(for image: UIImage) -> Data {
+        let paper = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
+        let box = paper.insetBy(dx: 36, dy: 36)
+        let size = image.size
+        let widthRatio: CGFloat = size.width > 0 ? box.width / size.width : 1
+        let heightRatio: CGFloat = size.height > 0 ? box.height / size.height : 1
+        let ratio: CGFloat = min(1, min(widthRatio, heightRatio))
+        let drawn = CGSize(width: size.width * ratio, height: size.height * ratio)
+        let origin = CGPoint(
+            x: box.midX - drawn.width / 2,
+            y: box.midY - drawn.height / 2)
+        let renderer = UIGraphicsPDFRenderer(bounds: paper)
+        return renderer.pdfData { context in
+            context.beginPage()
+            image.draw(in: CGRect(origin: origin, size: drawn))
+        }
+    }
+
     // MARK: - Plumbing
 
     private static func open(_ url: URL) throws -> PDFDocument {

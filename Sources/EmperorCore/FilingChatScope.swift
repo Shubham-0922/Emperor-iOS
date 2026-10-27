@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Darwin)
+import Observation
+#endif
 
 // Assembling a filing from the draft on screen in a conversation, rather than from a saved draft
 // picked from a list (`src/pages/FilingAssembly.jsx`, its inline mode). The rules here are the
@@ -21,6 +24,122 @@ extension FilingDraft {
     }
 }
 
+extension FilingAnnexure {
+    /// How a card under the draft names the annexure's form.
+    var cardForm: String { isTyped ? "typed copy" : "original" }
+
+    /// "same file as P-1" when this mark repeats an earlier one's file and pages.
+    var duplicateNote: String? {
+        guard let duplicateOf, !duplicateOf.isEmpty else { return nil }
+        return "same file as \(duplicateOf)"
+    }
+
+    /// "Annexure P-2 — Notice under Section 8".
+    var viewerTitle: String { "Annexure \(mark) — \(title)" }
+}
+
+/// The List of Annexures under a finished draft: the conversation's annexures, read once. A
+/// register that cannot be read shows nothing rather than an error, as on the web.
+#if canImport(Darwin)
+@Observable
+#endif
+@MainActor
+final class FilingAnnexureCardsModel {
+    static let title = "List of Annexures"
+    static let caption = "Attached annexures below will download along with the entire petition."
+
+    private(set) var rows: [FilingAnnexure] = []
+    private(set) var hasLoaded = false
+
+    private let service: any FilingProviding
+    let chatID: String
+
+    init(service: any FilingProviding, chatID: String) {
+        self.service = service
+        self.chatID = chatID
+    }
+
+    func load() async {
+        rows = (try? await service.annexures(chatID: chatID)) ?? []
+        hasLoaded = true
+    }
+}
+
+/// One annexure opened from its card: its typed copy, or its original — a PDF of its pages or
+/// an image — read only when it is opened.
+#if canImport(Darwin)
+@Observable
+#endif
+@MainActor
+final class FilingAnnexureViewerModel {
+    enum Content: Equatable {
+        case loading
+        case typed(String)
+        case message(String)
+        case pdf(Data)
+        case image(Data)
+        case unpreviewable
+    }
+
+    static let couldNotLoad = "Could not load this annexure."
+    static let unpreviewable =
+        "This file type can't be previewed here — use \"Assemble filing\" for the combined paperbook, or \"Download\" for the appended copy."
+
+    let annexure: FilingAnnexure
+    private(set) var content: Content = .loading
+
+    private let service: any FilingProviding
+    private let chatID: String
+
+    init(service: any FilingProviding, chatID: String, annexure: FilingAnnexure) {
+        self.service = service
+        self.chatID = chatID
+        self.annexure = annexure
+    }
+
+    var title: String { annexure.viewerTitle }
+
+    func load() async {
+        content = .loading
+        if annexure.isTyped {
+            content = await typedContent()
+        } else {
+            content = await originalContent()
+        }
+    }
+
+    private func typedContent() async -> Content {
+        do {
+            let copy = try await service.typedCopy(chatID: chatID, mark: annexure.mark)
+            if copy.skipped {
+                let reason = copy.reason ?? ""
+                return .message(reason.isEmpty ? Self.couldNotLoad : reason)
+            }
+            if let html = copy.html, !html.isEmpty { return .typed(html) }
+            return .message(Self.couldNotLoad)
+        } catch {
+            if case .server(_, let message)? = error as? APIError, !message.isEmpty {
+                return .message(message)
+            }
+            return .message(Self.couldNotLoad)
+        }
+    }
+
+    private func originalContent() async -> Content {
+        do {
+            let original = try await service.original(chatID: chatID, mark: annexure.mark)
+            if original.isPDF { return .pdf(original.data) }
+            if original.isImage { return .image(original.data) }
+            return .unpreviewable
+        } catch {
+            // Without a connection the file's kind is not the reason; anything the server
+            // refused is said as the page says it.
+            if case .transport? = error as? APIError { return .message(Self.couldNotLoad) }
+            return .unpreviewable
+        }
+    }
+}
+
 extension FilingChatContext {
     /// Bundles assembled from this conversation are listed under this draft id.
     var bundleKey: String { "chat:\(chatID)" }
@@ -38,6 +157,19 @@ enum FilingChatScope {
     }
 
     static let seedTitle = "Documents attached to this chat"
+
+    /// What filing needs from a drafted document in a conversation, or `nil` where it does not
+    /// apply: a table, or an answer not yet in a stored conversation. The draft is sent as HTML
+    /// and clean — a court filing carries no citation numbers.
+    static func context(
+        for artifact: StreamArtifact, chatID: String?, attachments: [ChatAttachment]
+    ) -> FilingChatContext? {
+        guard artifact.kind == .canvas, let chatID, !chatID.isEmpty else { return nil }
+        let clean = DraftCitations.withoutMarkers(artifact.body)
+        let html = artifact.format == .html ? clean : MarkdownHTML.html(from: clean)
+        return FilingChatContext(
+            chatID: chatID, draftTitle: artifact.title, draftHTML: html, attachments: attachments)
+    }
 
     // MARK: - Chat files
 

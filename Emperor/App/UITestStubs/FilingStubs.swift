@@ -10,7 +10,15 @@ import Foundation
 /// P-2, and `table_2` with none. Assembly succeeds for any forum the assembler reads, except that
 /// a case type of "Fail" answers as the server does when a source file is missing: a 200 with
 /// `success: false`. `-UITestEmpty` leaves no drafts.
+///
+/// The conversation `c1` has annexures of its own (13-F2): P-1 an original PDF, P-2 a typed copy
+/// awaiting its check, and P-9 a photograph whose kind cannot be previewed. Adding one of its
+/// files twice answers with the annexure it already is; assembling it needs the draft's HTML.
+/// Under `-UITestFilingChat`, `/messages` answers with an exchange whose answer carries a drafted
+/// writ petition and whose question carried two files, one of them already P-1.
 enum FilingStubs {
+
+    static var isChatOn: Bool { ProcessInfo.processInfo.arguments.contains("-UITestFilingChat") }
 
     private struct Row {
         var id: Int
@@ -23,9 +31,20 @@ enum FilingStubs {
         var pageFrom: Int?
         var pageTo: Int?
 
+        /// A conversation's own rows are held under `chat:<id>`, as its bundles are listed.
         var json: [String: Any] {
-            [
-                "id": id, "user_id": "1", "draft_id": draftID, "chat_id": NSNull(),
+            let chat: String? = draftID.hasPrefix("chat:") ? String(draftID.dropFirst(5)) : nil
+            let draft: Any
+            let chatValue: Any
+            if let chat {
+                draft = NSNull()
+                chatValue = chat
+            } else {
+                draft = draftID
+                chatValue = NSNull()
+            }
+            return [
+                "id": id, "user_id": "1", "draft_id": draft, "chat_id": chatValue,
                 "mark": mark, "title": title, "source_file_path": source,
                 "treatment": treatment, "sort_order": 0, "verify_status": verify,
                 "page_from": pageFrom.map { $0 as Any } ?? NSNull(),
@@ -50,7 +69,22 @@ enum FilingStubs {
                 Row(id: 2, draftID: "canvas_1", mark: "P-2", title: "Notice under Section 8",
                     source: "/storage/1/Bakshi/Orders/Interim_Order.pdf", treatment: "typed",
                     verify: "pending"),
+                Row(id: 101, draftID: "chat:c1", mark: "P-1", title: "Board resolution",
+                    source: "/storage/1/Bakshi/Plaint.pdf", treatment: "append", verify: "n/a"),
+                Row(id: 102, draftID: "chat:c1", mark: "P-2", title: "Notice under Section 8",
+                    source: "/storage/1/Bakshi/Notice.pdf", treatment: "typed", verify: "pending"),
+                Row(id: 103, draftID: "chat:c1", mark: "P-9", title: "Site photograph",
+                    source: "/storage/1/Bakshi/Site_Photo.heic", treatment: "append", verify: "n/a"),
             ]
+        }
+
+        /// One of a conversation's rows by its mark.
+        func row(chat: String, mark: String) -> Row? {
+            lock.withLock { rows.first { $0.draftID == "chat:\(chat)" && $0.mark == mark } }
+        }
+
+        func typedRows(chat: String) -> [Row] {
+            lock.withLock { rows.filter { $0.draftID == "chat:\(chat)" && $0.treatment == "typed" } }
         }
 
         func list(draftID: String) -> [[String: Any]] {
@@ -59,12 +93,18 @@ enum FilingStubs {
 
         func add(draftID: String, folder: String, fileName: String) -> [String: Any] {
             lock.withLock {
+                let path = folder == "." ? fileName : "\(folder)/\(fileName)"
+                // In a conversation the same file again answers with the annexure it already is.
+                let source = "/storage/1/\(path)"
+                if draftID.hasPrefix("chat:"),
+                   let existing = rows.first(where: { $0.draftID == draftID && $0.source == source }) {
+                    return existing.json
+                }
                 let taken = rows.filter { $0.draftID == draftID }
                     .compactMap { Int($0.mark.split(separator: "-").last ?? "") }
                 let mark = "P-\((taken.max() ?? 0) + 1)"
                 let title = (fileName as NSString).deletingPathExtension
                     .replacingOccurrences(of: "_", with: " ")
-                let path = folder == "." ? fileName : "\(folder)/\(fileName)"
                 let row = Row(
                     id: nextID, draftID: draftID, mark: mark, title: title,
                     source: "/storage/1/\(path)", treatment: "append", verify: "n/a")
@@ -153,19 +193,21 @@ enum FilingStubs {
     private static let store = Store()
 
     static func reply(_ request: URLRequest, _ path: String) -> StubReply? {
+        if let conversation = messages(path) { return conversation }
         guard path.hasPrefix("/filing/") else { return nil }
         let q = { (name: String) in UITestSupport.Fixtures.query(request, name) }
         switch (request.httpMethod ?? "GET", path) {
         case ("GET", "/filing/drafts"):
             return ok(["drafts": UITestSupport.isEmpty ? [] : drafts])
         case ("GET", "/filing/annexures"):
-            guard let draftID = q("draftId") ?? q("chatId") else {
+            guard let draftID = q("draftId") ?? q("chatId").map({ "chat:\($0)" }) else {
                 return failure("draftId or chatId required")
             }
             return ok(["annexures": store.list(draftID: draftID)])
         case ("POST", "/filing/annexures"):
             let body = UITestSupport.Fixtures.jsonBody(of: request) ?? [:]
-            guard let draftID = body["draftId"] as? String,
+            let chatKey: String? = (body["chatId"] as? String).map { "chat:\($0)" }
+            guard let draftID = (body["draftId"] as? String) ?? chatKey,
                   let folder = body["folderName"] as? String, !folder.isEmpty,
                   let fileName = body["fileName"] as? String
             else { return failure("missing folderName") }
@@ -197,6 +239,16 @@ enum FilingStubs {
                 return .json(#"{"success":false,"error":"bundle not found"}"#, status: 404)
             }
             return .bytes(Data(pdf.utf8), type: "application/pdf")
+        case ("GET", "/filing/annexures/typed-copy"):
+            return typedCopy(chat: q("chatId") ?? "", mark: q("mark") ?? "")
+        case ("GET", "/filing/annexures/original"), ("HEAD", "/filing/annexures/original"):
+            return original(chat: q("chatId") ?? "", mark: q("mark") ?? "")
+        case ("GET", "/filing/annexures/original-pages"):
+            return originalPages(chat: q("chatId") ?? "", mark: q("mark") ?? "")
+        case ("GET", "/filing/annexures/typed-copies"):
+            let typed = store.typedRows(chat: q("chatId") ?? "")
+            let html = typed.map { typedCopyHTML(mark: $0.mark, title: $0.title) }.joined()
+            return ok(["html": html, "marks": typed.map(\.mark)])
         case ("GET", "/filing/checklist"):
             guard let forum = q("forum"), let name = forumName(forum) else {
                 return failure("unknown forum")
@@ -210,10 +262,17 @@ enum FilingStubs {
     // MARK: - Assembly
 
     private static func assemble(_ body: [String: Any]) -> StubReply {
-        let draftID = body["draftId"] as? String ?? ""
+        let chatKey: String? = (body["chatId"] as? String).map { "chat:\($0)" }
+        let draftID = (body["draftId"] as? String) ?? chatKey ?? ""
         let cover = body["cover"] as? [String: Any] ?? [:]
         let forum = cover["forum"] as? String ?? ""
         guard !forum.isEmpty else { return failure("cover.forum is required") }
+        if body["draftId"] == nil {
+            let html = (body["draftHtml"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !html.isEmpty else {
+                return ok(["success": false, "errors": ["a draftId or non-empty draftHtml is required"], "warnings": [String]()])
+            }
+        }
         if (cover["caseType"] as? String) == "Fail" {
             let id = store.addBundle(draftID: draftID, status: "failed", pages: nil)
             return ok([
@@ -267,6 +326,77 @@ enum FilingStubs {
             "blockers": ["affidavit"],
             "attention": ["typed-verified"],
         ]
+    }
+
+    // MARK: - A conversation's annexures, one by one
+
+    private static func typedCopyHTML(mark: String, title: String) -> String {
+        "<div style=\"page-break-before:always\"></div><p style=\"text-align:center\"><strong><u>ANNEXURE \(mark)</u></strong></p>"
+            + "<p style=\"text-align:center\"><strong>TRUE TYPED COPY</strong></p><p>\(title). Take notice that the respondent is called upon to appear on the date fixed.</p>"
+    }
+
+    private static func typedCopy(chat: String, mark: String) -> StubReply {
+        guard let row = store.row(chat: chat, mark: mark) else { return failure("annexure not found") }
+        guard row.treatment == "typed" else {
+            return ok(["skipped": true, "reason": "Annexure \(mark) is attached as its original, not as a typed copy."])
+        }
+        return ok(["html": typedCopyHTML(mark: mark, title: row.title), "mark": mark])
+    }
+
+    private static func original(chat: String, mark: String) -> StubReply {
+        guard let row = store.row(chat: chat, mark: mark) else {
+            return .json(#"{"success":false,"error":"annexure not found"}"#, status: 404)
+        }
+        guard row.source.lowercased().hasSuffix(".pdf") else {
+            return .json(#"{"success":false,"error":"preview not available for .heic"}"#, status: 415)
+        }
+        return .bytes(Data(pdf.utf8), type: "application/pdf")
+    }
+
+    private static func originalPages(chat: String, mark: String) -> StubReply {
+        guard let row = store.row(chat: chat, mark: mark) else {
+            return .json(#"{"success":false,"error":"annexure not found"}"#, status: 404)
+        }
+        guard row.source.lowercased().hasSuffix(".pdf") else {
+            return .json(#"{"success":false,"error":"original-page rendering not available for .heic"}"#, status: 415)
+        }
+        return ok(["pages": [["base64": jpeg, "mime": "image/jpeg"]]])
+    }
+
+    /// A 1×1 grey JPEG.
+    private static let jpeg =
+        "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA="
+
+    // MARK: - The conversation with a draft (`-UITestFilingChat`)
+
+    /// `/messages` for the conversation whose answer carries a writ petition, or `nil`.
+    static func messages(_ path: String) -> StubReply? {
+        guard isChatOn, path == "/messages", !UITestSupport.isEmpty else { return nil }
+        let paragraphs: [String] = [
+            "<p style=\"text-align:center\"><strong>IN THE HIGH COURT OF DELHI AT NEW DELHI</strong></p>",
+            "<p style=\"text-align:center\">W.P.(C) No. 1234 of 2026</p>",
+            "<p style=\"text-align:center\">Anil Kumar Goel …Petitioner</p>",
+            "<p style=\"text-align:center\">versus</p>",
+            "<p style=\"text-align:center\">Union of India …Respondent</p>",
+            "<p>1. The petitioner is aggrieved by the Look Out Circular issued against him. A copy of the board resolution is annexed as Annexure P-1.</p>",
+            "<p>2. The notice under Section 8 is annexed as Annexure P-2.</p>",
+        ]
+        let draft: String = paragraphs.joined()
+        let lead = "Here is the writ petition.\n\n[CANVAS_TRIGGER: Writ Petition — Look Out Circular]\n"
+        let answer: String = lead + "<canvas_content>" + draft + "</canvas_content>"
+        let files: [[String: Any]] = [
+            ["name": "Plaint.pdf", "folderName": "Bakshi"],
+            ["name": "Reply_Affidavit.pdf", "folderName": "Bakshi"],
+        ]
+        let body: [String: Any] = [
+            "success": true,
+            "messages": [
+                ["id": "m1", "role": "user", "content": "Draft a writ petition against the Look Out Circular.",
+                 "attachments": files],
+                ["id": "m2", "role": "assistant", "content": answer],
+            ],
+        ]
+        return ok(body)
     }
 
     // MARK: - Fixtures

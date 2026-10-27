@@ -7,6 +7,37 @@ extension AccessibilityAuditTests {
     func testFilingAssemblyPassesTheAudit() { auditFiling(light: false) }
     func testFilingAssemblyPassesTheAuditInLight() { auditFiling(light: true) }
 
+    func testFilingFromAChatPassesTheAudit() { auditChatFiling(light: false) }
+    func testFilingFromAChatPassesTheAuditInLight() { auditChatFiling(light: true) }
+
+    /// The assembler opened on a conversation's draft, then one annexure in its viewer.
+    private func auditChatFiling(light: Bool) {
+        let app = light ? launch("-UITestFilingChat", "-UITestLight") : launch("-UITestFilingChat")
+        guard signIn(app) else { return }
+        let theme = light ? "light-" : ""
+        guard app.openFilingChatDraft() else {
+            XCTFail("could not reach the conversation's draft, so it was not audited")
+            return
+        }
+        guard app.openChatFiling() else {
+            XCTFail("Assemble filing did not open, so it was not audited")
+            return
+        }
+        let bar = app.navigationBars["Assemble court-ready filing"]
+        guard reached(app.filingElement("filing-annexure-101"), "the conversation's annexures") else { return }
+        audit(theme + "filing-chat", in: app, sheet: bar)
+        bar.buttons["Done"].tap()
+        _ = app.waitGone(bar)
+
+        guard app.openAnnexureCard("P-2") else {
+            XCTFail("the annexure viewer did not open, so it was not audited")
+            return
+        }
+        let viewer = app.navigationBars["Annexure P-2"]
+        guard reached(app.filingElement("filing-viewer-typed"), "the typed copy", timeout: 15) else { return }
+        audit(theme + "filing-viewer", in: app, sheet: viewer)
+    }
+
     private func auditFiling(light: Bool) {
         let app = light ? launch("-UITestLight") : launch()
         guard signIn(app) else { return }

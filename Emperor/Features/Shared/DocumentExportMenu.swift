@@ -21,6 +21,9 @@ struct DocumentExportMenu: View {
     /// Whether to ask, for each format, with or without the citation numbers — the Record
     /// draft's download menu. Offered only when the draft carries any.
     var offersCitationChoice = false
+    /// Makes the "Filing ready" package — the draft with its List of Annexures, typed copies and
+    /// originals — where the document can be filed. The caller shows its progress.
+    var filingReady: ((FilingReadyFormat) -> Void)? = nil
 
     /// The PDF being prepared or ready to share. Its `id` stays the same from "preparing" to
     /// "ready", so the one sheet changes its content rather than closing and opening again.
@@ -36,6 +39,13 @@ struct DocumentExportMenu: View {
 
     var body: some View {
         Menu {
+            if let filingReady {
+                Section("Filing ready") {
+                    ForEach(FilingReadyFormat.allCases) { format in
+                        filingReadyButton(format, action: filingReady)
+                    }
+                }
+            }
             if offersCitationChoice {
                 Section("Word") {
                     wordLink("Word · with citations", subtitle: "References listed at the end", citations: true)
@@ -62,6 +72,18 @@ struct DocumentExportMenu: View {
             exportSheet(job)
                 .presentationDetents([.medium, .large])
         }
+    }
+
+    private func filingReadyButton(
+        _ format: FilingReadyFormat, action: @escaping (FilingReadyFormat) -> Void
+    ) -> some View {
+        let symbol: String = format == .pdf ? "books.vertical" : "doc.text"
+        return Button {
+            action(format)
+        } label: {
+            Label(format.title, systemImage: symbol)
+        }
+        .accessibilityIdentifier("filing-ready-\(format.rawValue)")
     }
 
     private func pdfLink(_ label: String, citations: Bool) -> some View {
