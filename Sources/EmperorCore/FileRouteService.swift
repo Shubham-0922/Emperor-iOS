@@ -124,7 +124,7 @@ struct FileRouteService: FileRouteProviding {
     }
 
     func maintenance() async throws -> MaintenanceState {
-        let request = try await client.makeRequest("GET", "/maintenance", requiresAuth: false)
+        let request = try await client.makeRequest("GET", "/maintenance")
         return try await client.send(request, as: MaintenanceState.self)
     }
 

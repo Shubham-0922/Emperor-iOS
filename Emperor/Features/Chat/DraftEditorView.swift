@@ -114,7 +114,7 @@ struct DraftEditorView: View {
                     editor.couldNotRead()
                     return
                 }
-                edited = read
+                edited = (read == controller.baseline) ? editor.content : read
             } else {
                 edited = typed
             }
@@ -130,6 +130,9 @@ struct DraftEditorView: View {
 @MainActor
 final class EditableDocumentController {
     weak var webView: WKWebView?
+
+    /// The page as WebKit first serialised it; an unchanged read-back is not an edit.
+    var baseline: String?
 
     /// The wrapper's `innerHTML`, or `nil` when it could not be read.
     ///
@@ -161,7 +164,7 @@ struct EditableDocumentWebView: UIViewRepresentable {
     let html: String
     let controller: EditableDocumentController
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -190,6 +193,18 @@ struct EditableDocumentWebView: UIViewRepresentable {
     /// method is never called, and a link in the draft could navigate the view.
     @MainActor
     final class Coordinator: NSObject, WKNavigationDelegate {
+        let controller: EditableDocumentController
+
+        init(controller: EditableDocumentController) {
+            self.controller = controller
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            Task { @MainActor in
+                controller.baseline = await controller.currentHTML()
+            }
+        }
+
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
