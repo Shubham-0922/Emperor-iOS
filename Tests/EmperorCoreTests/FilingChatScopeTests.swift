@@ -70,6 +70,15 @@ final class FilingChatScopeTests: XCTestCase {
         XCTAssertNil(FilingChatScope.context(for: doc, chatID: "", attachments: files))
     }
 
+    func testAFileMentionNeverReachesTheFiling() {
+        let doc = StreamArtifact(
+            kind: .canvas, format: .markdown, title: "Writ",
+            body: "# Writ\n\nAs shown in the order <@file:P-2:3-4> the court held.")
+        let context = FilingChatScope.context(for: doc, chatID: "c1", attachments: [])
+        XCTAssertFalse(context?.draftHTML.contains("@file") ?? true, "a mention token is stripped before the draft is sent")
+        XCTAssertFalse(context?.draftHTML.contains("&lt;@") ?? true)
+    }
+
     func testTheLeadNamesTheDraft() {
         XCTAssertEqual(
             FilingChatScope.lead(for: "Writ Petition"),

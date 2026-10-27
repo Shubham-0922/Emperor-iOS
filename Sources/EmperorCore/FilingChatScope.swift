@@ -165,7 +165,7 @@ enum FilingChatScope {
         for artifact: StreamArtifact, chatID: String?, attachments: [ChatAttachment]
     ) -> FilingChatContext? {
         guard artifact.kind == .canvas, let chatID, !chatID.isEmpty else { return nil }
-        let clean = DraftCitations.withoutMarkers(artifact.body)
+        let clean = stripMentions(DraftCitations.withoutMarkers(artifact.body))
         let html = artifact.format == .html ? clean : MarkdownHTML.html(from: clean)
         return FilingChatContext(
             chatID: chatID, draftTitle: artifact.title, draftHTML: html, attachments: attachments)
