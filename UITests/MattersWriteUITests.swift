@@ -78,7 +78,7 @@ final class MattersWriteUITests: XCTestCase {
         let field = app.matterElement("delete-matter-name")
         app.type("Suvarnapatnam Infra", into: field)
         XCTAssertFalse(confirm.isEnabled, "a partial name was accepted")
-        field.typeText(" v. Ashwatth Builders")
+        app.type(" v. Ashwatth Builders", into: field)
         XCTAssertTrue(poll { confirm.isEnabled }, "the exact name was not accepted")
         confirm.tap()
 
@@ -202,10 +202,14 @@ extension XCUIApplication {
     }
 
     /// Focuses a field and types into it. The fields are in a matter form's sheet, so a field
-    /// out of sight is scrolled to inside the form (`revealInForm`).
+    /// out of sight is scrolled to inside the form (`revealInForm`). On iPad the form sheet can
+    /// still be settling when the tap lands, leaving nothing focused, so the field is tapped until
+    /// it holds the keyboard (`focusForTyping`) — and again before more is typed, if it let go.
     func type(_ text: String, into field: XCUIElement) {
         guard revealInForm(field) else { return }
-        field.tap()
+        if (field.value(forKey: "hasKeyboardFocus") as? Bool) != true {
+            field.focusForTyping()
+        }
         field.typeText(text)
     }
 

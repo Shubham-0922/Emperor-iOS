@@ -116,8 +116,15 @@ final class CloudUITests: XCTestCase {
 
         let toast = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@", "Imported 2 files")).firstMatch
-        XCTAssertTrue(toast.waitForExistence(timeout: 15), "no word that the files arrived")
-        XCTAssertFalse(run.exists, "the import sheet stayed open")
+        if !toast.waitForExistence(timeout: 15) {
+            // Say what was on screen instead: the sheet still up, or an alert over the folder.
+            let alert = app.alerts.firstMatch
+            let lines: [String] = alert.staticTexts.allElementsBoundByIndex.map { $0.label }
+            let alertWords: String = alert.exists ? lines.joined(separator: " / ") : "no alert"
+            XCTFail("no word that the files arrived (sheet open: \(run.exists), \(alertWords))")
+            return
+        }
+        XCTAssertTrue(app.waitGone(run), "the import sheet stayed open")
     }
 
     func testExportFile() {
