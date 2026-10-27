@@ -109,4 +109,68 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
     }
 
     func count(_ name: String) -> Int { calls.filter { $0 == name }.count }
+
+    // MARK: - A conversation's annexures
+
+    /// `"chatAdd"`, `"chatAssemble"`, `"typedCopy"`, `"original"`, `"originalPages"` and
+    /// `"typedCopies"` are the names `errors` takes for these; `"original:P-3"` and
+    /// `"originalPages:P-3"` fail one mark.
+    var typedCopyAnswer = FilingTypedCopy(html: "<p>typed</p>", skipped: false, reason: nil)
+    var originalAnswers: [String: FilingOriginal] = [:]
+    var pageAnswers: [String: FilingOriginalPages] = [:]
+    var typedCopiesHTML = ""
+
+    private var _chatAdds: [(chatID: String, folderName: String, fileName: String)] = []
+    private var _chatAssembles: [(chatID: String, html: String, title: String, cover: FilingCover)] = []
+
+    var chatAdds: [(chatID: String, folderName: String, fileName: String)] { lock.withLock { _chatAdds } }
+    var chatAssembles: [(chatID: String, html: String, title: String, cover: FilingCover)] {
+        lock.withLock { _chatAssembles }
+    }
+
+    private func recordMark(_ name: String, _ mark: String) throws {
+        try record(name)
+        if let error = errors["\(name):\(mark)"] { throw error }
+    }
+
+    func addAnnexure(chatID: String, folderName: String, fileName: String) async throws -> FilingAnnexure {
+        lock.withLock { _chatAdds.append((chatID, folderName, fileName)) }
+        try record("chatAdd")
+        let next = (rows.compactMap { FilingMarks.parse($0.mark).number }.max() ?? 0) + 1
+        let row = FilingAnnexure(
+            id: (rows.map(\.id).max() ?? 0) + 1, chatID: chatID, mark: "P-\(next)",
+            title: fileName, sourceFilePath: "/data/\(folderName)/\(fileName)")
+        rows.append(row)
+        return row
+    }
+
+    func assemble(chatID: String, html: String, title: String, cover: FilingCover) async throws -> FilingAssemblyResult {
+        lock.withLock { _chatAssembles.append((chatID, html, title, cover)) }
+        bundleList.append(contentsOf: bundlesMadeByAssemble)
+        try record("chatAssemble")
+        return assembleAnswer
+    }
+
+    func typedCopy(chatID: String, mark: String) async throws -> FilingTypedCopy {
+        try recordMark("typedCopy", mark)
+        return typedCopyAnswer
+    }
+
+    func original(chatID: String, mark: String) async throws -> FilingOriginal {
+        try recordMark("original", mark)
+        guard let answer = originalAnswers[mark] else {
+            throw APIError.server(status: 404, message: "annexure not found")
+        }
+        return answer
+    }
+
+    func originalPages(chatID: String, mark: String) async throws -> FilingOriginalPages {
+        try recordMark("originalPages", mark)
+        return pageAnswers[mark] ?? FilingOriginalPages(success: false, error: "annexure not found")
+    }
+
+    func typedCopies(chatID: String) async throws -> String {
+        try record("typedCopies")
+        return typedCopiesHTML
+    }
 }

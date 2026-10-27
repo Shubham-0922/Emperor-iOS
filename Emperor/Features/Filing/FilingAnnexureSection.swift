@@ -41,9 +41,9 @@ struct FilingAnnexureSection: View {
             .accessibilityIdentifier("filing-add-annexure")
         } header: {
             HStack(alignment: .firstTextBaseline) {
-                SectionHeader(title: "2 · Annexures")
+                SectionHeader(title: "\(model.annexuresStep) · Annexures")
                 Spacer(minLength: Spacing.sm)
-                if model.annexures.count > 1 {
+                if model.canReorder, model.annexures.count > 1 {
                     Button(isEditing ? "Done reordering" : "Reorder", action: onToggleEditing)
                         .font(.brand(.footnote, weight: .semibold))
                         .foregroundStyle(theme.accentText)
@@ -53,6 +53,15 @@ struct FilingAnnexureSection: View {
             }
         } footer: {
             Text(FilingAssemblyViewModel.annexuresHint)
+        }
+    }
+
+    /// Dragging into order, where the order can be changed.
+    private var moveAction: ((IndexSet, Int) -> Void)? {
+        guard model.canReorder else { return nil }
+        let model = self.model
+        return { source, destination in
+            Task { await model.move(fromOffsets: source, toOffset: destination) }
         }
     }
 
@@ -100,9 +109,7 @@ struct FilingAnnexureSection: View {
             ForEach(model.annexures) { annexure in
                 row(annexure)
             }
-            .onMove { source, destination in
-                Task { await model.move(fromOffsets: source, toOffset: destination) }
-            }
+            .onMove(perform: moveAction)
         }
     }
 
@@ -182,18 +189,20 @@ struct FilingAnnexureSection: View {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
-            Button {
-                Task { await model.moveUp(annexure) }
-            } label: {
-                Label("Move up", systemImage: "arrow.up")
+            if model.canReorder {
+                Button {
+                    Task { await model.moveUp(annexure) }
+                } label: {
+                    Label("Move up", systemImage: "arrow.up")
+                }
+                .disabled(isFirst)
+                Button {
+                    Task { await model.moveDown(annexure) }
+                } label: {
+                    Label("Move down", systemImage: "arrow.down")
+                }
+                .disabled(isLast)
             }
-            .disabled(isFirst)
-            Button {
-                Task { await model.moveDown(annexure) }
-            } label: {
-                Label("Move down", systemImage: "arrow.down")
-            }
-            .disabled(isLast)
             Button(role: .destructive) {
                 onRemove(annexure)
             } label: {

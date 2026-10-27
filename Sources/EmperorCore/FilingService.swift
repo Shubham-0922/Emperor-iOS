@@ -16,6 +16,41 @@ protocol FilingProviding: Sendable {
     func bundles(draftID: String?) async throws -> [FilingBundle]
     func bundlePDF(id: Int) async throws -> Data
     func checklist(draftID: String, forum: String) async throws -> FilingChecklist
+
+    // A conversation's own annexures — the draft on screen in a chat rather than a saved one.
+    func addAnnexure(chatID: String, folderName: String, fileName: String) async throws -> FilingAnnexure
+    func assemble(chatID: String, html: String, title: String, cover: FilingCover) async throws -> FilingAssemblyResult
+    func typedCopy(chatID: String, mark: String) async throws -> FilingTypedCopy
+    func original(chatID: String, mark: String) async throws -> FilingOriginal
+    func originalPages(chatID: String, mark: String) async throws -> FilingOriginalPages
+    func typedCopies(chatID: String) async throws -> String
+}
+
+extension FilingProviding {
+    /// A conversation's annexures: the ones its draft cited, and any added to it.
+    func annexures(chatID: String) async throws -> [FilingAnnexure] {
+        try await annexures(draftID: nil, chatID: chatID)
+    }
+
+    // Defaults, so a stand-in written before these existed still conforms.
+    func addAnnexure(chatID: String, folderName: String, fileName: String) async throws -> FilingAnnexure {
+        throw FilingService.unavailable
+    }
+    func assemble(chatID: String, html: String, title: String, cover: FilingCover) async throws -> FilingAssemblyResult {
+        throw FilingService.unavailable
+    }
+    func typedCopy(chatID: String, mark: String) async throws -> FilingTypedCopy {
+        throw FilingService.unavailable
+    }
+    func original(chatID: String, mark: String) async throws -> FilingOriginal {
+        throw FilingService.unavailable
+    }
+    func originalPages(chatID: String, mark: String) async throws -> FilingOriginalPages {
+        throw FilingService.unavailable
+    }
+    func typedCopies(chatID: String) async throws -> String {
+        throw FilingService.unavailable
+    }
 }
 
 /// Filing assembly (`/filing/*`): drafts, their annexures, the assembler and its bundles.
@@ -126,6 +161,22 @@ struct FilingService: FilingProviding {
         let options: Options
     }
 
+    private struct ChatAddBody: Encodable {
+        let userId: String
+        let chatId: String
+        let folderName: String
+        let fileName: String
+    }
+
+    private struct ChatAssembleBody: Encodable {
+        let userId: String
+        let chatId: String
+        let draftHtml: String
+        let draftTitle: String
+        let cover: FilingCover
+        let options: AssembleBody.Options
+    }
+
     private func userID() async throws -> String {
         guard let credentials = await client.currentCredentials() else {
             throw APIError.notAuthenticated
@@ -187,6 +238,19 @@ struct FilingService: FilingProviding {
         let body = AssembleBody(
             userId: try await userID(), draftId: draftID, cover: cover,
             options: .init(numbering: "arabic"))
+        return try await runAssembly(body)
+    }
+
+    /// Assembles the draft as it stands in the conversation, with the conversation's annexures.
+    /// Once, never retried, as above; the bundle is listed under `chat:<id>`.
+    func assemble(chatID: String, html: String, title: String, cover: FilingCover) async throws -> FilingAssemblyResult {
+        let body = ChatAssembleBody(
+            userId: try await userID(), chatId: chatID, draftHtml: html, draftTitle: title,
+            cover: cover, options: .init(numbering: "arabic"))
+        return try await runAssembly(body)
+    }
+
+    private func runAssembly(_ body: some Encodable & Sendable) async throws -> FilingAssemblyResult {
         let request = try await client.makeRequest("POST", "/filing/assemble", body: body)
         let (data, response) = try await client.perform(request)
         let status = response.statusCode
@@ -205,4 +269,78 @@ struct FilingService: FilingProviding {
             throw APIError.decoding(String(describing: error))
         }
     }
+
+    // MARK: - A conversation's annexures
+
+    /// Registers a file the conversation carries as its next annexure. The same file twice
+    /// answers with the annexure it already is.
+    func addAnnexure(chatID: String, folderName: String, fileName: String) async throws -> FilingAnnexure {
+        let body = ChatAddBody(
+            userId: try await userID(), chatId: chatID,
+            folderName: folderName.isEmpty ? "." : folderName, fileName: fileName)
+        let request = try await client.makeRequest("POST", "/filing/annexures", body: body)
+        let response = try await client.send(request, as: FilingAnnexureResponse.self)
+        try CaseService.throwIfUnsuccessful(success: response.success, error: response.error)
+        guard let annexure = response.annexure else {
+            throw APIError.server(status: 200, message: "Could not add annexure")
+        }
+        return annexure
+    }
+
+    /// One annexure's typed true copy, or why there is none (an original is not typed).
+    func typedCopy(chatID: String, mark: String) async throws -> FilingTypedCopy {
+        let response = try await withRetry {
+            let request = try await client.makeRequest(
+                "GET", "/filing/annexures/typed-copy", query: ["chatId": chatID, "mark": mark])
+            return try await client.send(request, as: FilingTypedCopyResponse.self)
+        }
+        try CaseService.throwIfUnsuccessful(success: response.success, error: response.error)
+        if response.skipped == true {
+            return FilingTypedCopy(html: nil, skipped: true, reason: response.reason)
+        }
+        return FilingTypedCopy(html: response.html, skipped: false, reason: nil)
+    }
+
+    /// The original file behind an annexure — its cited pages of a PDF, or the image. A kind of
+    /// file that cannot be shown is `FilingPreviewError.unpreviewable`.
+    func original(chatID: String, mark: String) async throws -> FilingOriginal {
+        let request = try await client.makeRequest(
+            "GET", "/filing/annexures/original", query: ["chatId": chatID, "mark": mark])
+        let (data, response) = try await client.perform(request)
+        let status = response.statusCode
+        if status == 415 { throw FilingPreviewError.unpreviewable }
+        guard (200..<300).contains(status) else {
+            throw APIError.classify(status: status, body: data)
+        }
+        let header = response.value(forHTTPHeaderField: "Content-Type") ?? ""
+        return FilingOriginal(data: data, mime: FilingOriginal.mime(fromContentType: header))
+    }
+
+    /// Every page of an annexure's original as an image — or, for a mark that repeats an
+    /// earlier one, which mark it repeats. Read whatever the status, as the page reads it: a
+    /// failure carries the sentence to show in place of the pages.
+    func originalPages(chatID: String, mark: String) async throws -> FilingOriginalPages {
+        let request = try await client.makeRequest(
+            "GET", "/filing/annexures/original-pages", query: ["chatId": chatID, "mark": mark])
+        let (data, response) = try await client.perform(request)
+        if let pages = try? JSONDecoder().decode(FilingOriginalPages.self, from: data) {
+            return pages
+        }
+        throw APIError.classify(status: response.statusCode, body: data)
+    }
+
+    /// The typed copies of every typed annexure in the conversation, as one piece of HTML; empty
+    /// when there are none.
+    func typedCopies(chatID: String) async throws -> String {
+        let response = try await withRetry {
+            let request = try await client.makeRequest(
+                "GET", "/filing/annexures/typed-copies", query: ["chatId": chatID])
+            return try await client.send(request, as: FilingTypedCopiesResponse.self)
+        }
+        try CaseService.throwIfUnsuccessful(success: response.success, error: response.error)
+        return response.html ?? ""
+    }
+
+    /// What a stand-in without a conversation's routes answers.
+    static let unavailable = APIError.server(status: 404, message: "not found")
 }

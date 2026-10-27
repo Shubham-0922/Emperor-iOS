@@ -166,6 +166,7 @@ struct DraftReaderView: View {
 
     @State private var editor: DraftEditorModel?
     @State private var toast: String?
+    @State private var isAssemblingFiling = false
 
     private var isHTML: Bool { draft.format == .html }
 
@@ -192,6 +193,10 @@ struct DraftReaderView: View {
                                     .accessibilityIdentifier("draft-edit")
                                     .accessibilityHint("Edit this draft and save it over the one in your drafts")
                             }
+                            Button("Assemble filing", systemImage: "books.vertical") {
+                                isAssemblingFiling = true
+                            }
+                            .accessibilityIdentifier("draft-assemble-filing")
                             DocumentExportMenu(
                                 content: draft.content,
                                 isHTML: isHTML,
@@ -200,6 +205,9 @@ struct DraftReaderView: View {
                     }
                 }
                 .recordToast($toast)
+                .sheet(isPresented: $isAssemblingFiling) {
+                    FilingAssemblyScreen(scope: .draft(FilingDraft(draft.item)))
+                }
         }
     }
 

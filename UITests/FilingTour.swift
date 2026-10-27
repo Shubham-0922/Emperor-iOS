@@ -13,6 +13,36 @@ final class FilingTour: XCTestCase {
     func testFilingAssemblyDark() { tour(light: false) }
     func testFilingAssemblyLight() { tour(light: true) }
 
+    func testFilingFromAChatDark() { chatTour(light: false) }
+    func testFilingFromAChatLight() { chatTour(light: true) }
+
+    /// A drafted document in a conversation: the draft with its List of Annexures, the assembler
+    /// opened on it, and one annexure opened from its card.
+    private func chatTour(light: Bool) {
+        let app = XCUIApplication.launchedSignedIn(["-UITestFilingChat"], light: light)
+        let theme = light ? "light" : "dark"
+        var step = 0
+        guard app.openFilingChatDraft() else { return }
+        let cards = app.buttons["filing-annexure-card-P-1"].firstMatch
+        _ = app.waitAndReveal(cards, timeout: 10)
+        tourSnap(app, theme: theme, step: &step, "filing-chat-draft")
+
+        guard app.openChatFiling() else { return }
+        _ = app.filingElement("filing-annexure-101").waitForExistence(timeout: 10)
+        tourSnap(app, theme: theme, step: &step, "filing-chat-screen")
+        let seed = app.buttons["filing-seed-Reply_Affidavit.pdf"].firstMatch
+        if app.waitAndReveal(seed, timeout: 5) {
+            tourSnap(app, theme: theme, step: &step, "filing-chat-seed")
+        }
+        let bar = app.navigationBars["Assemble court-ready filing"]
+        bar.buttons["Done"].tap()
+        _ = app.waitGone(bar)
+
+        guard app.openAnnexureCard("P-2") else { return }
+        _ = app.filingElement("filing-viewer-typed").waitForExistence(timeout: 10)
+        tourSnap(app, theme: theme, step: &step, "filing-chat-viewer")
+    }
+
     private func tour(light: Bool) {
         let app = XCUIApplication.launchedSignedIn([], light: light)
         let theme = light ? "light" : "dark"

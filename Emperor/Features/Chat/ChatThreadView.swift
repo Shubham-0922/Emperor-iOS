@@ -168,6 +168,9 @@ struct ChatThreadView: View {
             openCited(reference, in: model)
         }
 
+        // The files the conversation has carried, for filing a draft from it.
+        let filingFiles = FilingChatScope.attachments(in: model.messages)
+
         return VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -194,7 +197,8 @@ struct ChatThreadView: View {
                                 followUps: followUps(after: message, in: model),
                                 onFollowUp: { question in send(question, in: model) },
                                 onCopied: { toast = "Copied with its sources" },
-                                projectID: model.projectID)
+                                projectID: model.projectID,
+                                filingFiles: filingFiles)
                                 .id(message.stableID)
                                 .transition(Motion.rise(reduceMotion: reduceMotion))
                         }
@@ -769,6 +773,8 @@ private struct MessageBubble: View {
     var onCopied: () -> Void = {}
     /// The matter the conversation belongs to, for checking its citations there.
     var projectID: String?
+    /// The files the conversation has carried, offered when a draft in it is filed.
+    var filingFiles: [ChatAttachment] = []
 
     @State private var isReporting = false
     @State private var sharing: SharedAnswer?
@@ -881,7 +887,9 @@ private struct MessageBubble: View {
         AnswerView(
             content: StreamContent.parse(message.content),
             isStreaming: false,
-            onSelectCitation: onSelectCitation)
+            onSelectCitation: onSelectCitation,
+            filingChatID: chatID,
+            filingFiles: filingFiles)
             // On the answer only. Reporting your own question would file a complaint about
             // something the model did not write.
             .contextMenu {
@@ -983,6 +991,9 @@ private struct AnswerView: View {
     let content: StreamContent
     let isStreaming: Bool
     var onSelectCitation: (AnnexureMention) -> Void = { _ in }
+    /// The stored conversation a finished answer belongs to, so a draft in it can be filed.
+    var filingChatID: String?
+    var filingFiles: [ChatAttachment] = []
     @State private var openArtifact: StreamArtifact?
 
     var body: some View {
@@ -1006,6 +1017,7 @@ private struct AnswerView: View {
                     ArtifactCard(artifact: artifact)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("artifact-card")
             }
 
             ForEach(content.errors, id: \.self) { error in
@@ -1024,7 +1036,10 @@ private struct AnswerView: View {
         // fraction of the display, which is the wrong shape for reading a pleading —
         // and the one device where there is most room to give it.
         .fullScreenCover(item: $openArtifact) { artifact in
-            ArtifactDetailView(artifact: artifact)
+            ArtifactDetailView(
+                artifact: artifact,
+                filing: FilingChatScope.context(
+                    for: artifact, chatID: filingChatID, attachments: filingFiles))
         }
     }
 }

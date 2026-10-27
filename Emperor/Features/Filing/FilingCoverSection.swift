@@ -60,7 +60,7 @@ struct FilingCoverSection: View {
             }
             .padding(.vertical, Spacing.xs)
         } header: {
-            SectionHeader(title: "3 · Cover page details")
+            SectionHeader(title: "\(model.coverStep) · Cover page details")
         } footer: {
             Text(FilingAssemblyViewModel.coverHint)
         }

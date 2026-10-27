@@ -11,14 +11,48 @@ import WebKit
 /// account on this device (`DraftCitationsPreference`); a draft without any has no eye. Hiding is
 /// a display choice — the stored draft is never rewritten — and the download menu asks again,
 /// for Word and for PDF, whether to carry them.
+///
+/// A drafted document in a stored conversation (`filing`) can also be filed from here, as on the
+/// web: "Assemble filing" in the bar, "Filing ready" in the download menu, and the List of
+/// Annexures its conversation cites under the page.
 struct ArtifactDetailView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
     let artifact: StreamArtifact
+    /// The conversation the draft belongs to, when it can be filed.
+    var filing: FilingChatContext? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var showsCitations = true
+    @State private var isAssemblingFiling = false
+    @State private var filingReady: FilingReadyExportModel?
     private let preferences = Preferences()
+
+    /// Filing applies to a drafted document, not a table.
+    private var filingContext: FilingChatContext? {
+        artifact.kind == .canvas ? filing : nil
+    }
+
+    private var filingReadyAction: ((FilingReadyFormat) -> Void)? {
+        guard filingContext != nil else { return nil }
+        return { format in startFilingReady(format) }
+    }
+
+    private func startFilingReady(_ format: FilingReadyFormat) {
+        guard let context = filingContext else { return }
+        let model: FilingReadyExportModel
+        if let existing = filingReady {
+            model = existing
+        } else {
+            model = FilingReadyExportModel(service: session.filing, context: context)
+            filingReady = model
+        }
+        Task { @MainActor in
+            await model.run(format) { package in
+                await FilingReadyRenderer.file(for: package)
+            }
+        }
+    }
 
     private var hasCitations: Bool { DraftCitations.hasMarkers(artifact.body) }
 
@@ -48,6 +82,12 @@ struct ArtifactDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, Spacing.lg)
 
+                if let context = filingContext {
+                    FilingAnnexureCards(chatID: context.chatID)
+                        .padding(.horizontal, 14)
+                        .padding(.top, Spacing.md)
+                }
+
                 if hasCitations {
                     Text(showsCitations
                          ? "Citation numbers point to the references in the answer."
@@ -60,6 +100,16 @@ struct ArtifactDetailView: View {
                 }
             }
             .background(theme.surface2.ignoresSafeArea())
+            .overlay(alignment: .bottom) {
+                if let filingReady {
+                    FilingReadyExportView(model: filingReady)
+                }
+            }
+            .sheet(isPresented: $isAssemblingFiling) {
+                if let context = filingContext {
+                    FilingAssemblyScreen(scope: .chat(context))
+                }
+            }
             .navigationTitle(artifact.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -78,13 +128,20 @@ struct ArtifactDetailView: View {
                         }
                         .accessibilityLabel(showsCitations ? "Hide citations" : "Show citations")
                     }
+                    if filingContext != nil {
+                        Button("Assemble filing", systemImage: "books.vertical") {
+                            isAssemblingFiling = true
+                        }
+                        .accessibilityIdentifier("artifact-assemble-filing")
+                    }
                     // Was a share of the raw body, which handed over markup rather than a
                     // document. A drafted pleading is something an advocate files.
                     DocumentExportMenu(
                         content: artifact.body,
                         isHTML: artifact.format == .html,
                         title: artifact.title,
-                        offersCitationChoice: hasCitations)
+                        offersCitationChoice: hasCitations,
+                        filingReady: filingReadyAction)
                 }
             }
             .onAppear {
