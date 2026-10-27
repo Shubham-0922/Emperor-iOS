@@ -156,8 +156,11 @@ Under Certificates, Identifiers & Profiles:
 - an **Apple Distribution** certificate — download the `.cer`, add it to Keychain Access on a
   Mac, then export it as a **`.p12`** with a password. The `.p12` is the certificate *and* its
   private key; the `.cer` alone cannot sign.
-- an **App Store** provisioning profile for `com.emperorailabs.emperor`, tied to that
-  certificate. Download the `.mobileprovision`.
+- two **App Store** provisioning profiles tied to that certificate, one for
+  `com.emperorailabs.emperor` named **Emperor App Store** and one for the Today widget,
+  `com.emperorailabs.emperor.widget`, named **Emperor Widget App Store**. Both App IDs need the
+  App Groups capability with `group.com.emperorailabs.emperor` assigned before the profiles are
+  made. `testflight.yml` signs by those two names.
 
 > Creating a distribution certificate needs a Mac once, for the Keychain export. If you have no
 > Mac at all, generate the certificate signing request with OpenSSL instead — Apple accepts a
@@ -180,6 +183,7 @@ so they survive as text:
 ```bash
 base64 -w0 Certificates.p12          # → APPLE_DIST_CERT_P12
 base64 -w0 Emperor.mobileprovision    # → APPLE_PROVISIONING_PROFILE
+base64 -w0 EmperorWidget.mobileprovision  # → APPLE_WIDGET_PROVISIONING_PROFILE
 base64 -w0 AuthKey_XXXXXXXXXX.p8     # → APP_STORE_CONNECT_KEY
 ```
 
@@ -187,25 +191,27 @@ base64 -w0 AuthKey_XXXXXXXXXX.p8     # → APP_STORE_CONNECT_KEY
 |---|---|
 | `APPLE_DIST_CERT_P12` | base64 of the `.p12` |
 | `APPLE_DIST_CERT_PASSWORD` | the password you set exporting it |
-| `APPLE_PROVISIONING_PROFILE` | base64 of the `.mobileprovision` |
+| `APPLE_PROVISIONING_PROFILE` | base64 of the app's `.mobileprovision` |
+| `APPLE_WIDGET_PROVISIONING_PROFILE` | base64 of the widget's `.mobileprovision` |
 | `APPLE_TEAM_ID` | 10 characters, top-right of the developer portal |
 | `APP_STORE_CONNECT_KEY_ID` | the key's ID |
 | `APP_STORE_CONNECT_ISSUER_ID` | the issuer UUID on the same page |
 | `APP_STORE_CONNECT_KEY` | base64 of the `.p8` |
 
-Until `APPLE_DIST_CERT_P12` and `APP_STORE_CONNECT_KEY` both exist, the `testflight` job checks,
-prints a notice and stops. The rest of CI stays green.
+The signing secrets are required; without the three `APP_STORE_CONNECT_*` secrets the workflow
+still builds and keeps the signed `.ipa` as an artifact and skips only the upload.
 
 ### 5. Ship
 
-The job only runs from `main`, and only on a tag or a deliberate run — so a push to a feature
-branch cannot burn a build number.
+`.github/workflows/testflight.yml`, separate from CI so a release does not wait behind the
+simulator suites. It runs on a `v*` tag, a push to a `release/**` branch, or a deliberate run;
+the build number is the workflow's run number.
 
 ```bash
 git tag v0.1.0 && git push github v0.1.0
 ```
 
-or Actions → CI → **Run workflow**. Processing at Apple's end takes 5–15 minutes, then invite
+or Actions → TestFlight → **Run workflow**. Processing at Apple's end takes 5–15 minutes, then invite
 testers in App Store Connect → TestFlight.
 
 ---
