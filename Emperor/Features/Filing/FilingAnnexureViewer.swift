@@ -60,8 +60,11 @@ struct FilingAnnexureViewer: View {
             .accessibilityElement(children: .combine)
         case .typed(let html):
             // Model-authored and register-built HTML: shown with scripts off, as every draft is.
+            // A container of its own carries the identifier: a web view answers for its page's
+            // elements, not for itself.
             DocumentWebView(html: html)
                 .background(theme.paper)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("filing-viewer-typed")
         case .message(let text):
             EmptyStateView("Nothing to show", systemImage: "doc.text", message: text, tone: .warning)

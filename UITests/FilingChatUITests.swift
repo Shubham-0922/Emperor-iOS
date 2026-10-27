@@ -78,7 +78,7 @@ final class FilingChatUITests: XCTestCase {
 
         XCTAssertTrue(app.assembleFiling(), "Assemble did not become available")
         let ok = app.filingElement("filing-result-ok")
-        XCTAssertTrue(ok.waitForExistence(timeout: 20), "no assembled bundle")
+        XCTAssertTrue(app.waitForFilingResult(ok), "no assembled bundle")
         XCTAssertTrue(poll { ok.label.contains("42 pages") }, "title: \(ok.label)")
     }
 
@@ -93,10 +93,18 @@ final class FilingChatUITests: XCTestCase {
             app.buttons["filing-seed-Plaint.pdf"].exists, "a file already an annexure was offered")
         seed.tap()
 
+        // The new row lands above the chips, on screen: waited for without scrolling, as a swipe
+        // down on a sheet already at its top would close it. A tap the sheet swallowed is given
+        // once more — the same file again answers with the annexure it already is, so it cannot
+        // add a second one (checked below).
         let added = app.filingElement("filing-annexure-3")
+        if !added.waitForExistence(timeout: 8), seed.exists, seed.isHittable, seed.isEnabled {
+            seed.tap()
+        }
         XCTAssertTrue(app.waitAndReveal(added, timeout: 15), "the file did not become an annexure")
         XCTAssertTrue(poll { added.label.contains("P-10") }, "label: \(added.label)")
         XCTAssertTrue(app.waitGone(seed), "the file was still offered once added")
+        XCTAssertFalse(app.filingElement("filing-annexure-4").exists, "the file was added twice")
     }
 
     func testAnnexureViewerTypedAndOriginal() {

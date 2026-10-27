@@ -85,6 +85,18 @@ private struct FilingAssemblyContent: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
+            list
+                .onChange(of: model.outcome) {
+                    // The result is drawn below Assemble; brought on screen so a run that
+                    // failed is not left out of sight.
+                    guard model.outcome != nil else { return }
+                    withAnimation { proxy.scrollTo(FilingResultView.anchor, anchor: .top) }
+                }
+        }
+    }
+
+    private var list: some View {
         List {
             Section {
                 header
