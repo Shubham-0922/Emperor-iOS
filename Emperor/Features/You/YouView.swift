@@ -90,6 +90,8 @@ struct YouView: View {
                 }
                 .listRowBackground(theme.surface)
 
+                CloudConnectionsSection()
+
                 ToolsSections(destination: $tool)
 
                 AppLockSettingsSection()

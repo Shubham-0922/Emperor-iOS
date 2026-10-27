@@ -117,6 +117,7 @@ private struct LibraryScreen: View {
     @Environment(\.navigator) private var navigator
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
 
     let model: MyFilesViewModel
     /// `""` for the top level.
@@ -154,6 +155,14 @@ private struct LibraryScreen: View {
     @State private var uploadError: String?
     /// This month's allowances, for the storage meter at the head of the library.
     @State private var usage: AccountUsageViewModel?
+    /// Which cloud drives are set up and connected: whether Add offers an import, and which
+    /// "Save to" a document's menu offers.
+    @State private var cloud: CloudConnectionsModel?
+    @State private var cloudExport: CloudExportModel?
+    @State private var isImportingFromCloud = false
+    /// What the import did, applied once its sheet has gone so the toast and any alert are not
+    /// drawn under it.
+    @State private var cloudSummary: CloudImportSummary?
 
     /// `FileNode.StoredFile` has no identity of its own, and inventing one for a wire type would
     /// be worse than wrapping it.
@@ -202,7 +211,7 @@ private struct LibraryScreen: View {
     }
 
     var body: some View {
-        alerts(presentations(chrome(content)))
+        cloudPresentations(alerts(presentations(chrome(content))))
     }
 
     /// Split into three so no single expression carries every modifier: a chain this long is
@@ -805,6 +814,7 @@ private struct LibraryScreen: View {
                     systemImage: file.favorite == true ? "star.slash" : "star")
             }
             offlineAction(file)
+            cloudSaveActions(file)
             if file.name.lowercased().hasSuffix(".pdf") {
                 Button {
                     Task { await model.prepareSearchableCopy(file) }
@@ -898,6 +908,14 @@ private struct LibraryScreen: View {
                     }
                 }
             }
+            if cloud?.anyConfigured == true {
+                Button {
+                    isImportingFromCloud = true
+                } label: {
+                    Label(cloudImportTitle, systemImage: "icloud.and.arrow.down")
+                }
+                .accessibilityIdentifier("cloud-import")
+            }
             Button {
                 isNamingFolder = true
             } label: {
@@ -944,6 +962,83 @@ private struct LibraryScreen: View {
         }
         guard !converted.documents.isEmpty else { return }
         await add(converted.documents)
+    }
+
+    // MARK: - Cloud drives
+
+    /// "From Google Drive", or "From OneDrive" when that is the drive the import opens on.
+    private var cloudImportTitle: String {
+        let provider = CloudImportModel.defaultProvider(cloud?.connections ?? [:])
+        return "From \(provider.label)"
+    }
+
+    /// "Save to Google Drive" and "Save to OneDrive", for each drive that is connected.
+    @ViewBuilder
+    private func cloudSaveActions(_ file: FileNode.StoredFile) -> some View {
+        let providers: [CloudProvider] = cloud?.connectedProviders ?? []
+        ForEach(providers, id: \.self) { provider in
+            Button {
+                Task { await cloudExport?.export(path: file.path, to: provider) }
+            } label: {
+                Label("Save to \(provider.label)", systemImage: "square.and.arrow.up.on.square")
+            }
+        }
+    }
+
+    private func cloudPresentations<V: View>(_ view: V) -> some View {
+        view
+            .task {
+                if cloud == nil { cloud = CloudConnectionsModel(service: session.cloud) }
+                if cloudExport == nil { cloudExport = CloudExportModel(service: session.cloud) }
+                await cloud?.load()
+            }
+            .sheet(isPresented: $isImportingFromCloud, onDismiss: applyCloudSummary) {
+                CloudImportSheet(
+                    destination: isRoot ? nil : path,
+                    folders: FileBrowser.allFolders(in: model.tree),
+                    onFinished: { cloudSummary = $0 })
+                    .pageSizedSheet()
+            }
+            .alert(cloudExportTitle, isPresented: cloudExportShown) {
+                if let url = cloudExport?.exported?.url {
+                    Button("Open") {
+                        cloudExport?.exported = nil
+                        openURL(url)
+                    }
+                    .accessibilityIdentifier("cloud-export-open")
+                }
+                Button("OK", role: .cancel) { cloudExport?.exported = nil }
+            }
+            .alert("Couldn't save to the drive", isPresented: cloudExportFailed) {
+                Button("OK") { cloudExport?.error = nil }
+            } message: {
+                Text(cloudExport?.error ?? "")
+            }
+    }
+
+    private var cloudExportTitle: String { cloudExport?.exported?.message ?? "" }
+
+    private var cloudExportShown: Binding<Bool> {
+        Binding(
+            get: { cloudExport?.exported != nil },
+            set: { if !$0 { cloudExport?.exported = nil } })
+    }
+
+    private var cloudExportFailed: Binding<Bool> {
+        Binding(
+            get: { cloudExport?.error != nil },
+            set: { if !$0 { cloudExport?.error = nil } })
+    }
+
+    /// The import's toast, its first failure, and a fresh read of the library to show what came.
+    private func applyCloudSummary() {
+        guard let summary = cloudSummary else { return }
+        cloudSummary = nil
+        if let toast = summary.toast { model.actionNotice = toast }
+        if let failure = summary.firstFailure { uploadError = failure }
+        if summary.imported > 0 {
+            Task { await model.uploadDidFinish() }
+        }
     }
 
     // MARK: - Sharing
