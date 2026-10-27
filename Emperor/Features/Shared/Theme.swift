@@ -564,7 +564,8 @@ struct RowChevron: View {
     }
 }
 
-/// A row in the Settings style: a tile, the label, and an optional value at the trailing edge.
+/// A row in the Settings style: a tile, the label, an optional line under it, and an optional
+/// value at the trailing edge.
 ///
 /// The label is the row's accessible name; the tile is decoration. A row that presents rather
 /// than pushes adds a `RowChevron` after it.
@@ -576,20 +577,32 @@ struct IconRowLabel: View {
     var hue: TileHue = .indigo
     var value: String?
     var titleColor: Color?
+    /// A quiet second line under the title, as the design's rows carry ("Invoices, GST receipts
+    /// & chamber payment"). Reads as part of the row; the title still leads it.
+    var subtitle: String?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: Spacing.md) {
             IconTile(systemImage: systemImage, hue: hue)
-            if let value, dynamicTypeSize.isAccessibilitySize {
-                // At the accessibility sizes the value goes under the title: beside it, the two
-                // would share a line too short for either.
+            if subtitle != nil || (value != nil && dynamicTypeSize.isAccessibilitySize) {
+                // Stacked: a subtitle takes the width beside the tile, and at the accessibility
+                // sizes the value joins it there rather than sharing a line too short for both.
                 VStack(alignment: .leading, spacing: Spacing.xxs) {
                     titleText
-                    valueText(value)
+                    if let subtitle {
+                        subtitleText(subtitle)
+                    }
+                    if let value, dynamicTypeSize.isAccessibilitySize {
+                        valueText(value)
+                    }
                 }
                 Spacer(minLength: 0)
+                if let value, !dynamicTypeSize.isAccessibilitySize {
+                    valueText(value)
+                        .lineLimit(1)
+                }
             } else {
                 titleText
                 Spacer(minLength: Spacing.sm)
@@ -607,6 +620,13 @@ struct IconRowLabel: View {
             .font(.brand(.body, weight: .medium))
             .foregroundStyle(titleColor ?? theme.textPrimary)
             .dynamicLineLimit(2)
+    }
+
+    private func subtitleText(_ subtitle: String) -> some View {
+        Text(subtitle)
+            .font(.brand(.footnote))
+            .foregroundStyle(theme.textTertiary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func valueText(_ value: String) -> some View {

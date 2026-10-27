@@ -151,6 +151,17 @@ final class AccessibilityAuditTests: XCTestCase {
             : (tab == "History") ? app.navigationBars["Conversations"] : nil
         audit(theme + tab.lowercased(), in: app, sheet: sheetBar)
 
+        if tab == "Calendar", !light {
+            // The tab's other calendar: the statutory deadlines behind the switch at its head.
+            // Audited in the default theme, as the rest of the app's second-level screens are.
+            let corporate = app.buttons["Corporate calendar"].firstMatch
+            if reached(corporate, "the Corporate calendar switch") {
+                corporate.tap()
+                _ = app.staticTexts["GSTR-1"].waitForExistence(timeout: 10)
+                audit("corporate-calendar", in: app)
+            }
+        }
+
         if tab == "Home" {
             // A conversation: the stub's stored answer, its reading card folded above it. Opened
             // from Home's recents, where they live now.
@@ -189,80 +200,65 @@ final class AccessibilityAuditTests: XCTestCase {
         return reached(app.navigationBars[title], "the \(row) screen")
     }
 
-    // MARK: - What You's Tools open
+    // MARK: - What More opens
 
-    /// Each screen You's Tools rows present, audited as a sheet over You — the Library, the
-    /// Corporate Calendar, the tools and one tool's form, OCR, Translate and the file tools.
-    func testTheScreensYouOpensPassTheAudit() {
+    /// Each screen More's rows present, audited as a sheet over More — the Library, OCR and
+    /// Translate's side of the one shared screen, and the file tools — then a section of More
+    /// itself, its offline storage, brought up under More's bar.
+    func testTheScreensMoreOpensPassTheAudit() {
         let app = launch()
-        guard signIn(app), openYou(app) else { return }
+        guard signIn(app), openMore(app) else { return }
 
-        if let bar = present("Library", titled: "Library", from: app) {
+        if let bar = present("Library", titled: "Library", from: app, on: "More") {
             audit("library", in: app, sheet: bar)
             close("Library", in: app)
         }
 
-        if let bar = present("Corporate Calendar", titled: "Corporate Calendar", from: app) {
-            _ = app.staticTexts["GSTR-1"].waitForExistence(timeout: 10)
-            audit("corporate-calendar", in: app, sheet: bar)
-            close("Corporate Calendar", in: app)
-        }
-
-        if let bar = present("All tools", titled: "Tools", from: app) {
-            audit("tools", in: app, sheet: bar)
-            // One tool's form. `firstMatch`: on an iPad the name can be on screen twice.
-            let tool = app.staticTexts["Devil's Advocate"].firstMatch
-            if reached(tool, "a tool in the list") {
-                tool.tap()
-                let form = app.navigationBars["Devil's Advocate"]
-                if reached(form, "the tool's form") {
-                    _ = app.buttons["Run"].firstMatch.waitForExistence(timeout: 10)
-                    audit("tool-form", in: app, sheet: form)
-                    goBack(from: form, named: "the tool's form", to: bar)
-                }
-            }
-            // The list is longer than the sheet on both devices. Its later sections are audited
-            // where a person scrolls them to, each brought up under the sheet's bar.
-            for (header, screen, what) in [
-                ("tools-header-analysis", "tools-analysis", "the Analysis tools"),
-                ("tools-header-registry", "tools-registry", "the full registry"),
-            ] {
-                let heading = app.descendants(matching: .any)[header].firstMatch
-                if let why = bringUnderTheBar(heading, of: bar, titled: "Tools", in: app) {
-                    XCTFail("could not bring \(what) up under the bar — \(why) — so it was not audited")
-                    continue
-                }
-                audit(screen, in: app, sheet: bar, watching: heading) {
-                    _ = self.bringUnderTheBar(heading, of: bar, titled: "Tools", in: app)
-                }
-            }
-            close("Tools", in: app)
-        }
-
-        if let bar = present("OCR", titled: "OCR", from: app) {
+        if let bar = present("OCR & Translate", titled: "OCR", from: app, on: "More") {
             _ = app.segmentedControls.firstMatch.waitForExistence(timeout: 10)
             audit("ocr", in: app, sheet: bar)
-            close("OCR", in: app)
+            // The shared screen's other side: the switch at its head turns it into Translate.
+            let translate = app.segmentedControls.firstMatch.buttons["Translate"]
+            if reached(translate, "the OCR | Translate switch") {
+                translate.tap()
+                let translateBar = app.navigationBars["Translate"]
+                if reached(translateBar, "the Translate screen") {
+                    _ = app.descendants(matching: .any)
+                        .matching(NSPredicate(format: "label CONTAINS %@", "Bakshi Order"))
+                        .firstMatch.waitForExistence(timeout: 10)
+                    audit("translate", in: app, sheet: translateBar)
+                }
+                close("Translate", in: app)
+            } else {
+                close("OCR", in: app)
+            }
         }
 
-        if let bar = present("Translate", titled: "Translate", from: app) {
-            _ = app.descendants(matching: .any)
-                .matching(NSPredicate(format: "label CONTAINS %@", "Bakshi Order"))
-                .firstMatch.waitForExistence(timeout: 10)
-            audit("translate", in: app, sheet: bar)
-            close("Translate", in: app)
-        }
-
-        if let bar = present("File tools", titled: "File tools", from: app) {
+        if let bar = present("Split PDF", titled: "File tools", from: app, on: "More") {
             _ = app.buttons["tool-split"].waitForExistence(timeout: 10)
             audit("file-tools", in: app, sheet: bar)
             close("File tools", in: app)
         }
+
+        // Offline storage — a section of More itself, so brought up under More's bar and audited
+        // as it then stands (`bringUnderTheBar`).
+        let more = app.navigationBars["More services & tools"]
+        let storage = app.descendants(matching: .any)["settings-header-storage"].firstMatch
+        if let why = bringUnderTheBar(storage, of: more, titled: "More services & tools", in: app) {
+            XCTFail("could not bring the Storage section up under the bar — \(why) — so it was not audited")
+        } else if reached(app.staticTexts["offline-storage-size"].firstMatch, "the Storage section") {
+            audit("more-storage", in: app, sheet: more, watching: storage) {
+                _ = self.bringUnderTheBar(
+                    storage, of: more, titled: "More services & tools", in: app)
+            }
+        }
     }
 
-    /// You's settings, and what they hold below the fold or push: the role picker; Notifications —
-    /// off, as a fresh install finds it, and on, with its reminders showing; Edit profile; and the
-    /// Security and Storage sections, each brought up under You's bar and audited there.
+    /// You's settings, and what they hold below the fold or push: the role picker; Edit profile;
+    /// and within Settings, Notification settings — off, as a fresh install finds it, and on, with
+    /// its reminders showing — About & Compliance, and the app lock's own section, each brought up
+    /// under the bar it sits beneath and audited there. More's offline storage is audited with
+    /// More's screens.
     func testSettingsAndItsScreensPassTheAudit() {
         let app = launch()
         guard signIn(app), openYou(app) else { return }
@@ -284,26 +280,6 @@ final class AccessibilityAuditTests: XCTestCase {
             }
         }
 
-        let row = app.buttons["notifications-settings"].firstMatch
-        app.reveal(row)
-        if reached(row, "the Notifications row") {
-            row.tap()
-            let notifications = app.navigationBars["Notifications"]
-            if reached(notifications, "the Notifications screen") {
-                let allow = app.switches["notifications-allow"].firstMatch
-                _ = allow.waitForExistence(timeout: 10)
-                audit("notification-settings", in: app, sheet: notifications, inATab: true)
-                if allow.exists {
-                    turnOn(allow)
-                    if app.switches["notifications-briefing"].firstMatch
-                        .waitForExistence(timeout: 10) {
-                        audit("notification-settings-on", in: app, sheet: notifications, inATab: true)
-                    }
-                }
-                goBack(from: notifications, named: "Notifications", to: settings)
-            }
-        }
-
         // Edit profile — the form as the account fills it. Left by Back, so nothing is saved.
         let profile = app.buttons["edit-profile"].firstMatch
         app.reveal(profile)
@@ -317,8 +293,9 @@ final class AccessibilityAuditTests: XCTestCase {
             }
         }
 
-        // Settings — the design's screen, from its own row near the head of You — and About &
-        // Compliance within it. Both left by Back, so nothing is saved and nothing is switched.
+        // Settings — the design's screen, from its own row in the card You gives usage, billing
+        // and settings — and, within it, Notifications, About & Compliance and the app lock. All
+        // left by Back, so nothing is saved and nothing is switched.
         let settingsEntry = app.buttons["settings-entry"].firstMatch
         app.reveal(settingsEntry)
         if reached(settingsEntry, "the Settings row") {
@@ -330,6 +307,27 @@ final class AccessibilityAuditTests: XCTestCase {
                 _ = name.waitForExistence(timeout: 10)
                 audit("settings", in: app, sheet: screen, inATab: true)
 
+                // Notification settings — the row that ends Settings' briefings block.
+                let row = app.buttons["notifications-settings"].firstMatch
+                app.reveal(row)
+                if reached(row, "the Notification settings row") {
+                    row.tap()
+                    let notifications = app.navigationBars["Notifications"]
+                    if reached(notifications, "the Notifications screen") {
+                        let allow = app.switches["notifications-allow"].firstMatch
+                        _ = allow.waitForExistence(timeout: 10)
+                        audit("notification-settings", in: app, sheet: notifications, inATab: true)
+                        if allow.exists {
+                            turnOn(allow)
+                            if app.switches["notifications-briefing"].firstMatch
+                                .waitForExistence(timeout: 10) {
+                                audit("notification-settings-on", in: app, sheet: notifications, inATab: true)
+                            }
+                        }
+                        goBack(from: notifications, named: "Notifications", to: screen)
+                    }
+                }
+
                 let about = app.buttons["about-compliance"].firstMatch
                 app.reveal(about)
                 if reached(about, "the About & Compliance row") {
@@ -340,29 +338,20 @@ final class AccessibilityAuditTests: XCTestCase {
                         goBack(from: compliance, named: "About & Compliance", to: screen)
                     }
                 }
-                goBack(from: screen, named: "Settings", to: settings)
-            }
-        }
 
-        // The app lock's section, then Storage — sections of You itself, so each is brought up
-        // under You's bar and audited as it then stands (`bringUnderTheBar`).
-        _ = settings.waitForExistence(timeout: 10)
-        for (header, anchor, screen, what) in [
-            ("settings-header-security", "app-lock-toggle", "settings-security",
-             "the Security section"),
-            // The size, not "Clear offline copies": that is offered only when something is kept.
-            ("settings-header-storage", "offline-storage-size", "settings-storage",
-             "the Storage section"),
-        ] {
-            let heading = app.descendants(matching: .any)[header].firstMatch
-            if let why = bringUnderTheBar(heading, of: settings, titled: "Account & Profile", in: app) {
-                XCTFail("could not bring \(what) up under the bar — \(why) — so it was not audited")
-                continue
-            }
-            if reached(app.descendants(matching: .any)[anchor].firstMatch, what) {
-                audit(screen, in: app, sheet: settings, inATab: true, watching: heading) {
-                    _ = self.bringUnderTheBar(heading, of: settings, titled: "Account & Profile", in: app)
+                // The app lock's section — a section of Settings itself, so brought up under
+                // Settings' bar and audited as it then stands (`bringUnderTheBar`).
+                let security = app.descendants(matching: .any)["settings-header-security"].firstMatch
+                if let why = bringUnderTheBar(security, of: screen, titled: "Settings", in: app) {
+                    XCTFail("could not bring the Security section up under the bar — \(why) — so it was not audited")
+                } else if reached(
+                    app.switches["app-lock-toggle"].firstMatch, "the Security section") {
+                    audit("settings-security", in: app, sheet: screen, inATab: true, watching: security) {
+                        _ = self.bringUnderTheBar(security, of: screen, titled: "Settings", in: app)
+                    }
                 }
+
+                goBack(from: screen, named: "Settings", to: settings)
             }
         }
     }
@@ -399,22 +388,22 @@ final class AccessibilityAuditTests: XCTestCase {
                 app.state, .runningForeground, "the app died on \(tab) at the largest text size")
         }
 
+        // The Library: a sheet with a search bar under a large title, whose text-size audit could
+        // not finish on an iPad. Drawn here at the largest size, so a screen that stops answering
+        // there shows as that, and not only as an audit that ran out of time. Opened from More,
+        // which the loop above leaves showing.
+        if present("Library", titled: "Library", from: app, on: "More") != nil {
+            shoot("library", app)
+            XCTAssertEqual(app.state, .runningForeground)
+            close("Library", in: app)
+        }
+
         // You, opened from Home's profile button — it left the tab bar. Drawn the same way the
         // tabs above were, so its layout at this size is photographed too.
         let youIsOpen = openYou(app)
         if youIsOpen {
             shoot("you", app)
             XCTAssertEqual(app.state, .runningForeground, "the app died on You at the largest size")
-        }
-
-        // The Library: a sheet with a search bar under a large title, whose text-size audit could
-        // not finish on an iPad. Drawn here at the largest size, so a screen that stops answering
-        // there shows as that, and not only as an audit that ran out of time. Opened from You,
-        // opened just above.
-        if youIsOpen, present("Library", titled: "Library", from: app) != nil {
-            shoot("library", app)
-            XCTAssertEqual(app.state, .runningForeground)
-            close("Library", in: app)
         }
     }
 
@@ -450,17 +439,27 @@ final class AccessibilityAuditTests: XCTestCase {
         return reached(app.navigationBars["Account & Profile"], "the You screen")
     }
 
-    /// Opens a row of You and returns the navigation bar of the sheet it presents, or `nil` —
-    /// having said so — when the row or the sheet is not there.
+    /// Opens More, where the workspace's rows and the tools live now, and returns whether the tab
+    /// came up.
+    private func openMore(_ app: XCUIApplication) -> Bool {
+        let more = app.tab("More")
+        guard reached(more, "the More tab") else { return false }
+        more.tap()
+        return reached(app.navigationBars["More services & tools"], "the More tab")
+    }
+
+    /// Opens a row of a screen and returns the navigation bar of the sheet it presents, or
+    /// `nil` — having said so — when the row or the sheet is not there. `screen` names the
+    /// screen the row is expected on, for the failure.
     private func present(
-        _ row: String, titled title: String, from app: XCUIApplication
+        _ row: String, titled title: String, from app: XCUIApplication, on screen: String = "You"
     ) -> XCUIElement? {
         let button = app.buttons[row].firstMatch
-        // Scrolled to before it is looked for: the Tools rows are below the fold on a phone, far
-        // below it at the largest text size, and a list builds only the rows it is showing.
+        // Scrolled to before it is looked for: the rows are below the fold on a phone, far below
+        // it at the largest text size, and a list builds only the rows it is showing.
         app.reveal(button)
         scrollUntilHittable(button, in: app)
-        guard reached(button, "the \(row) row on You") else { return nil }
+        guard reached(button, "the \(row) row on \(screen)") else { return nil }
         button.tap()
         let bar = app.navigationBars[title]
         // Once more if the first tap was not taken — it can land while the sheet before this

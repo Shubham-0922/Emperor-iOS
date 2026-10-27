@@ -8,10 +8,12 @@ import Observation
 /// ## What the web page does, and what this keeps
 ///
 /// `ComplianceCalendar.jsx` lays these out as a month grid beside an agenda, with category
-/// chips, a status filter and three counts (overdue, next seven days, open). A month grid of
-/// twenty-odd deadlines spread over a year is mostly empty cells on a phone, so the agenda
-/// becomes the screen: what is overdue, what falls due in the next seven days, then each later
-/// month. The chips, the status filter and the counts are kept as they are; a regulator filter
+/// chips, a status filter and three counts (overdue, next seven days, open). The month grid is
+/// drawn here too, shared with My calendar (`MonthGrid`, one calendar drawn one way in both
+/// places): it answers "which days", and the agenda beneath answers "what" — the selected day's
+/// deadlines directly under the grid, then overdue, the next seven days and each later month,
+/// with that day dropped from the agenda's groups the way My calendar drops it. The chips, the
+/// status filter and the counts are kept as they are; a regulator filter
 /// is added beside them, because "everything RBI wants from us" is the other way a company
 /// secretary asks the question.
 ///
@@ -45,6 +47,8 @@ final class ComplianceCalendarViewModel {
         static let nothingTrackedDetail =
             "Emperor is not tracking a dated statutory deadline right now."
         static let nothingMatches = "Nothing matches these filters."
+        static let nothingDueToday = "Nothing falls due today."
+        static func nothingDue(_ day: String) -> String { "Nothing falls due on \(day)." }
         static let shareFooter =
             "From Emperor's statutory calendar. Confirm the date against the regulator's current notification before relying on it."
     }
@@ -123,6 +127,10 @@ final class ComplianceCalendarViewModel {
     private(set) var regulator: String?
     private(set) var status: StatusFilter = .all
 
+    /// The day the month grid has selected — today to begin with. All of it a day in India
+    /// (README trap 9).
+    private(set) var selectedDay: String
+
     private let service: any ComplianceCalendarProviding
     private let cache: ResponseCache?
     private let now: @Sendable () -> Date
@@ -135,6 +143,52 @@ final class ComplianceCalendarViewModel {
         self.service = service
         self.cache = cache
         self.now = now
+        self.selectedDay = WireDate.dayKey(now())
+    }
+
+    // MARK: - The month grid
+
+    /// The month the grid is showing — whichever one holds `selectedDay`.
+    var month: CalendarMonth? { CalendarMonth.containing(selectedDay) }
+
+    var isShowingToday: Bool { selectedDay == todayKey }
+
+    /// What each marked cell of the month grid says: a statutory deadline falls due on it —
+    /// done or open, as the agenda below lists either. A day's dot comes from what the filters
+    /// leave, so the grid and the agenda are one view of the same data — filtered to nothing,
+    /// the month goes plain.
+    ///
+    /// Read once per render: the grid asks about forty-odd days.
+    var marks: [String: CalendarDayMark] {
+        var marks: [String: CalendarDayMark] = [:]
+        for deadline in visibleDeadlines {
+            if let day = deadline.dueDay { marks[day] = .deadline }
+        }
+        return marks
+    }
+
+    /// The visible deadlines on the given day, in agenda order — the section the grid's
+    /// selection opens directly under it.
+    func deadlines(on day: String) -> [StatutoryDeadline] {
+        visibleDeadlines.filter { $0.dueDay == day }
+    }
+
+    /// What the selected day says in place of its deadlines when it has none.
+    var selectedDayEmptyText: String {
+        isShowingToday ? Copy.nothingDueToday : Copy.nothingDue(DisplayText.longDay(selectedDay))
+    }
+
+    func select(day: String) { selectedDay = day }
+    func goToToday() { selectedDay = todayKey }
+
+    func step(months: Int) {
+        guard let current = WireDate.parseDay(selectedDay) else { return }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = WireDate.india
+        guard let stepped = calendar.date(byAdding: .month, value: months, to: current) else {
+            return
+        }
+        selectedDay = WireDate.dayKey(stepped)
     }
 
     // MARK: - Presentation
@@ -267,6 +321,10 @@ final class ComplianceCalendarViewModel {
 
         for deadline in visibleDeadlines {
             guard let day = deadline.dueDay, let days = daysUntilDue(deadline) else { continue }
+            // The selected day's deadlines are listed in full directly under the grid, so the
+            // agenda leaves that day out rather than printing it twice — the rule My calendar's
+            // agenda follows.
+            if day == selectedDay { continue }
             if days < 0 {
                 if isDone(deadline) { doneEarlier.append(deadline) } else { overdue.append(deadline) }
             } else if days <= DeadlineUrgency.dueSoonWindow {

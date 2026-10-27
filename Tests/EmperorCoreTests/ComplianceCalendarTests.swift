@@ -337,6 +337,107 @@ final class ComplianceCalendarViewModelTests: XCTestCase {
         }
     }
 
+    // MARK: - The month grid
+
+    /// The grid starts on today, in today's month, and dots the days a deadline falls due on —
+    /// a day carrying two obligations once, and a clear day not at all.
+    func testTheGridStartsOnTodayAndMarksTheDeadlineDays() async throws {
+        let rows = try ComplianceCalendarTests.fixtureRows()
+        await withCompliance { service, model in
+            service.rows = rows
+            await model.load()
+
+            XCTAssertEqual(model.selectedDay, ComplianceFeedFixture.today)
+            XCTAssertTrue(model.isShowingToday)
+            XCTAssertEqual(model.month?.title, "October 2026")
+
+            let deadlineDays = Set(model.deadlines.compactMap(\.dueDay))
+            XCTAssertEqual(Set(model.marks.keys), deadlineDays, "one dot per deadline day")
+            XCTAssertEqual(model.marks["2026-10-11"], .deadline, "GSTR-1's day is dotted")
+            XCTAssertNil(
+                model.marks[ComplianceFeedFixture.today],
+                "the fixture's own day carries no deadline")
+        }
+    }
+
+    /// A deadline the web has marked done still owns its day on the grid — the agenda below
+    /// lists it too, and a day that is in the list with no dot would contradict the dot's legend.
+    func testADoneDeadlineStillDotsItsDay() async throws {
+        let rows = try ComplianceCalendarTests.fixtureRows()
+        await withCompliance { service, model in
+            service.rows = rows
+            service.markers = [ComplianceEvent(id: "stat:GSTR1:2026-10-11", status: "done")]
+            await model.load()
+            XCTAssertEqual(model.marks["2026-10-11"], .deadline)
+        }
+    }
+
+    /// Selecting a day lists its deadlines under the grid and drops that day from the agenda's
+    /// groups — the day is printed once, in full, at the top. A selected day inside the
+    /// seven-day window empties that group entirely rather than repeating it.
+    func testTheSelectedDayIsListedUnderTheGridAndDroppedFromTheAgenda() async throws {
+        let rows = try ComplianceCalendarTests.fixtureRows()
+        await withCompliance { service, model in
+            service.rows = rows
+            await model.load()
+
+            model.select(day: "2026-10-07")
+            XCTAssertEqual(model.month?.title, "October 2026")
+            XCTAssertFalse(model.isShowingToday)
+            XCTAssertEqual(model.deadlines(on: "2026-10-07").map(\.id), ["stat:ECB2:2026-10-07"])
+            XCTAssertFalse(
+                model.groups.contains { $0.deadlines.contains { $0.id == "stat:ECB2:2026-10-07" } },
+                "the selected day belongs under the grid, not in the agenda")
+            XCTAssertEqual(model.groups.first?.kind, .month("2026-10"), "no 'Next 7 days' left")
+
+            model.select(day: "2026-10-11")
+            XCTAssertEqual(model.deadlines(on: "2026-10-11").map(\.id), ["stat:GSTR1:2026-10-11"])
+            let october = model.groups.first { $0.kind == .month("2026-10") }
+            XCTAssertEqual(
+                october?.deadlines.first?.id, "stat:ESIC:2026-10-15",
+                "October starts at the next deadline after the selected day")
+        }
+    }
+
+    /// Stepping moves the selection a month at a time in India's calendar, the month title
+    /// follows it, and "Today" comes back to today — a step must not drift the day.
+    func testSteppingTheMonthsAndComingBackToToday() async throws {
+        let rows = try ComplianceCalendarTests.fixtureRows()
+        await withCompliance { service, model in
+            service.rows = rows
+            await model.load()
+
+            model.step(months: 1)
+            XCTAssertEqual(model.selectedDay, "2026-11-03")
+            XCTAssertEqual(model.month?.title, "November 2026")
+            model.step(months: -1)
+            XCTAssertEqual(model.selectedDay, "2026-10-03", "stepping back undoes the step")
+
+            model.select(day: "2026-12-25")
+            XCTAssertEqual(model.month?.title, "December 2026")
+            model.goToToday()
+            XCTAssertEqual(model.selectedDay, ComplianceFeedFixture.today)
+            XCTAssertTrue(model.isShowingToday)
+        }
+    }
+
+    /// An empty selected day says which kind of nothing it is: today says "today", any other
+    /// day says its own date.
+    func testAnEmptySelectedDaySaysSo() async throws {
+        let rows = try ComplianceCalendarTests.fixtureRows()
+        await withCompliance { service, model in
+            service.rows = rows
+            await model.load()
+
+            XCTAssertEqual(model.selectedDayEmptyText, "Nothing falls due today.")
+            model.select(day: "2026-10-04")
+            XCTAssertTrue(model.deadlines(on: "2026-10-04").isEmpty)
+            XCTAssertEqual(
+                model.selectedDayEmptyText,
+                "Nothing falls due on Sunday, 4 October 2026.")
+        }
+    }
+
     // MARK: - Filters
 
     func testCategoryChipsAreTheOnesWithDeadlinesInTheWebsOrder() async throws {

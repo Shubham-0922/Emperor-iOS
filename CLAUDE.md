@@ -161,12 +161,14 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   the dashboard: the design's own bar — the mark, the plan pill (plan & usage as a sheet),
   Updates, and the profile button, whose sheet is **Account & Profile** — the account card
   (avatar, name, standing and plan pills), the design's **Settings** row (`SettingsView`: the
-  advocate profile and its save, the three briefings on `NotificationSettingsViewModel`, the
-  chambers stand-ins, app & legal with **About & Compliance** within it, and delete), the
-  demo-tour stand-in, its plan, and the role, appearance, notifications, privacy and Tools rows
-  the old Settings held (every tool, the file tools, OCR, Translate, the Corporate Calendar,
-  Library), having left the bar. Under the bar the composer, whose send carries the question,
-  its files and its answer
+  advocate profile and its save, the three briefings on `NotificationSettingsViewModel` with
+  **Notification settings** at their foot, the chambers stand-ins, app & legal with **About &
+  Compliance** within it, delete, and the app lock's **Security** section), in the mock's order:
+  the profile card, the demo-tour stand-in, appearance, the current role and its switch, one card
+  holding **Usage** (the plan and its allowances, `UsagePlanView`), **Billings** (a stand-in) and
+  **Settings**, the spotlight search, and Sign Out. You carries no tools and no notifications row:
+  the tools are More's, and notifications and the app lock are Settings'. Offline storage is on
+  More. Under the bar the composer, whose send carries the question, its files and its answer
   mode to Ask (`AppNavigator.ask`) — nothing is sent from Home; the quick actions; the
   cause list and the Precedents Vault as the two cards; and the recent conversations, each
   pushing its thread on Home's own stack. **Ask** greets the reader by name in the design's serif,
@@ -175,10 +177,12 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   upcoming, every matter) and opens the court lookup from "Add a matter". **Calendar** is both
   calendars behind one segmented switch — **My calendar** (the matters day by day, the diary,
   Subscribe in the bar) and **Corporate calendar** (`ComplianceCalendarView(embedded:)`, no stack
-  of its own). **More** is workspace management — Files, History, All Notifications, Library,
+  of its own) — the month grid drawn by one `MonthGrid` in both. **More** is workspace management —
+  Files, History, All Notifications, Library,
   each a sheet — then the web sidebar's Case tools as drawn cards (not yet wired), Doc tools
-  wired to OCR and the PDF tools, and **Follow Emperor** (the company's five handles from
-  `EmperorLinks`, each opening the browser), under a search field that filters the screen.
+  wired to OCR and the PDF tools, **Offline storage**, and **Follow Emperor** (the company's five
+  handles from `EmperorLinks`, each opening the browser), under a search field that filters the
+  screen.
   UI tests sign in through the shared `signInWithACode` helper and reach tabs through
   `app.tab(_:)`, both in `UITests/Tabs.swift`.
 - **iPad layouts.** At regular width History's conversation list (`ChatListView` — presented

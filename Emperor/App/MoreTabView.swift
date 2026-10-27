@@ -1,15 +1,16 @@
 import SwiftUI
 
-/// The **More** tab: the workspace's own screens, then the two tool groups.
+/// The **More** tab: the workspace's own screens, the two tool groups, offline storage.
 ///
 /// Files, History, All Notifications and Library are the workspace management rows — each
-/// presents its screen the way You presents the Tools destinations (every one owns its own
-/// `NavigationStack`; see `ToolDestination`). Under them the web sidebar's **Case tools** and
-/// **Doc tools**: the case tools are drawn as cards — they are not built in this app yet, so
-/// each is a stand-in the same way the composer's wand and mic are — and the doc tools are wired
-/// to the screens they already have (OCR, the PDF tools). **Follow Emperor** lists the
-/// company's own handles, each opening in the browser. The search field filters every row on
-/// the screen, as a search on a screen of destinations should.
+/// presents its own `NavigationStack` whole (see `ToolDestination`). Under them the web
+/// sidebar's **Case tools** and **Doc tools**: the case tools are drawn as cards — they are
+/// not built in this app yet, so each is a stand-in the same way the composer's wand and mic
+/// are — and the doc tools are wired to the screens they already have (OCR, the PDF tools),
+/// which are reached from this screen and nowhere else, You carrying no tools. **Offline
+/// storage** (`OfflineStorageSection`) says what is kept on this device and clears it, and
+/// **Follow Emperor** lists the company's own handles, each opening in the browser. The search
+/// field filters every row on the screen, as a search on a screen of destinations should.
 struct MoreTabView: View {
     @Environment(\.theme) private var theme
 
@@ -59,7 +60,7 @@ struct MoreTabView: View {
                             .listRowInsets(EdgeInsets(top: Spacing.xs, leading: Spacing.sm, bottom: Spacing.xs, trailing: Spacing.sm))
                             .listRowBackground(Color.clear)
                     } header: {
-                        SectionHeader(title: "Case tools", detail: "Litigation suite")
+                        SectionHeader(title: "Case tools")
                     }
                 }
 
@@ -72,6 +73,10 @@ struct MoreTabView: View {
                         SectionHeader(title: "Doc tools", detail: "PDF & document engine")
                     }
                     .listRowBackground(theme.surface)
+                }
+
+                if matches("Storage") {
+                    OfflineStorageSection()
                 }
 
                 if EmperorLinks.socials.contains(where: { matches($0.name) }) {
@@ -218,7 +223,7 @@ struct MoreTabView: View {
     }
 
     /// The web's document engine, row for row. Every one opens the screen it names — OCR and
-    /// the PDF tools already exist under You's Tools; each row here is a second way in.
+    /// the PDF tools already exist, and this is the way in to them now.
     private var docToolItems: [DocTool] {
         [
             DocTool(title: "OCR & Translate", subtitle: "Extract text from scans; translate documents",

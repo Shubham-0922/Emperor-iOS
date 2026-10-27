@@ -225,6 +225,8 @@ enum CalendarDayMark: Equatable, Sendable {
     case diary
     /// At least one of the user's matters is listed — whatever else is on the day.
     case listed
+    /// A statutory deadline falls due — the Corporate Calendar's mark, not a matter's.
+    case deadline
 
     /// For VoiceOver, which cannot see the dot's colour.
     var spoken: String {
@@ -232,6 +234,7 @@ enum CalendarDayMark: Equatable, Sendable {
         case .clear: return "Nothing scheduled"
         case .diary: return "Diary entries"
         case .listed: return "Matters listed"
+        case .deadline: return "Statutory deadline"
         }
     }
 }

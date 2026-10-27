@@ -2,15 +2,17 @@ import SwiftUI
 import UIKit
 
 /// Settings — the design's screen, reached from Account & Profile: the advocate profile and its
-/// save, the three briefings, chambers, app & legal (About & Compliance within), and delete,
-/// under the design's own footer.
+/// save, the three briefings with the way to the full Notifications screen, app lock (Security),
+/// chambers, app & legal (About & Compliance within), and delete, under the design's own footer.
 ///
 /// Everything the mock draws is drawn. What has no backing yet — chambers, add account, the
 /// update check, delete — stands in the way the More tab's case-tool cards do: styled, named,
 /// and doing nothing rather than pretending. What does have a backend is wired straight to it:
 /// the profile saves through `ProfileEditor` (every field on every save, a name required), and
 /// the three switches are `NotificationSettingsViewModel`'s own — the same preferences the
-/// Notifications screen edits, so the two screens can never disagree about the account.
+/// Notifications screen edits, so the two screens can never disagree about the account. The
+/// account's app lock (`AppLockSettingsSection`) lives here too, where "security" was promised
+/// to the row on You; offline storage went to More (`OfflineStorageSection`).
 struct SettingsView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
@@ -75,6 +77,7 @@ struct SettingsView: View {
             advocateSection(bindable)
             saveRow(bindable)
             briefingsSection(notifications)
+            AppLockSettingsSection()
             chambersSection
             appLegalSection
             deleteSection
@@ -294,7 +297,7 @@ struct SettingsView: View {
 
     /// The three switches the design names, on the notification view model's own preferences:
     /// the cause list's morning briefing, the account's daily email, and the master switch over
-    /// both. The Notifications screen edits the same state.
+    /// both — then the row into the full Notifications screen, which edits the same state.
     private func briefingsSection(_ model: NotificationSettingsViewModel) -> some View {
         Section {
             Toggle(isOn: Binding(
@@ -357,6 +360,15 @@ struct SettingsView: View {
             .tint(theme.accentText)
             .disabled(model.isBusy)
             .accessibilityIdentifier("settings-push-notifications")
+
+            // The full Notifications screen — reminders, history and the rest — one level down,
+            // so the three switches above stay the design's compact block.
+            NavigationLink {
+                NotificationSettingsView()
+            } label: {
+                IconRowLabel(title: "Notification settings", systemImage: "bell")
+            }
+            .accessibilityIdentifier("notifications-settings")
         } header: {
             SectionHeader(title: "Briefings & notifications")
         } footer: {

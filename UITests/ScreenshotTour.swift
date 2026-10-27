@@ -98,17 +98,56 @@ final class ScreenshotTour: XCTestCase {
         app.tab("Ask").tap()
         snap("ask")
 
-        // The redesigned More — search, workspace management, case tools, doc tools — then
-        // every conversation, from More → History.
+        // The redesigned More — search, workspace management, case tools, doc tools, offline
+        // storage and Follow Emperor. One frame is only the head of it, so the rest is taken a
+        // frame at a time until the last of Follow Emperor's handles is on screen.
         app.tab("More").tap()
         if app.buttons["Files"].waitForExistence(timeout: 10) {
             snap("more")
         }
-        tapIfPresent(app.buttons["History"].firstMatch)
+        let lastHandle = app.buttons["Instagram"].firstMatch
+        for frame in 2...4 {
+            app.swipeUp()
+            snap(String(format: "more-%02d", frame))
+            if lastHandle.exists && lastHandle.isHittable { break }
+        }
+
+        // Every conversation, from More → History, scrolled back to in the list.
+        let historyRow = app.buttons["History"].firstMatch
+        app.reveal(historyRow)
+        tapIfPresent(historyRow)
         if app.navigationBars["Conversations"].waitForExistence(timeout: 10) {
             snap("history")
             // Closed from its own Done before the next tab is tapped.
             tapIfPresent(app.navigationBars["Conversations"].buttons["Done"])
+            var polls = 0
+            while app.navigationBars["Conversations"].exists && polls < 20 {
+                Thread.sleep(forTimeInterval: 0.25)
+                polls += 1
+            }
+        }
+
+        // The sheets More's rows open — the Library, the shared OCR & Translate screen, and the
+        // file tools' hub — each closed from its own Done.
+        for (row, name, title) in [
+            ("Library", "library", "Library"),
+            ("OCR & Translate", "ocr", "OCR"),
+            ("Split PDF", "file-tools", "File tools"),
+        ] {
+            app.tab("More").tap()
+            let button = app.buttons[row].firstMatch
+            app.reveal(button)
+            guard button.waitForExistence(timeout: 5) else { continue }
+            button.tap()
+            snap(name)
+            tapIfPresent(app.navigationBars[title].buttons["Done"])
+            // Gone before the next row is looked for: until the OCR sheet has left, its switch
+            // carries a button named "Translate", and the tab bar is behind it.
+            var polls = 0
+            while app.navigationBars[title].exists && polls < 20 {
+                Thread.sleep(forTimeInterval: 0.25)
+                polls += 1
+            }
         }
 
         // A conversation, from Home's recent ones: the stub serves a stored answer with headings,
@@ -221,15 +260,26 @@ final class ScreenshotTour: XCTestCase {
         }
         tapIfPresent(app.navigationBars["Files"].buttons["Done"])
 
-        // You: the account, its settings, and the tools that are not tabs — opened from Home's
-        // profile button, where the redesign keeps it.
+        // You: the account, its settings and its way down to them — opened from Home's profile
+        // button, where the redesign keeps it.
         app.tab("Home").tap()
         app.buttons["home-profile"].tap()
         guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 10) else { snap("you-missing"); return }
         snap("you")
-        // Settings, from You: the design's screen — the profile and its save, the briefings,
-        // chambers, app & legal, delete — then About & Compliance within it. Both stepped back
-        // out of before the role selector takes over.
+        // Usage: the row, which summarises this month's allowances, then the plan behind it.
+        let usage = app.buttons["settings-usage"].firstMatch
+        app.reveal(usage)
+        if usage.waitForExistence(timeout: 5) {
+            snap("you-usage")
+            usage.tap()
+            if app.navigationBars["Usage & plan"].waitForExistence(timeout: 10) {
+                snap("you-usage-plan")
+                backOut(app)
+            }
+        }
+        // Settings, from You: the design's screen — the profile and its save, the briefings with
+        // Notification settings within them, chambers, app & legal — then About & Compliance.
+        // Both stepped back out of before the role selector takes over.
         let settingsEntry = app.buttons["settings-entry"].firstMatch
         app.reveal(settingsEntry)
         if settingsEntry.waitForExistence(timeout: 5) {
@@ -238,6 +288,26 @@ final class ScreenshotTour: XCTestCase {
                 snap("settings")
                 app.swipeUp()
                 snap("settings-foot")
+                // Notification settings: off, as a fresh install finds it; then on, with the
+                // hearing reminders beneath; then the account's email at the foot.
+                let notifications = app.buttons["notifications-settings"].firstMatch
+                app.reveal(notifications)
+                if notifications.waitForExistence(timeout: 5) {
+                    notifications.tap()
+                    if app.navigationBars["Notifications"].waitForExistence(timeout: 5) {
+                        snap("settings-notifications")
+                        let allow = app.switches["notifications-allow"].firstMatch
+                        if allow.waitForExistence(timeout: 5) {
+                            turnOn(allow)
+                            _ = app.switches["notifications-briefing"].firstMatch
+                                .waitForExistence(timeout: 5)
+                            snap("settings-notifications-on")
+                            app.swipeUp()
+                            snap("settings-notifications-email")
+                        }
+                        backOut(app)
+                    }
+                }
                 let about = app.buttons["about-compliance"].firstMatch
                 app.reveal(about)
                 if about.waitForExistence(timeout: 5) {
@@ -262,65 +332,8 @@ final class ScreenshotTour: XCTestCase {
                 backOut(app)
             }
         }
-        // Notifications: off, as a fresh install finds it; then on, with the hearing reminders
-        // and updates beneath; then the account's email at the foot.
-        let notifications = app.buttons["notifications-settings"].firstMatch
-        app.reveal(notifications)
-        if notifications.waitForExistence(timeout: 5) {
-            notifications.tap()
-            if app.navigationBars["Notifications"].waitForExistence(timeout: 5) {
-                snap("you-notifications")
-                let allow = app.switches["notifications-allow"].firstMatch
-                if allow.waitForExistence(timeout: 5) {
-                    turnOn(allow)
-                    _ = app.switches["notifications-briefing"].firstMatch
-                        .waitForExistence(timeout: 5)
-                    snap("you-notifications-on")
-                    app.swipeUp()
-                    snap("you-notifications-email")
-                }
-                backOut(app)
-            }
-        }
 
-        // Everything You's Tools present, each opened and closed from its own Done. Projects
-        // and eAuctions are hidden for now; see `ToolsSections`.
-        for row in ["Your workspace", "Corporate Calendar", "Library", "All tools", "File tools",
-                    "OCR", "Translate"] {
-            let button = app.buttons[row].firstMatch
-            app.reveal(button)
-            guard button.waitForExistence(timeout: 5) else { continue }
-            button.tap()
-            snap(row.lowercased().replacingOccurrences(of: " ", with: "-"))
-            if row == "Your workspace" {
-                // Litigator's workspace is the drafting taxonomy; one of its documents, opened.
-                tapIfPresent(app.buttons["matter-civil"])
-                let plaint = app.descendants(matching: .any)
-                    .matching(identifier: "ldoc-civil-plaint").firstMatch
-                if plaint.waitForExistence(timeout: 5) {
-                    plaint.tap()
-                    snap("litigator-document")
-                    // Scoped to the form's own bar: the sheet sits over You, and an unscoped
-                    // query could reach for a bar behind it.
-                    let back = app.navigationBars["Plaint"].buttons.element(boundBy: 0)
-                    if back.waitForExistence(timeout: 5) { back.tap() } else { backOut(app) }
-                }
-            }
-            let done = app.buttons["Done"].firstMatch
-            if done.waitForExistence(timeout: 5) { done.tap() } else { app.swipeDown() }
-            if row == "OCR" {
-                // Until the sheet has gone, its OCR | Translate switch carries a button named
-                // for the next row, and the next lookup could find that instead.
-                let modes = app.segmentedControls.firstMatch
-                var polls = 0
-                while modes.exists && polls < 20 {
-                    Thread.sleep(forTimeInterval: 0.1)
-                    polls += 1
-                }
-            }
-        }
-
-        // The plan and its allowances, and the rest of You, at the foot.
+        // The search and the way out, at the foot of You.
         app.swipeUp()
         snap("you-foot")
     }
@@ -376,7 +389,7 @@ final class ScreenshotTour: XCTestCase {
     // MARK: - Offline reading
 
     /// A conversation reopened with no signal — the copy kept on the device, the calm bar above
-    /// the composer that says so and how old it is — and You → Storage counting it.
+    /// the composer that says so and how old it is — and More → Storage counting it.
     /// `-UITestOffline` lets each route answer once and then fails it, as a phone in a court
     /// corridor does.
     func testTheOfflineConversationDark() { offlineTour(light: false) }
@@ -418,17 +431,18 @@ final class ScreenshotTour: XCTestCase {
         }
         if bar.waitForExistence(timeout: 5) { bar.buttons.element(boundBy: 0).tap() }
 
-        // You → Storage, scrolled to — You opened from Home's profile button.
-        app.tab("Home").tap()
-        app.buttons["home-profile"].tap()
-        guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 5) else { return }
+        // More → Storage, scrolled to — More present even with no signal, its sections local.
+        app.tab("More").tap()
+        guard app.navigationBars["More services & tools"].waitForExistence(timeout: 10) else {
+            return
+        }
         let size = app.staticTexts["offline-storage-size"].firstMatch
         var swipes = 0
         while !(size.exists && size.isHittable) && swipes < 6 {
             app.swipeUp()
             swipes += 1
         }
-        snap("you-storage")
+        snap("more-storage")
     }
 
     /// Turns a switch on, tolerating a miss as every step here does. The switch is a child of the
@@ -462,7 +476,7 @@ final class ScreenshotTour: XCTestCase {
 
     // MARK: - App lock
 
-    /// The lock the app opens behind, and You → Security with the lock on and its timeout
+    /// The lock the app opens behind, and You → Settings with the lock on and its timeout
     /// showing — `-UITestAppLock` starts with the lock on and someone signed in.
     func testTheAppLockDark() { appLockTour(light: false) }
     func testTheAppLockLight() { appLockTour(light: true) }
@@ -492,16 +506,24 @@ final class ScreenshotTour: XCTestCase {
         guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 10) else {
             snap("unlock-failed"); return
         }
-        // Far down You; scrolled until the switch is in view, then raised so the timeout row
-        // beneath it is in the picture too — a swipe alone leaves the switch on the bottom edge.
+        // Security is Settings' own section now, below its profile and briefings.
+        let entry = app.buttons["settings-entry"].firstMatch
+        app.reveal(entry)
+        guard entry.waitForExistence(timeout: 5) else { snap("settings-missing"); return }
+        entry.tap()
+        guard app.navigationBars["Settings"].waitForExistence(timeout: 10) else {
+            snap("settings-missing"); return
+        }
+        // Scrolled until the switch is in view, then raised so the timeout row beneath it is in
+        // the picture too — a swipe alone leaves the switch on the bottom edge.
         let toggle = app.switches["app-lock-toggle"].firstMatch
         var swipes = 0
-        while !(toggle.exists && toggle.isHittable) && swipes < 6 {
+        while !(toggle.exists && toggle.isHittable) && swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
         appLockRaise(toggle, in: app)
-        snap("you-security")
+        snap("settings-security")
     }
 
     /// Drags the list holding `element` until the element sits in its upper half. Slow drags, so

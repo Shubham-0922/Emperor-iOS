@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// Everything that is not one of the five tabs, as the **Tools** sections of You.
+/// The destinations the workspace presents whole — each owns its `NavigationStack` and a Done.
 ///
 /// This was the More tab — the web's sidebar on a phone (`src/shell/MobileNav.jsx`). The
-/// redesign has five tabs, and none of these is one, so they live under You — reached from
-/// Home's profile button — with every row kept: the role's workspace, every tool, the file
-/// tools, OCR, Translate, the Corporate Calendar and Library. My Files and History are rows
-/// under the new More tab, and Settings is You itself.
+/// redesign has five tabs, and this file is now just the destinations behind them: **More**'s
+/// Library row and its Doc tools open these as one sheet (`.library`, `.ocr`, `.fileTools`),
+/// and the Calendar tab embeds the Corporate calendar directly rather than presenting it.
+/// The rest — the role's workspace, All tools, Translate, Projects, eAuctions — lost their row
+/// when the Tools sections left You; their screens, view models, services and tests are all
+/// still here and still built. To bring one back, set the sheet's `destination` from a row —
+/// and add that row to the UI tests and the screenshot tour. Projects and eAuctions stay hidden
+/// at the product owner's request either way.
 ///
 /// Labels are the web's — **Translate**, **eAuctions** — not the names this app once used, so
 /// someone who uses both learns one vocabulary.
 ///
 /// - Important: every destination here **presents rather than pushes**. Every one owns a
-///   `NavigationStack` — they were built as self-contained modals — and pushing one into You's
-///   stack would nest two stacks, with two navigation bars and a back button that unwinds the
-///   wrong one. So each carries its own "Done" at `.cancellationAction`, and You owns the one
-///   sheet they are presented in.
+///   `NavigationStack` — they were built as self-contained modals — and pushing one into a
+///   tab's stack would nest two stacks, with two navigation bars and a back button that unwinds
+///   the wrong one. So each carries its own "Done" at `.cancellationAction`, and More owns the
+///   one sheet they are presented in.
 enum ToolDestination: String, Identifiable {
     case deck, corporateCalendar, library, projects, tools, fileTools, ocr, translate, eAuctions
 
@@ -67,55 +71,5 @@ enum ToolDestination: String, Identifiable {
         case .translate: OCRView(mode: .translate)
         case .eAuctions: AuctionListView()
         }
-    }
-}
-
-/// The Tools rows of You: "Your practice" and "Tools", in the platform's own order.
-///
-/// Projects and eAuctions are hidden for now, at the product owner's request. Only the rows are
-/// gone: their screens, view models, services and tests are all still here and still built. To
-/// bring one back, add `row(.projects)` after `row(.library)`, or `row(.eAuctions)` after
-/// `row(.translate)` — and add its row to the UI tests and the screenshot tour.
-struct ToolsSections: View {
-    @Environment(\.theme) private var theme
-    @Environment(\.practice) private var practice
-    @Binding var destination: ToolDestination?
-
-    var body: some View {
-        Section {
-            row(.deck)
-            row(.corporateCalendar)
-            row(.library)
-        } header: {
-            SectionHeader(title: "Your practice")
-        }
-        .listRowBackground(theme.surface)
-
-        Section {
-            row(.tools)
-            row(.fileTools)
-            row(.ocr)
-            row(.translate)
-        } header: {
-            // "All tools" is not a row the web has — there, most of the registry is reachable only
-            // by typing `/w/<id>`. A phone has no address bar.
-            SectionHeader(title: "Tools")
-        }
-        .listRowBackground(theme.surface)
-    }
-
-    /// A row: the tile, the label, and a chevron — drawn here because the row presents rather
-    /// than pushes, so iOS supplies none. Named by its title alone, as the UI tests find it.
-    private func row(_ item: ToolDestination) -> some View {
-        Button {
-            destination = item
-        } label: {
-            HStack(spacing: Spacing.sm) {
-                IconRowLabel(title: item.title, systemImage: item.symbol(for: practice.role))
-                RowChevron()
-            }
-            .contentShape(Rectangle())
-        }
-        .accessibilityLabel(Text(item.title))
     }
 }

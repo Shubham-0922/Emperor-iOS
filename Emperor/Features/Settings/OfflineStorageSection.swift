@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Settings → Storage: how much is kept on this device for reading offline, and clearing it.
+/// More → Storage: how much is kept on this device for reading offline, and clearing it.
 ///
 /// Everything it says is `OfflineStorageViewModel`'s; this lays it out.
 struct OfflineStorageSection: View {

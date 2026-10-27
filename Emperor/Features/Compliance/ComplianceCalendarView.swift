@@ -2,17 +2,20 @@ import SwiftUI
 
 /// The Corporate Calendar: statutory deadlines from the platform's compliance pipeline.
 ///
-/// The web's `ComplianceCalendar.jsx`, reshaped for a phone: the three counts, the category
-/// chips and the status filter come across as they are, and the month grid gives way to its own
-/// agenda — overdue, the next seven days, then each later month — because twenty-odd deadlines
-/// spread across a year are mostly empty cells in a grid this size. What the screen does and
-/// does not do, and why, is on `ComplianceCalendarViewModel`.
+/// The web's `ComplianceCalendar.jsx`, reshaped for a phone: the month grid, the three counts,
+/// the category chips and the status filter come across as they are — the grid shared with My
+/// calendar (`MonthGrid`, one calendar drawn one way in both places), then the counts, the
+/// selected day's own deadlines directly under the grid, and the agenda below — overdue, the
+/// next seven days, then each later month, with the selected day dropped from it so no day is
+/// printed twice. What the screen does and does not do, and why, is on
+/// `ComplianceCalendarViewModel`.
 ///
-/// Reached two ways: embedded in the Calendar tab behind its **Corporate calendar** switch —
-/// no stack of its own, no Done, the tab's bar is the chrome — and as a sheet from You's Tools,
-/// where it keeps the stack and **Done** every presented Tools screen carries (see `MoreView`).
-/// It was a role-gated Corporate tab here, as it is on the web, until the product owner gave
-/// that place in the bar to the user's own Calendar; see `MainTabView`.
+/// Reached embedded in the Calendar tab behind its **Corporate calendar** switch — no stack of
+/// its own, no Done, the tab's bar is the chrome. Its own sheet form (a stack and **Done**,
+/// as every presented Tools screen carried) is still built by `ToolDestination.corporateCalendar`,
+/// but no row presents it: Tools left the You screen, and More's Case tools are drawn cards
+/// (see `MoreView`). It was a role-gated Corporate tab here, as it is on the web, until the
+/// product owner gave that place in the bar to the user's own Calendar; see `MainTabView`.
 struct ComplianceCalendarView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
@@ -64,6 +67,20 @@ struct ComplianceCalendarView: View {
     private func content(_ model: ComplianceCalendarViewModel) -> some View {
         ListStateView(presentation: model.presentation, retry: { await model.load() }) {
             List {
+                MonthGrid(
+                    state: MonthGridState(
+                        month: model.month,
+                        selectedDay: model.selectedDay,
+                        todayKey: model.todayKey,
+                        marks: model.marks,
+                        select: { model.select(day: $0) },
+                        goToToday: { model.goToToday() },
+                        step: { model.step(months: $0) }),
+                    legend: [
+                        MonthGrid.LegendItem(mark: .deadline, text: "Statutory deadline"),
+                    ],
+                    legendSpoken: "A dot marks a day a statutory deadline falls due.")
+
                 Section {
                     summaryStrip(model)
                         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -79,6 +96,10 @@ struct ComplianceCalendarView: View {
                         .foregroundStyle(theme.textSecondary)
                         .textCase(nil)
                 }
+
+                // The day the grid has selected, in full — the agenda below drops it, exactly
+                // as My calendar drops its own day from the days it lists.
+                selectedDaySection(model)
 
                 if model.isFilteredToNothing {
                     Section {
@@ -142,6 +163,35 @@ struct ComplianceCalendarView: View {
                 filterMenu(model)
             }
         }
+    }
+
+    // MARK: - The selected day
+
+    /// What falls due on the day the grid has selected, said under the grid's own hand — the
+    /// section whose heading changes as the days are tapped. Empty means none falls due that
+    /// day (a filter that hides them shows the "Nothing matches" section above).
+    private func selectedDaySection(_ model: ComplianceCalendarViewModel) -> some View {
+        let dayDeadlines = model.deadlines(on: model.selectedDay)
+        return Section {
+            if dayDeadlines.isEmpty {
+                Text(model.selectedDayEmptyText)
+                    .font(.brand(.subheadline))
+                    .foregroundStyle(theme.textSecondary)
+            } else {
+                ForEach(dayDeadlines) { deadline in
+                    NavigationLink {
+                        ComplianceDeadlineDetailView(detail: model.detail(for: deadline))
+                    } label: {
+                        row(deadline, model)
+                    }
+                }
+            }
+        } header: {
+            SectionHeader(
+                title: DisplayText.longDay(model.selectedDay),
+                detail: dayDeadlines.isEmpty ? nil : "\(dayDeadlines.count)")
+        }
+        .listRowBackground(theme.surface)
     }
 
     // MARK: - Counts and chips

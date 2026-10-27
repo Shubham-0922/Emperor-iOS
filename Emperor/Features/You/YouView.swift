@@ -1,24 +1,28 @@
 import SwiftUI
 
-/// Account & Profile: the account and its standing, the plan and allowances, how answers start,
-/// the role, appearance, notifications, the tools that are not tabs, privacy and storage, and
-/// signing out.
+/// Account & Profile: the account and its standing, how answers start, the role, appearance,
+/// the way to usage, billing and settings, search, and signing out.
 ///
-/// What was Settings is here, row for row — role, appearance, notifications, profile, plan and
-/// usage, app lock, search, offline storage, the disclaimer — beside the Record design's own:
-/// the profile card led by the avatar, the demo-tour stand-in, the **Settings** row (the
-/// design's screen: the advocate profile and its save, the briefings, chambers, app & legal
-/// with About & Compliance, and delete), the default answer mode and the Tools rows that were
-/// the More tab.
+/// The design's screen, in the mock's order: the profile card led by the avatar, the demo-tour
+/// stand-in, appearance, the current role with its way to switch it, one card holding **Usage**
+/// (this month's allowances, on their own screen), **Billings** (the stand-in — the app takes no
+/// money yet) and **Settings** (the design's screen: the advocate profile and its save, the
+/// briefings with Notifications within, chambers, app & legal with About & Compliance, and
+/// delete), the spotlight search, and Sign Out from Device.
+///
+/// What used to be rows here has moved: notifications and app lock are inside Settings, offline
+/// storage is on More, and the Tools rows belong to More alone (see `MoreView`); the default
+/// answer mode is the composer's own chip, not a preference.
 struct YouView: View {
     @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
     @Environment(\.practice) private var practice
+    @Environment(\.scenePhase) private var scenePhase
 
-    @State private var tool: ToolDestination?
     @State private var isConfirmingSignOut = false
-
-    private let preferences = Preferences()
+    /// The Usage row's own load — its subtitle reads the same entitlements the allowances
+    /// screen shows, so the row never claims a plan the account has moved off.
+    @State private var usage: AccountUsageViewModel?
 
     var body: some View {
         NavigationStack {
@@ -35,45 +39,10 @@ struct YouView: View {
                     .listRowBackground(theme.surface)
 
                     Section {
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            IconRowLabel(title: "Settings", systemImage: "gearshape")
-                        }
-                        .accessibilityIdentifier("settings-entry")
-                    }
-                    .listRowBackground(theme.surface)
-
-                    Section {
                         demoTourRow
                     }
                     .listRowBackground(theme.surface)
-
-                    PlanUsageSection()
                 }
-
-                Section {
-                    // A fact, not a setting: every launch starts on Fast, and deep thinking only on
-                    // the top plan tier. The composer's mode chip switches a single question.
-                    IconRowLabel(
-                        title: "Default mode", systemImage: "bolt",
-                        value: currentDefaultMode.modeName)
-                        .accessibilityElement(children: .combine)
-
-                    NavigationLink {
-                        RolePickerView()
-                    } label: {
-                        IconRowLabel(
-                            title: "Current role", systemImage: practice.role.systemImage,
-                            value: practice.role.label)
-                    }
-                    .accessibilityIdentifier("Role selector")
-                } header: {
-                    SectionHeader(title: "Answers")
-                } footer: {
-                    footnote("New questions start on Fast; deep thinking is the default only on the top plan, and any question can be switched from the composer. The role changes the suggestions on Ask and how answers are written, and is saved to your account, so the web opens in the same role.")
-                }
-                .listRowBackground(theme.surface)
 
                 Section {
                     RecordSegmentedControl(
@@ -89,22 +58,68 @@ struct YouView: View {
                 .listRowBackground(theme.surface)
 
                 Section {
-                    NavigationLink {
-                        NotificationSettingsView()
-                    } label: {
-                        IconRowLabel(title: "Notifications", systemImage: "bell")
-                    }
-                    .accessibilityIdentifier("notifications-settings")
-                } header: {
-                    SectionHeader(title: "Notifications")
+                    roleCard
                 } footer: {
-                    footnote("The daily cause list, hearing reminders on this device, and an email copy.")
+                    footnote("The role changes the suggestions on Ask and how answers are written, and is saved to your account, so the web opens in the same role.")
                 }
                 .listRowBackground(theme.surface)
 
-                ToolsSections(destination: $tool)
+                Section {
+                    NavigationLink {
+                        UsagePlanView()
+                    } label: {
+                        IconRowLabel(
+                            title: "Usage", systemImage: "chart.bar",
+                            subtitle: usageSubtitle)
+                    }
+                    .accessibilityIdentifier("settings-usage")
 
-                AppLockSettingsSection()
+                    Button {
+                        // Invoices and GST receipts — the app takes no money yet, so there is
+                        // nothing to list. The row is the design's, standing in like Chambers.
+                    } label: {
+                        HStack(spacing: Spacing.md) {
+                            IconTile(systemImage: "doc.plaintext")
+                            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                                Text("Billings")
+                                    .font(.brand(.body, weight: .medium))
+                                    .foregroundStyle(theme.textPrimary)
+                                    .dynamicLineLimit(2)
+                                Text("Invoices, GST receipts & chamber payment")
+                                    .font(.brand(.footnote))
+                                    .foregroundStyle(theme.textTertiary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: Spacing.sm)
+                            StatusPill(text: "Paid")
+                        }
+                        .padding(.vertical, Spacing.xxs)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Billings, Paid")
+                    .accessibilityIdentifier("settings-billings")
+
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        IconRowLabel(
+                            title: "Settings", systemImage: "gearshape",
+                            subtitle: "Security, citation preferences & offline cache")
+                    }
+                    .accessibilityIdentifier("settings-entry")
+                }
+                .listRowBackground(theme.surface)
+                .task {
+                    if usage == nil { usage = AccountUsageViewModel(service: session.usage) }
+                    await usage?.load()
+                }
+                // Back from the plans page in the browser, where the account's plan may have
+                // changed — the same two reloads `PlanUsageSection` does for itself.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { reloadUsage() }
+                }
+                .onChange(of: session.currentUser?.planLabel) { _, _ in reloadUsage() }
 
                 Section {
                     let isIndexing = AppSpotlight.shared.coordinator.isEnabled
@@ -126,28 +141,12 @@ struct YouView: View {
                 }
                 .listRowBackground(theme.surface)
 
-                OfflineStorageSection()
-
-                Section {
-                    NavigationLink {
-                        DisclaimerReferenceView()
-                    } label: {
-                        IconRowLabel(title: Disclaimer.title, systemImage: "exclamationmark.shield")
-                    }
-                    .accessibilityIdentifier("settings-disclaimer")
-                } header: {
-                    SectionHeader(title: "More")
-                } footer: {
-                    footnote("Emperor is not a lawyer, and what it produces is not legal advice.")
-                }
-                .listRowBackground(theme.surface)
-
                 Section {
                     Button {
                         Haptics.warning()
                         isConfirmingSignOut = true
                     } label: {
-                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("Sign Out from Device", systemImage: "rectangle.portrait.and.arrow.right")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.destructiveAction)
@@ -173,10 +172,6 @@ struct YouView: View {
             .background(theme.groupedBackground)
             .navigationTitle("Account & Profile")
             .navigationBarTitleDisplayMode(.large)
-            .sheet(item: $tool) { chosen in
-                chosen.screen
-                    .pageSizedSheet()
-            }
             .confirmationDialog(
                 "Sign out of Emperor?",
                 isPresented: $isConfirmingSignOut,
@@ -190,6 +185,43 @@ struct YouView: View {
                 Text("Cached matters on this device will be removed.")
             }
         }
+    }
+
+    // MARK: - The current role
+
+    /// The role as its own card — the overline, the role in the account's own words, and the
+    /// way to switch it, as the mock draws it. The whole card is the link; "Switch" is what it
+    /// promises, not a second target.
+    private var roleCard: some View {
+        NavigationLink {
+            RolePickerView()
+        } label: {
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                Text("CURRENT ROLE")
+                    .font(.brand(.caption2, weight: .semibold))
+                    .foregroundStyle(theme.textTertiary)
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: practice.role.systemImage)
+                        .foregroundStyle(theme.accentText)
+                        .accessibilityHidden(true)
+                    Text(practice.role.label)
+                        .font(.brand(.body, weight: .medium))
+                        .foregroundStyle(theme.textPrimary)
+                        .dynamicLineLimit(2)
+                    Spacer(minLength: Spacing.sm)
+                    Text("Switch")
+                        .font(.brand(.subheadline, weight: .semibold))
+                        .foregroundStyle(theme.accentText)
+                }
+            }
+            .padding(.vertical, Spacing.xxs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Current role, \(practice.role.label)")
+        .accessibilityHint("Opens the role picker")
+        .accessibilityIdentifier("Role selector")
     }
 
     // MARK: - Profile
@@ -283,12 +315,21 @@ struct YouView: View {
         return (parts + [practice.role.label]).joined(separator: " · ")
     }
 
-    // MARK: - Answers
+    // MARK: - Usage
 
-    private var currentDefaultMode: ChatModel {
-        AnswerModeDefault.starting(feeTier: session.currentUser?.feeTier)
+    /// What the Usage row says under its title: the first allowance worth showing, straight
+    /// from the account's own entitlements — or the plain words until the load answers.
+    private var usageSubtitle: String {
+        guard let meter = usage?.visibleMeters.first else { return "Plan & allowances" }
+        return "\(meter.title): \(meter.summary)"
     }
 
+    private func reloadUsage() {
+        let usage = usage
+        Task { await usage?.load() }
+    }
+
+    // MARK: - Pieces
 
     private var versionLine: String {
         // The same read as About & Compliance and Settings's App row — one answer to "which

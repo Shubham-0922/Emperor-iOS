@@ -54,8 +54,6 @@ struct CalendarView: View {
     @State private var scope: Scope = .mine
     @State private var isAddingEvent = false
     @State private var isSubscribing = false
-    /// The month steps, scaled with the heading they sit beside.
-    @ScaledMetric(relativeTo: .footnote) private var stepSide: CGFloat = 32
     /// Counts days opened from outside, each of which scrolls back up to the month.
     @State private var openedDays = 0
 
@@ -138,7 +136,22 @@ struct CalendarView: View {
         ListStateView(presentation: model.presentation, retry: { await model.load() }) {
             ScrollViewReader { proxy in
                 List {
-                    monthSection(model)
+                    MonthGrid(
+                        state: MonthGridState(
+                            month: model.month,
+                            selectedDay: model.selectedDay,
+                            todayKey: model.todayKey,
+                            marks: model.marks,
+                            select: { model.select(day: $0) },
+                            goToToday: { model.goToToday() },
+                            step: { model.step(months: $0) }),
+                        legend: [
+                            MonthGrid.LegendItem(mark: .listed, text: "Matters listed"),
+                            MonthGrid.LegendItem(mark: .diary, text: "Diary"),
+                        ],
+                        legendSpoken:
+                            "A dot marks a day with matters listed; a ring, a day with only diary entries.",
+                        rowID: Self.monthRowID)
 
                     // Read once: it filters the diary for the day.
                     let day = model.selectedCalendarDay
@@ -227,206 +240,6 @@ struct CalendarView: View {
             Button("OK") { model.writeError = nil }
         } message: {
             Text(model.writeError ?? "")
-        }
-    }
-
-    // MARK: - The month
-
-    /// The month as a grid of whole weeks, with a mark on every day that has something on it: a
-    /// filled dot where a matter is listed, a ring where there are only diary entries.
-    ///
-    /// A mark rather than a count: the grid answers "which days", and the day's own sections
-    /// below answer "what". A number in a cell this size is unreadable and, at a glance, is
-    /// easily taken for the date. Two shapes rather than two colours, so the difference does not
-    /// depend on seeing colour.
-    private func monthSection(_ model: CalendarViewModel) -> some View {
-        // Read once. `marks` walks both sources to build a map, and the grid is about to ask it
-        // forty-odd times.
-        let marks = model.marks
-        return Section {
-            VStack(spacing: Spacing.xs) {
-                HStack(spacing: Spacing.xs) {
-                    ForEach(Array(CalendarMonth.weekdayInitials.enumerated()), id: \.offset) {
-                        _, initial in
-                        Text(initial)
-                            .font(.brand(.caption2, weight: .semibold))
-                            .foregroundStyle(theme.textTertiary)
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(.bottom, Spacing.xxs)
-                // One element for the row, saying what it is — each day cell already names its
-                // own weekday, so seven single letters read aloud would only be noise; but text
-                // on screen with nothing behind it reads to the audit as text VoiceOver cannot
-                // reach.
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Sunday to Saturday")
-                // Text, not a control: without the trait an element built from children is judged
-                // as one, and its 14-point height as a target too small to hit.
-                .accessibilityAddTraits(.isStaticText)
-                if let month = model.month {
-                    // Keyed by position: a week has no identity of its own, and the days inside
-                    // it carry real dates that do.
-                    ForEach(Array(month.weeks.enumerated()), id: \.offset) { _, week in
-                        HStack(spacing: Spacing.xs) {
-                            ForEach(week) { day in
-                                dayCell(day, model, mark: marks[day.key] ?? CalendarDayMark.clear)
-                            }
-                        }
-                    }
-                }
-                legend
-            }
-            .padding(.vertical, Spacing.xxs)
-            .listRowInsets(EdgeInsets(top: 12, leading: 10, bottom: 10, trailing: 10))
-            .id(Self.monthRowID)
-        } header: {
-            monthHeader(model)
-        }
-        .listRowBackground(theme.surface)
-    }
-
-    /// What the two marks mean — said once, as a sentence, to VoiceOver, which also hears each
-    /// day's own mark as words.
-    private var legend: some View {
-        HStack(spacing: 14) {
-            HStack(spacing: 5) {
-                marker(.listed, isSelected: false)
-                Text("Matters listed")
-            }
-            HStack(spacing: 5) {
-                marker(.diary, isSelected: false)
-                Text("Diary")
-            }
-            Spacer(minLength: 0)
-        }
-        .font(.brand(.caption2))
-        .foregroundStyle(theme.textTertiary)
-        .padding(.top, Spacing.sm)
-        .padding(.leading, Spacing.xs)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("A dot marks a day with matters listed; a ring, a day with only diary entries.")
-        // Text, not a control — see the weekday row above.
-        .accessibilityAddTraits(.isStaticText)
-    }
-
-    /// The month's name, as the heading of its own card, with the way back to today and the
-    /// two steps beside it — round, as Home's day steps are.
-    private func monthHeader(_ model: CalendarViewModel) -> some View {
-        // The month over its controls at the accessibility sizes, where beside them its name
-        // would be cut to a word.
-        AdaptiveStack(spacing: Spacing.sm) {
-            Text(model.month?.title ?? "")
-                .font(.brand(.headline, weight: .semibold))
-                .foregroundStyle(theme.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-            Spacer(minLength: Spacing.sm)
-            HStack(spacing: Spacing.sm) {
-                // Only once there is somewhere to come back from. The capsule inside the label,
-                // with a 44-point frame round it, so all of it takes the tap — not the word alone.
-                if !model.isShowingToday {
-                    Button {
-                        model.goToToday()
-                        VoiceOver.announce(model.month?.title ?? "")
-                    } label: {
-                        Text("Today")
-                            .font(.brand(.caption, weight: .semibold))
-                            .foregroundStyle(theme.accentText)
-                            .padding(.horizontal, Spacing.md)
-                            .padding(.vertical, 6)
-                            .background(theme.accentWash, in: Capsule())
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                monthStep("chevron.left", label: "Previous month") { step(model, by: -1) }
-                monthStep("chevron.right", label: "Next month") { step(model, by: 1) }
-            }
-        }
-        .textCase(nil)
-        .padding(.bottom, Spacing.xs)
-    }
-
-    private func monthStep(
-        _ systemImage: String, label: String, action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.brand(.footnote, weight: .semibold))
-                .foregroundStyle(theme.textPrimary)
-                .frame(width: min(stepSide, 48), height: min(stepSide, 48))
-                .background(theme.surface, in: Circle())
-                .overlay(Circle().strokeBorder(theme.separator, lineWidth: 1))
-                // The circle is drawn at its size; the target is at least 44 points.
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-    }
-
-    /// The month changes above the control VoiceOver is on, so its name is said as well.
-    private func step(_ model: CalendarViewModel, by months: Int) {
-        model.step(months: months)
-        VoiceOver.announce(model.month?.title ?? "")
-    }
-
-    private func dayCell(
-        _ day: CalendarMonth.Day, _ model: CalendarViewModel, mark: CalendarDayMark
-    ) -> some View {
-        let isSelected = day.key == model.selectedDay
-        let isToday = day.key == model.todayKey
-        // Spelled out rather than implicit members either side of the ternary: `brand(_:weight:)`
-        // takes an `Optional`, which is the shape `-parse` accepts and the type checker rejects.
-        let weight: Font.Weight? = isToday ? Font.Weight.bold : Font.Weight.regular
-        let foreground: Color =
-            isSelected ? theme.onAccent : (day.isInMonth ? theme.textPrimary : theme.textTertiary)
-
-        return Button {
-            model.select(day: day.key)
-        } label: {
-            VStack(spacing: 3) {
-                Text("\(day.number)")
-                    .font(.brand(.subheadline, weight: weight).monospacedDigit())
-                marker(mark, isSelected: isSelected)
-            }
-            .foregroundStyle(foreground)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .background(
-                isSelected ? theme.accent : Color.clear,
-                in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .strokeBorder(
-                        isToday && !isSelected ? theme.accentText : Color.clear, lineWidth: 1.5))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        // Today is ringed for the eye; to VoiceOver it is said.
-        .accessibilityLabel(
-            isToday ? "Today, \(DisplayText.longDay(day.key))" : DisplayText.longDay(day.key))
-        .accessibilityValue(mark.spoken)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    /// A filled dot for a listed day, a ring for a diary-only one, nothing for a clear one — at a
-    /// fixed size, so every cell is the same height whatever is on it.
-    @ViewBuilder
-    private func marker(_ mark: CalendarDayMark, isSelected: Bool) -> some View {
-        switch mark {
-        case .listed:
-            Circle()
-                .fill(isSelected ? theme.onAccent : theme.accent)
-                .frame(width: 6, height: 6)
-        case .diary:
-            Circle()
-                .strokeBorder(isSelected ? theme.onAccent : theme.textTertiary, lineWidth: 1)
-                .frame(width: 6, height: 6)
-        case .clear:
-            Color.clear
-                .frame(width: 6, height: 6)
         }
     }
 
