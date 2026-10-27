@@ -17,7 +17,7 @@ struct MatterAskSection: View {
     let model: MatterWorkspaceViewModel
 
     /// Set when a conversation is opened, so coming back reloads the matter.
-    @State private var openedConversation = false
+    @State private var hasAppeared = false
 
     var body: some View {
         let chats = MatterChatsViewModel(chats: model.detail?.chats ?? [])
@@ -28,7 +28,6 @@ struct MatterAskSection: View {
                 Label("New conversation", systemImage: "plus.bubble")
             }
             .buttonStyle(.compactSecondaryAction)
-            .simultaneousGesture(TapGesture().onEnded { openedConversation = true })
             .accessibilityIdentifier("matter-chat-new")
 
             if rows.isEmpty {
@@ -53,8 +52,7 @@ struct MatterAskSection: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("matter-section-ask-body")
         .onAppear {
-            guard openedConversation else { return }
-            openedConversation = false
+            guard hasAppeared else { hasAppeared = true; return }
             Task { await model.reload() }
         }
     }
@@ -67,7 +65,6 @@ struct MatterAskSection: View {
             }
         }
         .buttonStyle(.recordRow)
-        .simultaneousGesture(TapGesture().onEnded { openedConversation = true })
         .accessibilityIdentifier("matter-chat-\(row.id)")
     }
 }

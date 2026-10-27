@@ -16,6 +16,8 @@ final class FakeProjectWrites: ProjectWriting, @unchecked Sendable {
     private(set) var fromCase: [(caseID: String, name: String?, banner: String?, color: String?)] = []
 
     var saveError: Error?
+    /// The next this-many child writes fail, then they succeed.
+    var failNextChildren = 0
     var uploadError: Error?
     var patchError: Error?
     var deleteError: Error?
@@ -63,6 +65,10 @@ final class FakeProjectWrites: ProjectWriting, @unchecked Sendable {
         calls.append(name)
         bodies[name, default: []].append(body)
         if let childError { throw childError }
+        if failNextChildren > 0 {
+            failNextChildren -= 1
+            throw APIError.server(status: 500, message: "Try again")
+        }
     }
 
     func saveUpdate(_ body: [String: JSONValue]) async throws -> SavedUpdate {

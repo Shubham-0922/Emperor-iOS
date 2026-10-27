@@ -95,9 +95,11 @@ struct MatterFilesSection: View {
         }
         .recordToast($bindable.message)
         .sheet(isPresented: $isAttaching) {
+            let openSub: String? = (model.openFolder?.sub).flatMap { $0.isEmpty ? nil : $0 }
+            let target: String = openSub ?? MatterFilesService.standardFolders[0]
             AttachFromMyFilesSheet(
                 projectID: model.projectID, destinations: model.destinations,
-                destination: model.openFolder?.sub ?? MatterFilesService.standardFolders[0]
+                destination: target
             ) { summary in
                 model.message = summary
                 pollGeneration += 1

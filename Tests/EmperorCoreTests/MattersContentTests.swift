@@ -322,6 +322,37 @@ final class MattersContentTests: XCTestCase {
         }
     }
 
+    func testASecondAddAfterAPartialFailureSavesOnlyWhatIsLeft() async {
+        await onMain {
+            let service = FakeMatterFiles()
+            service.proposals = ChronologyProposalSet(events: [
+                ExtractedEvent(date: "2025-04-10", title: "Notice issued"),
+                ExtractedEvent(date: "2025-05-01", title: "Reply filed"),
+            ])
+            let writes = FakeProjectWrites()
+            let model = ChronologyExtractViewModel(projectID: "p", service: service, writes: writes, existing: [])
+            await model.start()
+            writes.failNextChildren = 1
+            _ = await model.accept()
+            XCTAssertEqual(writes.calls.count, 2)
+            XCTAssertEqual(model.picked.count, 1, "the one that landed is unticked")
+            _ = await model.accept()
+            XCTAssertEqual(writes.calls.count, 3, "only the failed one is saved again")
+            XCTAssertEqual(writes.bodies["saveUpdate"]![2]["title"], writes.bodies["saveUpdate"]![0]["title"])
+        }
+    }
+
+    func testStartingTwiceReadsOnce() async {
+        await onMain {
+            let service = FakeMatterFiles()
+            service.proposals = ChronologyProposalSet(events: [ExtractedEvent(date: "2025-01-01", title: "X")])
+            let model = ChronologyExtractViewModel(projectID: "p", service: service, writes: FakeProjectWrites(), existing: [])
+            await model.start()
+            await model.start()
+            XCTAssertEqual(service.extracted.count, 1)
+        }
+    }
+
     func testAFailedSaveIsCounted() {
         XCTAssertEqual(ChronologyExtractViewModel.resultMessage(added: 1, failed: 2, lastError: "Pick the date."),
                        "1 added; 2 could not be saved — Pick the date..")

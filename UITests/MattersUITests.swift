@@ -45,10 +45,9 @@ final class MattersUITests: XCTestCase {
 
         XCTAssertTrue(app.matterElement("matter-header").waitForExistence(timeout: 10), "the banner is missing")
         XCTAssertTrue(app.matterElement("matter-next-hearing").exists, "the next hearing is not on the banner")
-        for section in ["overview", "chronology", "court", "tasks", "fees", "people"] {
+        for section in ["overview", "ask", "files", "drafts", "chronology", "court", "tasks", "fees", "people"] {
             XCTAssertTrue(app.revealSection(section).exists, "no \(section) section")
         }
-        XCTAssertFalse(app.matterElement("matter-section-files").exists, "Files is offered before it works")
         XCTAssertTrue(app.matterElement("matter-standing").waitForExistence(timeout: 5), "the overview is empty")
     }
 
@@ -141,7 +140,7 @@ extension XCUIApplication {
     @discardableResult
     func revealSection(_ key: String) -> XCUIElement {
         // The bar's order, left to right.
-        let keys = ["overview", "chronology", "court", "tasks", "fees", "people"]
+        let keys = ["overview", "ask", "files", "drafts", "chronology", "court", "tasks", "fees", "people"]
         let target = keys.firstIndex(of: key) ?? 0
         _ = matterElement("matter-header").waitForExistence(timeout: 10)
         var drags = 0

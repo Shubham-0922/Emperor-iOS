@@ -98,7 +98,7 @@ final class ChronologyExtractViewModel {
     // MARK: - Reading
 
     func start() async {
-        guard scope == .all || !chosen.isEmpty else { return }
+        guard phase == .pick, scope == .all || !chosen.isEmpty else { return }
         run += 1
         let mine = run
         phase = .reading
@@ -161,6 +161,7 @@ final class ChronologyExtractViewModel {
             do {
                 _ = try await writes.saveUpdate(Self.body(p, projectID: projectID))
                 ok += 1
+                if let i = proposals.firstIndex(where: { $0.id == p.id }) { proposals[i].on = false }
             } catch {
                 failed += 1
                 lastError = DisplayText.message(for: error)
