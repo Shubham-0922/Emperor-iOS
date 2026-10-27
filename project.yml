@@ -89,6 +89,13 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # iPad multitasking (Split View, Stage Manager) requires all four; App Store upload
+        # validation refuses an iPad app that leaves one out without UIRequiresFullScreen.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # Required: the app opens the camera to scan paperbooks. Without a purpose string
         # iOS terminates the app the moment the scanner is presented.
         NSCameraUsageDescription: >
