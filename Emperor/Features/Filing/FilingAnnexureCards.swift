@@ -14,7 +14,9 @@ struct FilingAnnexureCards: View {
     @State private var opened: FilingAnnexure?
 
     var body: some View {
-        Group {
+        // A stack, not a `Group`: a group hands its modifiers to its children, and with nothing
+        // loaded yet it has none, so the `.task` that loads the cards would never run.
+        VStack(alignment: .leading, spacing: 0) {
             if let model, !model.rows.isEmpty {
                 cards(model.rows)
             }
@@ -122,15 +124,20 @@ struct FilingSeedSection: View {
     /// One chip per row, the row being the chip: there is nothing else in it to tap.
     private func seedRow(_ file: ChatAttachment) -> some View {
         let name = DisplayText.fileName(file.name)
-        return Button {
-            Task { await model.addSeed(file) }
-        } label: {
-            ChipLabel(title: name, systemImage: "plus", isSelected: false)
+        // The chip at its own width, the rest of the row empty: the chip's frame is then the
+        // control's, wherever the row ends on a wide screen.
+        return HStack(spacing: 0) {
+            Button {
+                Task { await model.addSeed(file) }
+            } label: {
+                ChipLabel(title: name, systemImage: "plus", isSelected: false)
+            }
+            .buttonStyle(ChipButtonStyle(isSelected: false))
+            .disabled(model.isAdding)
+            .accessibilityLabel("Add \(name) as an annexure")
+            .accessibilityIdentifier("filing-seed-\(file.name)")
+            Spacer(minLength: 0)
         }
-        .buttonStyle(ChipButtonStyle(isSelected: false))
-        .disabled(model.isAdding)
-        .accessibilityLabel("Add \(name) as an annexure")
-        .accessibilityIdentifier("filing-seed-\(file.name)")
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: Spacing.xxs, leading: 0, bottom: Spacing.xxs, trailing: 0))
     }

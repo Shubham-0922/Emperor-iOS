@@ -3,6 +3,10 @@ import SwiftUI
 /// What an assembly run came to: the bundle with its index, page ranges and checklist, or every
 /// problem that stopped it — the assembler fails closed and lists them all at once.
 struct FilingResultView: View {
+    /// The result's row, scrolled to when a run ends: it lands below Assemble, often below the
+    /// screen's edge, where a failure would otherwise go unseen.
+    static let anchor = "filing-result-anchor"
+
     @Environment(\.theme) private var theme
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -12,11 +16,14 @@ struct FilingResultView: View {
 
     var body: some View {
         Section {
-            if result.success {
-                success
-            } else {
-                failure
+            Group {
+                if result.success {
+                    success
+                } else {
+                    failure
+                }
             }
+            .id(Self.anchor)
         } header: {
             HStack(alignment: .firstTextBaseline) {
                 SectionHeader(title: "Result")

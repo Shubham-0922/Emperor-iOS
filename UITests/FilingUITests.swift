@@ -95,7 +95,7 @@ final class FilingUITests: XCTestCase {
         XCTAssertTrue(app.assembleFiling(), "Assemble did not become available")
 
         let ok = app.filingElement("filing-result-ok")
-        XCTAssertTrue(ok.waitForExistence(timeout: 20), "no assembled bundle")
+        XCTAssertTrue(app.waitForFilingResult(ok), "no assembled bundle")
         XCTAssertTrue(poll { ok.label.contains("42 pages") }, "title: \(ok.label)")
         XCTAssertTrue(app.filingElement("filing-checklist-affidavit").waitForExistence(timeout: 5))
 
@@ -121,7 +121,7 @@ final class FilingUITests: XCTestCase {
         XCTAssertTrue(app.assembleFiling())
 
         let failed = app.filingElement("filing-result-failed")
-        XCTAssertTrue(failed.waitForExistence(timeout: 20), "no failure shown")
+        XCTAssertTrue(app.waitForFilingResult(failed), "no failure shown")
         let error = app.filingElement("filing-error-0")
         XCTAssertTrue(error.waitForExistence(timeout: 5), "the reason was not listed")
         XCTAssertTrue(
@@ -172,6 +172,15 @@ extension XCUIApplication {
         guard waitAndReveal(field, timeout: 10) else { return }
         field.focusForTyping()
         field.typeText(text + "\n")
+    }
+
+    /// Waits for an assembly's result — `filing-result-ok` or `filing-result-failed` — which is
+    /// drawn in the List below Assemble. The screen scrolls to it; should a row below the fold
+    /// not have been built yet, it is scrolled to here, then waited for in full.
+    func waitForFilingResult(_ result: XCUIElement, timeout: TimeInterval = 30) -> Bool {
+        if result.waitForExistence(timeout: 8) { return true }
+        reveal(result)
+        return result.waitForExistence(timeout: timeout)
     }
 
     /// Taps Assemble once it is available; answers whether it was.
