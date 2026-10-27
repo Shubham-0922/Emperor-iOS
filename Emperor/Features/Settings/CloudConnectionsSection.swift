@@ -148,11 +148,8 @@ struct CloudConnectionsSection: View {
         view
             .fullScreenCover(item: pendingBinding(provider), onDismiss: { browserGone(provider) }) { pending in
                 browser(pending)
-            }
-            // The page is up: read the connections until the drive says it is connected.
-            .task(id: pendingID(provider)) {
-                guard pendingID(provider) != nil else { return }
-                await model.pollWhileConnecting(provider)
+                    // Lives exactly as long as the page: read until the drive says it is connected.
+                    .task(id: pending.id) { await model.pollWhileConnecting(pending.provider) }
             }
             .alert("Couldn't do that", isPresented: errorBinding(provider)) {
                 Button("OK") { model.error = nil }
@@ -174,11 +171,6 @@ struct CloudConnectionsSection: View {
         SafariView(url: pending.url) { model?.pendingURL = nil }
             .ignoresSafeArea()
         #endif
-    }
-
-    private func pendingID(_ provider: CloudProvider) -> String? {
-        guard let pending = model?.pendingURL, pending.provider == provider else { return nil }
-        return pending.id
     }
 
     private func pendingBinding(_ provider: CloudProvider) -> Binding<IdentifiedURL?> {

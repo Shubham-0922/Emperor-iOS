@@ -97,6 +97,7 @@ struct CloudImportSheet: View {
                 .accessibilityIdentifier("cloud-open-account")
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("cloud-import-blocked")
     }
 

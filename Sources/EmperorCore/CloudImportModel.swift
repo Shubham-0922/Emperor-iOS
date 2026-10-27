@@ -131,7 +131,7 @@ final class CloudImportModel {
             files = try await service.list(provider)
             state = .loaded
         } catch {
-            if case .server(let status, let message)? = error as? APIError, status == 409 || status == 400 {
+            if case .server(let status, let message)? = error as? APIError, status == 409 {
                 // Not connected, expired, or access not granted: the sentence says what to do.
                 blocker = message
                 state = .loaded
