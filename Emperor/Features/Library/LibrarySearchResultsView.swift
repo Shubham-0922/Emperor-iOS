@@ -41,6 +41,9 @@ struct LibrarySearchResultsView: View {
             }
         }
         .padding(.top, Spacing.sm)
+        // A container of its own: an identifier on a plain stack is handed down to every element
+        // inside it, and would replace "library-passages" and each collection's own.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("library-search-results")
     }
 

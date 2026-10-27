@@ -131,8 +131,11 @@ final class FileRoutesUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// The toast is kept on screen (`-UITestLongToasts`): saving swaps the editing page for the
+    /// reader's, and the simulator can still be settling when a toast of seconds has gone. What
+    /// was saved is then read where it stays — the reader shows the edited words.
     func testEditDraftSaves() {
-        let app = XCUIApplication.launchedSignedIn(["-UITestDraftEdit"])
+        let app = XCUIApplication.launchedSignedIn(["-UITestDraftEdit", "-UITestLongToasts"])
         XCTAssertTrue(app.openStubDraft(), "the draft did not open in its reader")
         XCTAssertTrue(app.editStubDraft(typing: " amended"), "the draft could not be typed into")
         app.buttons["draft-save"].tap()
@@ -141,6 +144,9 @@ final class FileRoutesUITests: XCTestCase {
         XCTAssertTrue(poll(timeout: 15) { toast.exists }, "no word that the draft was saved")
         XCTAssertTrue(app.buttons["draft-edit"].waitForExistence(timeout: 10), "the reader did not come back")
         XCTAssertFalse(app.fileRouteElement("draft-save-error").exists)
+        let edited = app.webViews.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "amended")).firstMatch
+        XCTAssertTrue(edited.waitForExistence(timeout: 10), "the reader does not show the saved edit")
     }
 
     func testCancelEditKeepsOriginal() {
@@ -189,10 +195,18 @@ final class FileRoutesUITests: XCTestCase {
         let app = XCUIApplication.launchedSignedIn(["-UITestDraftEdit"])
         XCTAssertTrue(app.openStubDraft(), "the draft did not open in its reader")
         let menu = app.buttons["Download this document"].firstMatch
-        XCTAssertTrue(menu.waitForExistence(timeout: 10))
-        menu.tap()
-        let pdf = app.buttons["PDF"].firstMatch
-        XCTAssertTrue(pdf.waitForExistence(timeout: 5), "the menu has no PDF")
+        XCTAssertTrue(menu.waitForExistence(timeout: 10), "the reader has no download menu")
+        // By identifier or by its words. Tapped again, up to three taps in all, while the menu
+        // has not opened: a tap as the full-screen reader is still arriving can be lost (and a
+        // second tap on an open menu closes it, for the third to open it again).
+        let pdf = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ OR label == %@", "export-pdf", "PDF")).firstMatch
+        for _ in 0..<3 {
+            guard menu.exists, menu.isHittable else { break }
+            menu.tap()
+            if pdf.waitForExistence(timeout: 5) { break }
+        }
+        XCTAssertTrue(pdf.exists, "the menu has no PDF")
         pdf.tap()
         XCTAssertTrue(app.shareSheetShows(), "the PDF was not offered to share")
         XCTAssertFalse(app.fileRouteElement("export-pdf-local").exists, "the server's PDF was not used")
