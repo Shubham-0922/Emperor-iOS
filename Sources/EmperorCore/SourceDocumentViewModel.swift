@@ -31,6 +31,12 @@ final class SourceDocumentViewModel {
     /// signal.
     private(set) var offlineNote: String?
 
+    /// A Word document the server could not convert: the text read out of it at upload, shown in
+    /// its place (`ExtractedText`). Never kept for offline reading.
+    private(set) var extractedText: FileTextResponse?
+    /// Why the document is shown as extracted text — the converter's reason.
+    private(set) var conversionNote: String?
+
     let attachment: ChatAttachment
     let mention: AnnexureMention
     /// The words the citation quotes, to find and mark; `""` for none.
@@ -49,6 +55,7 @@ final class SourceDocumentViewModel {
     private let offline: OfflineDocuments?
     private let connectivity: (any ConnectivityReporting)?
     private let words: (any CitedSourceResolving)?
+    private let fileText: (any FileRouteProviding)?
 
     /// - Parameters:
     ///   - offline: where this account keeps documents for reading offline. Every document that
@@ -57,6 +64,8 @@ final class SourceDocumentViewModel {
     ///   - quote: the words a citation quotes, to find on the cited page and mark.
     ///   - quoteStatus: the server's check of those words.
     ///   - words: where a scanned page's placed words come from (`/page-words`).
+    ///   - fileText: where a Word document's extracted text comes from when the server cannot
+    ///     convert it for viewing.
     init(
         attachment: ChatAttachment,
         mention: AnnexureMention,
@@ -66,7 +75,8 @@ final class SourceDocumentViewModel {
         connectivity: (any ConnectivityReporting)? = nil,
         quote: String = "",
         quoteStatus: QuoteStatus? = nil,
-        words: (any CitedSourceResolving)? = nil
+        words: (any CitedSourceResolving)? = nil,
+        fileText: (any FileRouteProviding)? = nil
     ) {
         self.attachment = attachment
         self.mention = mention
@@ -77,6 +87,7 @@ final class SourceDocumentViewModel {
         self.quote = quote
         self.quoteStatus = quoteStatus
         self.words = words
+        self.fileText = fileText
     }
 
     // MARK: - The quoted words
@@ -247,9 +258,32 @@ final class SourceDocumentViewModel {
             keep(document)
         } catch {
             if OfflineReading.mayStandIn(after: error), openSavedCopy() { return }
+            if let notViewable = error as? DocumentNotViewable,
+               await openExtractedText(because: notViewable.message) {
+                return
+            }
             errorMessage = (error as? DocumentNotViewable)?.message
                 ?? DisplayText.message(for: error)
         }
+    }
+
+    /// A Word document the converter refused: its extracted text instead, as the web's viewer
+    /// falls back (`src/components/viewer/viewers.jsx`). `false` when there is none to ask for
+    /// or the request failed — the converter's reason is then said as before.
+    private func openExtractedText(because reason: String) async -> Bool {
+        guard isOfficeDocument, let fileText else { return false }
+        guard let response = try? await fileText.fileText(
+            name: attachment.name, folderName: attachment.folderName)
+        else { return false }
+        extractedText = response
+        conversionNote = reason
+        errorMessage = nil
+        return true
+    }
+
+    /// The banner over the extracted text.
+    var extractedNotice: String? {
+        extractedText.map { ExtractedText.notice(for: $0, conversionNote: conversionNote) }
     }
 
     /// "Offline — showing the copy saved yesterday", while the kept copy is on screen.

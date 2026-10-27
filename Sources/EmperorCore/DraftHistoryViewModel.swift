@@ -37,7 +37,16 @@ final class DraftHistoryViewModel {
     struct OpenedDraft: Equatable, Identifiable {
         let item: DraftedItem
         let content: String
-        var id: String { item.id }
+        /// Which opening this is — the row first opened, kept when a save moves the draft to
+        /// another row, so the reader on screen stays the same reader.
+        let presentationID: String
+        var id: String { presentationID }
+
+        init(item: DraftedItem, content: String, presentationID: String? = nil) {
+            self.item = item
+            self.content = content
+            self.presentationID = presentationID ?? item.id
+        }
 
         /// How to draw it — read from the content, never taken from the row's `type`.
         ///
@@ -152,4 +161,23 @@ final class DraftHistoryViewModel {
     }
 
     func close() { opened = nil }
+
+    // MARK: - Editing
+
+    /// The draft on screen was saved: it now reads `content`, held by the row `id` (the server
+    /// may answer with another row than the one opened). The row is patched in place at once;
+    /// the screen then reloads the list, where the server has dated it now and put it first.
+    func replaceOpened(content: String, id: String) {
+        guard let current = opened else { return }
+        let old = current.item
+        let row = DraftedItem(
+            id: id, chatID: old.chatID, title: old.title, type: old.type,
+            createdAtRaw: old.createdAtRaw, chatTitle: old.chatTitle)
+        opened = OpenedDraft(item: row, content: content, presentationID: current.presentationID)
+        var patched: [DraftedItem] = []
+        for item in items where item.id != id || item.id == old.id {
+            patched.append(item.id == old.id ? row : item)
+        }
+        items = patched
+    }
 }
