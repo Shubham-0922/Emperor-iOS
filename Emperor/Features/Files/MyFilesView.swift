@@ -82,7 +82,8 @@ struct MyFilesView: View {
                     // together, what lets My Files be used with no signal.
                     cache: session.cache,
                     offline: session.offlineCopies.map { OfflineDocuments(store: $0.documents) },
-                    officePreview: session.officePreview)
+                    officePreview: session.officePreview,
+                    fileRoutes: session.fileRoutes)
                 // Each reading of the library keeps the device's search in step with it.
                 created.onTreeLoaded = { AppSpotlight.shared.libraryLoaded($0) }
                 model = created
@@ -712,6 +713,9 @@ private struct LibraryScreen: View {
         .accessibilityAction(named: "Move") {
             movingFolder = MovingFolder(folder: folder)
         }
+        .accessibilityAction(named: "Share folder as .zip") {
+            Task { await model.prepareZip(folder) }
+        }
         .accessibilityAction(named: "Delete folder") {
             model.requestDeletion(of: folder)
         }
@@ -721,6 +725,12 @@ private struct LibraryScreen: View {
                 renamingFolder = folder
             } label: {
                 Label("Rename", systemImage: "pencil")
+            }
+            // The folder and everything under it as one archive, as the web's download does.
+            Button {
+                Task { await model.prepareZip(folder) }
+            } label: {
+                Label("Share folder as .zip", systemImage: "archivebox")
             }
             Button {
                 movingFolder = MovingFolder(folder: folder)

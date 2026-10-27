@@ -83,7 +83,8 @@ struct SourceDocumentView: View {
                 officePreview: session.officePreview,
                 offline: session.offlineCopies.map { OfflineDocuments(store: $0.documents) },
                 connectivity: AppConnectivity.current,
-                quote: quote, quoteStatus: quoteStatus, words: session.citedSources)
+                quote: quote, quoteStatus: quoteStatus, words: session.citedSources,
+                fileText: session.fileRoutes)
             model = created
             await created.load()
             if created.isPDF, let data = created.data, let document = PDFDocument(data: data) {
@@ -256,6 +257,10 @@ struct SourceDocumentView: View {
         if model.isLoading {
             ProgressView("Opening \(model.displayName)")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let extracted = model.extractedText {
+            // A Word document the server could not convert: the text read out of it, said to be
+            // a reconstruction.
+            ExtractedTextView(response: extracted, notice: model.extractedNotice ?? "")
         } else if let data = model.data, model.isPDF {
             VStack(spacing: 0) {
                 pageControls

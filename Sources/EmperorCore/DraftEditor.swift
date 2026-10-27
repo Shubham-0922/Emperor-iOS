@@ -12,6 +12,13 @@ enum DraftEditor {
     /// Said when an edit would leave nothing to save.
     static let emptyMessage = "A draft cannot be saved empty."
 
+    /// Said when the edited document could not be read back to save it.
+    static let unreadableMessage = "Your changes could not be read to save them. Please try again."
+
+    /// The script that reads an HTML draft's edited body back out of its web view: the wrapper's
+    /// contents only, never the page shell around it (`ArtifactDocument.html(wrapping:editable:)`).
+    static let readBackScript = "return document.querySelector('.scroll').innerHTML;"
+
     /// Whether `content` holds no words once markup is taken out — an HTML draft whose text was
     /// all deleted still has its wrapping tags.
     static func isBlank(_ content: String) -> Bool {
@@ -126,6 +133,12 @@ final class DraftEditorModel {
             phase = .failed(DisplayText.message(for: error))
             return false
         }
+    }
+
+    /// The edit could not be read back from the editor; it stays on screen to try again.
+    func couldNotRead() {
+        guard phase != .saving else { return }
+        phase = .failed(DraftEditor.unreadableMessage)
     }
 
     /// The row as it now stands — with the id the last save answered.

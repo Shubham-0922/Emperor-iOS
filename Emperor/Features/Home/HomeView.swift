@@ -16,6 +16,7 @@ struct HomeView: View {
     @Environment(Session.self) private var session
     @Environment(\.navigator) private var navigator
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var path: [ChatRoute] = []
     @State private var causeList: CauseListViewModel?
@@ -37,6 +38,8 @@ struct HomeView: View {
     @State private var openHearing: CauseListing?
     @State private var isOffline = AppConnectivity.current.isOffline
     @State private var unread = 0
+    /// The platform's maintenance notice, read at launch and on each return to the foreground.
+    @State private var maintenance: MaintenanceState?
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -83,7 +86,10 @@ struct HomeView: View {
                 }
             }
             .sheet(isPresented: $isChoosingMode) {
-                AnswerModeSheet(selection: mode) { chosenMode = $0 }
+                AnswerModeSheet(selection: mode) { chosen in
+                    chosenMode = chosen
+                    rememberMode(chosen)
+                }
             }
             .sheet(isPresented: $isShowingYou) {
                 YouView()
@@ -123,6 +129,10 @@ struct HomeView: View {
             }
         }
         .task { await loadOnce() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await checkMaintenance() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .emperorConnectivityChanged)) { _ in
             isOffline = AppConnectivity.current.isOffline
         }
@@ -226,6 +236,9 @@ struct HomeView: View {
 
     @ViewBuilder
     private var notices: some View {
+        if let maintenance, MaintenanceNotice.shouldShow(maintenance) {
+            MaintenanceBanner(message: MaintenanceNotice.message(for: maintenance))
+        }
         if isOffline {
             OfflineStrip()
         }
@@ -577,6 +590,22 @@ struct HomeView: View {
         await causeList?.load()
         await chats?.load()
         unread = (try? await session.notifications.unreadCount()) ?? 0
+        await checkMaintenance()
+    }
+
+    private func checkMaintenance() async {
+        maintenance = try? await session.fileRoutes.maintenance()
+    }
+
+    /// The answer mode chosen here becomes the account's starting mode, on the web as here — as
+    /// the web's own Home toggle does. Best-effort: a failure leaves it chosen for this question.
+    private func rememberMode(_ chosen: ChatModel) {
+        let routes = session.fileRoutes
+        let session = self.session
+        Task {
+            try? await routes.setPreferredModel(chosen)
+            await session.refreshPreferredModel()
+        }
     }
 
     private func reload() async {
@@ -734,5 +763,30 @@ private struct HomePlanSheet: View {
         }
         .pageSizedSheet()
         .presentationDragIndicator(.visible)
+    }
+}
+
+/// The platform is down for maintenance: the operator's words, on Home.
+struct MaintenanceBanner: View {
+    @Environment(\.theme) private var theme
+
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+            StatusPill(text: "Maintenance", tone: .neutral, systemImage: "wrench.and.screwdriver")
+            Text(message)
+                .font(.brand(.footnote))
+                .foregroundStyle(theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(Spacing.md)
+        .background(theme.surface, in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                .strokeBorder(theme.separator, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("maintenance-banner")
     }
 }
