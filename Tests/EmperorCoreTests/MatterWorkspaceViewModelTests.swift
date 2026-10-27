@@ -106,12 +106,13 @@ final class MatterWorkspaceViewModelTests: XCTestCase {
         }
     }
 
-    /// Ask, Files and Drafts stay off the bar while their routes are not built.
-    func testContentSectionsAreHiddenWhileUnavailable() async {
-        XCTAssertFalse(MatterAvailability.contentSections)
+    /// Ask, Files and Drafts are on the bar, in the web's order, and a route can open on one.
+    func testContentSectionsAreOnTheBar() async {
+        XCTAssertTrue(MatterAvailability.contentSections)
         await withWorkspace(section: "files") { _, model in
-            XCTAssertEqual(model.visibleSections, [.overview, .chronology, .court, .tasks, .fees, .people])
-            XCTAssertEqual(model.section, .overview, "an unavailable section opens the overview")
+            XCTAssertEqual(model.visibleSections,
+                           [.overview, .ask, .files, .drafts, .chronology, .court, .tasks, .fees, .people])
+            XCTAssertEqual(model.section, .files)
         }
         await withWorkspace(section: "court") { _, model in
             XCTAssertEqual(model.section, .court)

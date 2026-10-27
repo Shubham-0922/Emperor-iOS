@@ -11,6 +11,8 @@ struct MatterChronologySection: View {
     let model: MatterWorkspaceViewModel
     var edit: MatterEditActions? = nil
 
+    @State private var isBuilding = false
+
     var body: some View {
         @Bindable var bindable = model
         let entries = model.chronology(newestFirst: model.newestFirst)
@@ -35,6 +37,15 @@ struct MatterChronologySection: View {
                         .accessibilityIdentifier("chronology-list-of-dates")
                     }
                 }
+                // Its own line: three actions do not fit beside each other on a phone.
+                Button {
+                    isBuilding = true
+                } label: {
+                    Label("Build from documents", systemImage: "sparkles")
+                }
+                .buttonStyle(.quietAction)
+                .accessibilityHint("Emperor reads this matter’s documents and proposes the dated events in them")
+                .accessibilityIdentifier("chronology-build")
             }
             RecordSegmentedControl(
                 label: "Order",
@@ -68,6 +79,12 @@ struct MatterChronologySection: View {
                         .accessibilityIdentifier("matter-entry-\(entry.key)")
                     }
                 }
+            }
+        }
+        .sheet(isPresented: $isBuilding) {
+            ChronologyExtractSheet(projectID: model.projectID, existing: entries) { message in
+                edit?.done(message)
+                Task { await edit?.reload() }
             }
         }
     }

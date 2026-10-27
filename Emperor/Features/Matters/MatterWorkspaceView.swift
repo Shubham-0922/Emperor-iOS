@@ -133,11 +133,9 @@ struct MatterWorkspaceView: View {
         case .tasks: MatterTasksSection(model: model, edit: edit)
         case .fees: MatterFeesSection(model: model, edit: edit)
         case .people: MatterPeopleSection(model: model, edit: edit)
-        // Not on the bar while `MatterAvailability.contentSections` is off.
-        case .ask, .files, .drafts:
-            EmptyStateContent(
-                title: model.section.label, systemImage: "hourglass",
-                message: "This part of the matter opens on the web for now.", tone: .neutral) {}
+        case .ask: MatterAskSection(model: model)
+        case .files: MatterFilesSection(workspace: model)
+        case .drafts: MatterDraftsSection(workspace: model)
         }
     }
 }

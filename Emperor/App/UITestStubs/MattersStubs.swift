@@ -5,6 +5,7 @@ import Foundation
 /// `GET /project`, `GET /project-banner` — and, through `Store`, every write on a matter's record,
 /// kept for the life of the launch so a test can create, edit and delete and then read the result.
 /// Owned by package 03-MA, then 04-MB and 05-MC. `-UITestEmpty` answers with no matters at all.
+/// A matter's files, its drafts, attach and the chronology read are answered here too (05-MC).
 ///
 /// Four matters: `prj-writ` (active, high priority, linked to a case that is **not** on the
 /// docket, with a full workspace), `prj-arb` (an uploaded banner, nothing dated), `prj-old`
@@ -21,6 +22,12 @@ enum MattersStubs {
         if method == "GET", path == "/project-banner" {
             guard let png = Data(base64Encoded: onePixelPNG) else { return nil }
             return .bytes(png, type: "image/png")
+        }
+        // `-UITestFreshChats`: every conversation opens empty, as a new one does on the server —
+        // for the tests that start a matter's conversation. Without it `/messages` answers as it
+        // always has.
+        if method == "GET", path == "/messages", ProcessInfo.processInfo.arguments.contains("-UITestFreshChats") {
+            return .json(#"{"success":true,"messages":[]}"#)
         }
         return store.reply(method: method, path: path, request: request)
     }
@@ -183,6 +190,8 @@ extension MattersStubs {
         private var children: [String: Row] = [:]
         private var made = 0
         private var refreshes: [String: Int] = [:]
+        /// Folders made with New folder, by matter, relative to the matter.
+        private var madeFolders: [String: [String]] = [:]
 
         init() {
             guard !UITestSupport.isEmpty else { return }
@@ -226,6 +235,14 @@ extension MattersStubs {
             case ("POST", "/project-link-case"): return link(body)
             case ("POST", "/project-from-case"): return fromCase(body)
             case ("POST", "/project-case-refresh"): return refresh(body["projectId"] as? String ?? "")
+            case ("GET", "/project-files"): return files(q("projectId"))
+            case ("POST", "/project-folder"): return folder(body)
+            case ("POST", "/project-attach"): return attach(body)
+            case ("POST", "/project-chronology-extract"): return extract(body["projectId"] as? String ?? "")
+            // A matter's drafts only; the Library's own list is answered as it always was.
+            case ("GET", "/documents"), ("GET", "/tables"):
+                return q("projectId").isEmpty ? nil : drafts(q("projectId"), tables: path == "/tables")
+            case ("POST", "/save-case"): return Self.reply(["success": true, "id": "case-new"])
             default: return nil
             }
         }
@@ -496,6 +513,94 @@ extension MattersStubs {
             return .json(
                 #"{"success":false,"error":"This case was refreshed a moment ago — try again in 4 min","retryAfter":240}"#,
                 status: 429)
+        }
+
+        // MARK: Files, attach, drafts, chronology (05-MC)
+
+        /// `prj-writ` holds a ready petition and an affidavit still being read in Pleadings, and a
+        /// court-fee receipt in Receipts; every other matter is empty until a folder is made.
+        private func files(_ projectID: String) -> StubReply {
+            guard rows[projectID] != nil else { return Self.missing("Project not found") }
+            let root = "_projects/\(projectID)"
+            func file(_ sub: String, _ name: String, _ status: String, _ modified: String) -> Row {
+                ["type": "file", "name": name, "path": "\(root)/\(sub)/\(name)", "size": 4096,
+                 "modified": modified, "status": status, "favorite": false]
+            }
+            func folder(_ sub: String, _ files: [Row]) -> Row {
+                ["type": "folder", "name": sub, "path": "\(root)/\(sub)", "created": "2026-08-01T10:00:00.000Z", "files": files]
+            }
+            var folders: [Row] = []
+            if projectID == "prj-writ" {
+                folders = [
+                    folder("Pleadings", [
+                        file("Pleadings", "Writ_Petition.pdf", "ready", "2026-08-11T10:00:00.000Z"),
+                        file("Pleadings", "Counter_Affidavit.pdf", "Reading page 3 of 18", "2026-10-20T10:00:00.000Z"),
+                    ]),
+                    folder("Receipts", [file("Receipts", "Court_Fee_Receipt.pdf", "ready", "2026-08-11T11:00:00.000Z")]),
+                ]
+            }
+            for sub in madeFolders[projectID] ?? [] { folders.append(folder(sub, [])) }
+            return Self.reply(["success": true, "root": root, "folders": folders, "files": [Row]()])
+        }
+
+        private func folder(_ body: [String: Any]) -> StubReply {
+            let projectID = body["projectId"] as? String ?? ""
+            guard rows[projectID] != nil else { return Self.missing("Project not found") }
+            let name = (body["name"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return Self.refused("Folder name is required") }
+            let existed = madeFolders[projectID, default: []].contains(name)
+            if !existed { madeFolders[projectID, default: []].append(name) }
+            return Self.reply(["success": true, "folder": "_projects/\(projectID)/\(name)", "existed": existed])
+        }
+
+        /// The first document is copied; every other one is still being read in My Files.
+        private func attach(_ body: [String: Any]) -> StubReply {
+            let projectID = body["projectId"] as? String ?? ""
+            guard rows[projectID] != nil else { return Self.missing("Project not found") }
+            let sub = (body["subfolder"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Pleadings"
+            let folder = "_projects/\(projectID)/\(sub)"
+            let wanted = body["files"] as? [[String: Any]] ?? []
+            var out: [Row] = []
+            for (index, entry) in wanted.enumerated() {
+                let name = entry["fileName"] as? String ?? ""
+                let source: Row = ["folderName": entry["folderName"] as? String ?? "", "fileName": name]
+                var row: Row = ["name": name, "folder": folder, "status": "indexing", "source": source]
+                if index > 0 {
+                    row["status"] = "skipped"
+                    row["processing"] = true
+                    row["reason"] = "Still being read in My Files. Attach it once it shows as ready there."
+                }
+                out.append(row)
+            }
+            touch(projectID)
+            return Self.reply(["success": true, "folder": folder, "files": out])
+        }
+
+        /// One draft made in the matter's conversation, as `/documents?projectId=` lists it.
+        private func drafts(_ projectID: String, tables: Bool) -> StubReply {
+            guard rows[projectID] != nil else { return Self.missing("Project not found") }
+            var list: [Row] = []
+            if projectID == "prj-writ", !tables {
+                list = [["id": "doc-writ-1", "chat_id": "chat-writ", "user_id": "1", "title": "Rejoinder to the counter affidavit",
+                         "type": "doc", "created_at": "2026-10-01T08:30:00.000Z", "chat_title": "Draft the rejoinder",
+                         "project_id": projectID]]
+            }
+            return Self.reply(["success": true, "documents": list, "tables": list])
+        }
+
+        /// Three dated events; the first is the petition already on the record, so it starts unticked.
+        private func extract(_ projectID: String) -> StubReply {
+            guard rows[projectID] != nil else { return Self.missing("Project not found") }
+            let events: [Row] = [
+                ["date": MattersStubs.day(-30), "title": "Writ petition filed", "details": "Filed with 12 annexures.",
+                 "kind": "filing", "sourceRef": "Writ_Petition.pdf, p. 1"],
+                ["date": MattersStubs.day(-60), "title": "Tender cancelled by the Department", "details": "Order No. 118 of the Executive Engineer.",
+                 "kind": "event", "sourceRef": "Writ_Petition.pdf, p. 4"],
+                ["date": MattersStubs.day(-90), "title": "Tender awarded to the petitioner", "details": "",
+                 "kind": "award", "sourceRef": "Writ_Petition.pdf, p. 3"],
+            ]
+            return Self.reply(["success": true, "events": events, "files": 2, "skipped": ["Counter_Affidavit.pdf"],
+                               "chunks": ["total": 2, "failed": 0, "notRun": 0], "partial": false])
         }
 
         // MARK: Helpers

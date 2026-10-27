@@ -93,9 +93,12 @@ struct ChatThreadView: View {
         }
         .task {
             guard model == nil else { return }
+            // A matter's conversation carries the matter on every turn, through the service: the
+            // server then reads only the matter's files and adds what it knows of the matter.
+            let chatService: ChatService = projectID.map { session.chats.scoped(toProject: $0) } ?? session.chats
             let created = ChatViewModel(
                 chatID: chatID,
-                service: session.chats,
+                service: chatService,
                 files: session.files,
                 detached: StoredDetachedDocuments(store: Preferences.detachedDocuments),
                 // Fast, or deep thinking on the top plan tier — see `AnswerModeDefault`.
@@ -129,6 +132,14 @@ struct ChatThreadView: View {
             if !initialAttachments.isEmpty, created.messages.isEmpty {
                 created.setAttachments(initialAttachments)
             }
+            // A new conversation of a matter starts with the matter's readable documents, which
+            // the documents button can change before the first question — as on the web.
+            if let projectID, created.messages.isEmpty, created.attachments.isEmpty, !Task.isCancelled {
+                if let listing = try? await session.matterFiles.listing(projectID: projectID),
+                   created.messages.isEmpty, created.attachments.isEmpty {
+                    created.setAttachments(listing.readyAttachments)
+                }
+            }
             if let initialModel { created.model = initialModel }
             if let seed, !seed.isEmpty, !Task.isCancelled {
                 created.send(seed)
@@ -161,6 +172,10 @@ struct ChatThreadView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
+                        // A matter's new conversation opens on what it can be asked.
+                        if projectID != nil, model.messages.isEmpty, model.live == nil, !model.isStreaming {
+                            MatterChatIntro(onAsk: { question in send(question, in: model) })
+                        }
                         ForEach(model.messages, id: \.stableID) { message in
                             // Explicit labels rather than trailing closures: both of these
                             // structs carry a private @State property, so the synthesised
@@ -352,8 +367,15 @@ struct ChatThreadView: View {
             }
         }
         .sheet(isPresented: $isBrowsingFiles) {
-            FileLibraryView(alreadyAttached: model.attachments) { chosen in
-                model.setAttachments(chosen)
+            // A matter's conversation reads only the matter's files, so it picks from them.
+            if let projectID {
+                MatterFilesPicker(projectID: projectID, alreadyAttached: model.attachments) { chosen in
+                    model.setAttachments(chosen)
+                }
+            } else {
+                FileLibraryView(alreadyAttached: model.attachments) { chosen in
+                    model.setAttachments(chosen)
+                }
             }
         }
         .sheet(item: $model.openSource) { source in
