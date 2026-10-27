@@ -849,9 +849,31 @@ final class EmperorUITests: XCTestCase {
         // before the row is tapped, the same way the first open waits for its rows.
         // A tap that lands while the closed sheet is still settling is swallowed, so the row is
         // revealed and tapped again, up to three times, before the picker is called missing.
+        //
+        // `reveal` alone is not enough here. Opening "Your workspace" scrolled You far enough
+        // that, once the Answers section grew a Draft length control and a longer footer, the
+        // Role row comes back sitting *under* the collapsed navigation bar: XCTest calls it
+        // hittable, but the tap lands on the bar and nothing opens. So the list is dragged down
+        // until the row is clear of the bar first. The drag is short and only made while the row
+        // is under the bar — the list is then far from its top, so it scrolls the list and cannot
+        // pull the sheet down.
+        let profileBar = app.navigationBars["Account & Profile"].firstMatch
         var reopened = false
         for _ in 0..<3 where !reopened {
             app.reveal(selector)
+            var nudges = 0
+            while selector.exists, profileBar.exists,
+                  selector.frame.minY < profileBar.frame.maxY + 4, nudges < 4 {
+                // Measured from the row itself, so the drag starts inside the sheet's list on a
+                // phone and on an iPad's form sheet alike.
+                let start = selector.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                    .withOffset(CGVector(dx: 0, dy: 160))
+                let end = start.withOffset(CGVector(dx: 0, dy: 180))
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow,
+                            thenHoldForDuration: 0.2)
+                Thread.sleep(forTimeInterval: 0.3)
+                nudges += 1
+            }
             selector.tap()
             reopened = app.navigationBars["Switch role"].waitForExistence(timeout: 6)
         }
