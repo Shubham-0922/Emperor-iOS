@@ -291,7 +291,7 @@ struct ActionNoticeToast: View {
             .onAppear { VoiceOver.announce(notice) }
             .onChange(of: notice) { _, new in VoiceOver.announce(new) }
             .task(id: notice) {
-                try? await Task.sleep(for: .seconds(4))
+                try? await Task.sleep(for: ToastLifetime.of(.seconds(4)))
                 onDismiss()
             }
     }

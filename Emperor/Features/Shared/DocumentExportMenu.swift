@@ -52,11 +52,11 @@ struct DocumentExportMenu: View {
                     wordLink("Word · without citations", subtitle: "A clean copy for filing", citations: false)
                 }
                 Section("PDF") {
-                    pdfLink("PDF · with citations", citations: true)
-                    pdfLink("PDF · without citations", citations: false)
+                    pdfLink("PDF · with citations", citations: true, id: "export-pdf-with-citations")
+                    pdfLink("PDF · without citations", citations: false, id: "export-pdf-without-citations")
                 }
             } else {
-                pdfLink("PDF", citations: true)
+                pdfLink("PDF", citations: true, id: "export-pdf")
                 wordLink("Word (.docx)", subtitle: nil, citations: true)
             }
             Divider()
@@ -86,12 +86,14 @@ struct DocumentExportMenu: View {
         .accessibilityIdentifier("filing-ready-\(format.rawValue)")
     }
 
-    private func pdfLink(_ label: String, citations: Bool) -> some View {
+    /// `id` is on the button itself, where a test can find it: inside its label it would not be.
+    private func pdfLink(_ label: String, citations: Bool, id: String) -> some View {
         Button {
             exportPDF(citations: citations)
         } label: {
             Label(label, systemImage: "doc.richtext")
         }
+        .accessibilityIdentifier(id)
     }
 
     @ViewBuilder

@@ -47,6 +47,9 @@ struct LibraryReadingRoom: View {
                 .accessibilityIdentifier("library-open-web")
             }
         }
+        // A container of its own, so the identifier is not handed down to the find bar's
+        // field, count and arrows in place of their own.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("library-room")
         .task {
             guard model == nil else { return }

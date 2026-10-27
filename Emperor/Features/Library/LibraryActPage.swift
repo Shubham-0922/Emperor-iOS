@@ -35,6 +35,7 @@ struct LibraryActPage: View {
                 }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("library-act")
         .task {
             guard model == nil else { return }
@@ -297,6 +298,7 @@ struct LibraryInstrumentPane: View {
             .background(theme.canvas)
             .navigationTitle(LibraryDisplay.actTitle(doc))
             .navigationBarTitleDisplayMode(.inline)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("library-room")
     }
 }

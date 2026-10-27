@@ -99,8 +99,10 @@ final class CloudUITests: XCTestCase {
             "the drive did not go back to Connect")
     }
 
+    /// The toast is kept on screen (`-UITestLongToasts`): it comes up as the sheet closes and the
+    /// folder is read again, and a toast of four seconds can be gone before the simulator settles.
     func testImportTwoFilesIntoFolder() {
-        let app = XCUIApplication.launchedSignedIn(["-UITestCloudConnected"])
+        let app = XCUIApplication.launchedSignedIn(["-UITestCloudConnected", "-UITestLongToasts"])
         XCTAssertTrue(app.openBakshiForCloud(), "the Bakshi folder did not open")
         XCTAssertTrue(app.openCloudImport(), "the import sheet did not list the drive")
 

@@ -38,6 +38,13 @@ enum UITestSupport {
         ProcessInfo.processInfo.arguments.contains("-UITestEmpty")
     }
 
+    /// Toasts stay on screen for half a minute instead of seconds, for a test that reads one
+    /// after an action that leaves the simulator busy (a sheet closing, a page loading): by the
+    /// time it is idle enough to be asked, a toast of a few seconds can already have gone.
+    static var keepsToasts: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITestLongToasts")
+    }
+
     /// A one-page PDF where iOS would put a document another app handed over, for
     /// `-UITestIncomingDocument`. Written fresh on each launch; the app moves it into its own
     /// store, as it does the real inbox copy.
