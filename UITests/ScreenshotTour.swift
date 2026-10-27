@@ -245,6 +245,16 @@ final class ScreenshotTour: XCTestCase {
             }
         }
 
+        // The tab's other calendar: the same month grid, drawn once for both, with the statutory
+        // deadlines' agenda below it. Switched back, so the tab is left on My calendar.
+        let corporate = app.buttons["Corporate calendar"].firstMatch
+        if corporate.waitForExistence(timeout: 5) {
+            corporate.tap()
+            _ = app.staticTexts["GSTR-1"].waitForExistence(timeout: 10)
+            snap("corporate-calendar")
+            tapIfPresent(app.buttons["My calendar"].firstMatch)
+        }
+
         // Files, from More: the folders, and one of them opened — its sub-folder above its
         // documents. Closed from its own Done before the next step.
         app.tab("More").tap()
