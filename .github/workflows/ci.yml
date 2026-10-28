@@ -140,6 +140,13 @@ jobs:
             artifact-suffix: ""
           - device: iPad
             artifact-suffix: "-ipad"
+    # **macOS is billed at 10x on a private repo, and every job rounds up to the whole minute.**
+    # A single macOS job that runs for 40 seconds costs ten minutes of a 2,000-minute month. So
+    # these do not run on a push: the Linux jobs above cost 1x, catch most of what breaks, and
+    # run on everything. This runs when it is asked for.
+    #
+    #   Actions -> CI -> Run workflow      (or push a tag)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     # This ran only on demand while the repository was private, because macOS bills at 10x there
     # and every job rounds up to a whole minute — 460 minutes went to a duplicate build job
     # before that was noticed. **Public repositories get macOS runners free and unmetered**, so
@@ -311,6 +318,8 @@ jobs:
     # itself, so code that does not build still fails here, but a UI test that is out of date
     # (as they are while a redesign lands) no longer blocks the build a tester installs.
     needs: [core, syntax]
+    # On demand only, as the simulator tests are: this is a macOS job, billed at 10x here.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
 
