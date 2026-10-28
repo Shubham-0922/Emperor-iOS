@@ -39,6 +39,10 @@ struct UploadBatch: Equatable, Sendable {
         fileprivate(set) var status: Status
         /// Seconds left, once there is evidence enough to say.
         fileprivate(set) var eta: Int?
+        /// The name the server stored it under when that differs from `name` — a photo that
+        /// came back as a PDF. Said on the row, because the document the person looks for in
+        /// My Files afterwards has this name, not the one they sent.
+        fileprivate(set) var savedAs: String?
         fileprivate var estimator = UploadETAEstimator()
 
         /// Share of the file's bytes that have left. A sent file counts as whole whatever
@@ -90,7 +94,9 @@ struct UploadBatch: Equatable, Sendable {
                 parts.append(message ?? "Reading the document…")
             case .unconfirmed(let message):
                 parts.append(message)
-            case .done, .failed, .processingFailed:
+            case .done:
+                if let savedAs { parts.append("Saved as \(savedAs)") }
+            case .failed, .processingFailed:
                 break
             }
             return parts.joined(separator: " · ")
@@ -121,9 +127,11 @@ struct UploadBatch: Equatable, Sendable {
 
         var id: String { folderName }
 
-        /// The destination, or "My Files (root)" for the top of the library.
+        /// The destination, or "My Files (root)" for the top of the library. A folder upload's
+        /// nested folders read as a path — "Clients / Wadhwa / Orders" — so two "Orders" folders
+        /// from one upload can be told apart.
         var title: String {
-            folderName.isEmpty ? "My Files (root)" : DisplayText.fileName(folderName)
+            folderName.isEmpty ? "My Files (root)" : FolderUploadPlan.breadcrumb(folderName)
         }
 
         /// "2/5" while any is sending, "5 files" once none is.
@@ -212,11 +220,15 @@ struct UploadBatch: Equatable, Sendable {
     }
 
     /// The server finished reading the file and it can be asked about.
-    mutating func markDone(_ id: String) {
+    ///
+    /// - Parameter savedAs: the stored name, when the server changed it — a photo that is now
+    ///   a PDF (`UploadManifest.storedName`). Shown under the row; `nil` when the name is the one sent.
+    mutating func markDone(_ id: String, savedAs: String? = nil) {
         update(id) { file in
             file.loaded = file.size
             file.eta = nil
             file.status = .done
+            if let savedAs, savedAs != file.name { file.savedAs = savedAs }
         }
     }
 
@@ -348,5 +360,48 @@ struct UploadBatch: Equatable, Sendable {
             return "All \(ready) uploads are now searchable — ask Emperor anything about them."
         }
         return nil
+    }
+
+    // MARK: - Closing by itself
+
+    /// Seconds a clean batch stays on screen before the panel closes itself — the web's upload
+    /// tray (`src/components/upload/UploadTray.jsx`, `AutoCloseTimer seconds={5}`).
+    static let autoCloseSeconds = 5
+
+    /// Whether the panel may close itself: every file reached the server and was read, and none
+    /// needs attention. The web's rule is "nothing running, nothing failed, something uploaded";
+    /// a file whose reading was left unconfirmed counts as finished here, as it does there — it
+    /// is not a failure, and the document turns up in the library when it is ready.
+    ///
+    /// A failure, or a new upload joining the batch, makes this false again, which is what
+    /// cancels a countdown already under way.
+    var finishedCleanly: Bool {
+        !isEmpty && !isActive && !files.contains(where: \.needsAttention)
+    }
+}
+
+/// The countdown the panel shows over a clean batch: "Closing in 5s" … "Closing in 1s", then
+/// it is gone. A value the view ticks once a second; it never closes anything itself.
+struct UploadAutoClose: Equatable, Sendable {
+    private(set) var secondsLeft: Int
+
+    init(seconds: Int = UploadBatch.autoCloseSeconds) {
+        secondsLeft = max(0, seconds)
+    }
+
+    /// Whether the time is up and the panel should close.
+    var isDue: Bool { secondsLeft <= 0 }
+
+    /// One second has passed.
+    mutating func tick() {
+        secondsLeft = max(0, secondsLeft - 1)
+    }
+
+    /// The label beside the close button, as the web words it.
+    var label: String { "Closing in \(secondsLeft)s" }
+
+    /// Said once for VoiceOver, so the ticking number is not read out five times.
+    var accessibilityLabel: String {
+        "Closes by itself in \(secondsLeft) second\(secondsLeft == 1 ? "" : "s")"
     }
 }

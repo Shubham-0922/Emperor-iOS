@@ -369,10 +369,11 @@ struct AuctionFilter: Equatable, Sendable {
     /// Free text, matched as `corporate_debtor LIKE %q% OR nature_of_assets LIKE %q%`
     /// (`sync-server.js:10319`).
     ///
-    /// - Note: `%` and `_` typed by the user stay live as wildcards and cannot be escaped from
-    ///   here. Left as typed rather than stripped: silently deleting characters from someone's
-    ///   search term is worse than a broader match, and the term travels as a bound parameter
-    ///   either way.
+    /// - Note: the server interpolates the term into the pattern with no `ESCAPE` clause, so
+    ///   `%` and `_` typed by the user stay live as wildcards and cannot be escaped from here.
+    ///   Left as typed rather than stripped: silently deleting characters from someone's search
+    ///   term is worse than a broader match, and neither is a safety problem — the term is a
+    ///   bound parameter.
     var query: String?
     /// An exact `type_of_an`, taken from the facets rather than typed.
     var type: String?

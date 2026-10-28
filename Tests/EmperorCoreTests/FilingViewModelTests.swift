@@ -5,8 +5,8 @@ final class FilingViewModelTests: XCTestCase {
 
     private static let start = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private static func standard() -> FakeFiling {
-        let fake = FakeFiling()
+    private static func standard() -> FakeFilingAssembly {
+        let fake = FakeFilingAssembly()
         fake.draftList = [
             FilingDraft(id: "canvas_1", title: "Writ Petition — Look Out Circular", type: "doc",
                         createdAtRaw: "2026-10-01 09:00:00", chatID: "c1"),
@@ -14,9 +14,9 @@ final class FilingViewModelTests: XCTestCase {
                         createdAtRaw: "2026-10-02T09:00:00.000Z", chatID: "c2"),
         ]
         fake.rows = [
-            FilingAnnexure(id: 1, draftID: "canvas_1", mark: "P-1", title: "Board resolution",
+            AssemblyAnnexure(id: 1, draftID: "canvas_1", mark: "P-1", title: "Board resolution",
                            sourceFilePath: "/storage/1/Bakshi/Plaint.pdf"),
-            FilingAnnexure(id: 2, draftID: "canvas_1", mark: "P-2", title: "Notice",
+            AssemblyAnnexure(id: 2, draftID: "canvas_1", mark: "P-2", title: "Notice",
                            sourceFilePath: "/storage/1/Notice.pdf", treatment: "typed",
                            verifyStatus: "pending"),
         ]
@@ -151,7 +151,7 @@ final class FilingViewModelTests: XCTestCase {
 
     func testDragMovesRowsToTheirNewPlace() async {
         await run { fake, model in
-            fake.rows.append(FilingAnnexure(id: 3, mark: "P-3", title: "Reply"))
+            fake.rows.append(AssemblyAnnexure(id: 3, mark: "P-3", title: "Reply"))
             await model.loadDrafts()
             await model.pick(model.drafts[0])
             await model.move(fromOffsets: IndexSet(integer: 0), toOffset: 3)
@@ -348,7 +348,7 @@ final class FilingViewModelTests: XCTestCase {
     }
 
     func testRemovePromptIsThePagesQuestion() {
-        let a = FilingAnnexure(id: 1, mark: "P-1", title: "Board resolution")
+        let a = AssemblyAnnexure(id: 1, mark: "P-1", title: "Board resolution")
         XCTAssertEqual(
             FilingAssemblyViewModel.removePrompt(for: a),
             "Remove annexure P-1 — “Board resolution”? Its mark will not be reused.")
@@ -356,15 +356,15 @@ final class FilingViewModelTests: XCTestCase {
 
     // MARK: - Harness
 
-    private func run(_ body: @MainActor (FakeFiling, FilingAssemblyViewModel) async -> Void) async {
+    private func run(_ body: @MainActor (FakeFilingAssembly, FilingAssemblyViewModel) async -> Void) async {
         await filingModel(Self.standard(), FakeFiles(), body)
     }
 }
 
 @MainActor
 private func filingModel(
-    _ fake: FakeFiling, _ files: FakeFiles,
-    _ body: @MainActor (FakeFiling, FilingAssemblyViewModel) async -> Void
+    _ fake: FakeFilingAssembly, _ files: FakeFiles,
+    _ body: @MainActor (FakeFilingAssembly, FilingAssemblyViewModel) async -> Void
 ) async {
     let start = Date(timeIntervalSince1970: 1_800_000_000)
     await body(fake, FilingAssemblyViewModel(service: fake, files: files, now: { start }))

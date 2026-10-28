@@ -75,6 +75,11 @@ final class ScreenshotTour: XCTestCase {
             snap("role-welcome")
             litigator.tap()
             tapIfPresent(app.buttons["Continue"])
+            let start = app.buttons["Start working"]
+            if start.waitForExistence(timeout: 10) {
+                snap("role-welcome-details")
+                start.tap()
+            }
         }
 
         guard app.tab("Home").waitForExistence(timeout: 15) else {
@@ -258,10 +263,11 @@ final class ScreenshotTour: XCTestCase {
             }
         }
 
-        // Everything You's Tools present, each opened and closed from its own Done. Projects
-        // and eAuctions are hidden for now; see `ToolsSections`.
-        for row in ["Your workspace", "Corporate Calendar", "Library", "All tools", "File tools",
-                    "OCR", "Translate"] {
+        // Everything You's Tools present, each opened and closed from its own Done. eAuctions is
+        // hidden for now; see `ToolsSections`.
+        for row in ["Your workspace", "Corporate Calendar", "Library", "Fetch Orders",
+                    "Matter workspaces", "All tools", "Analysis tools", "Limitation Radar",
+                    "Filing Assembly", "MCA Registry", "File tools", "OCR", "Translate"] {
             let button = app.buttons[row].firstMatch
             app.reveal(button)
             guard button.waitForExistence(timeout: 5) else { continue }

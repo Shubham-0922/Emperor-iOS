@@ -1,7 +1,7 @@
 import XCTest
 
-/// OCR job detail (pages, notes) and the plan sheet's standing, meters and inclusions, driven by
-/// the stub server's `-UITestOCRNotes` and `-UITestPlanDetail` answers.
+/// OCR job detail (pages, notes), the plan sheet's meters and the plan pill, driven by the stub
+/// server's `-UITestOCRNotes` and `-UITestPlanDetail` answers.
 final class OCRBillingUITests: XCTestCase {
 
     override func setUp() {
@@ -53,13 +53,10 @@ final class OCRBillingUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: 10), "the plan sheet did not open")
     }
 
-    func testPlanSheetShowsStandingAndIncludes() {
+    /// A plan's "50 GB" is 50 GiB, as the web counts it: a decimal reading showed it as 53.7.
+    func testPlanSheetShowsStorageInBinaryUnits() {
         let app = XCUIApplication.launchedSignedIn(["-UITestPlanDetail"])
         openPlanSheet(app)
-
-        let standing = app.descendants(matching: .any)["plan-standing"].firstMatch
-        XCTAssertTrue(standing.waitForExistence(timeout: 10), "the plan sheet shows no standing")
-        XCTAssertTrue(poll { standing.label.contains("Expires in 5 days") }, "standing: \(standing.label)")
 
         let storage = app.descendants(matching: .any)["usage-meter-storage"].firstMatch
         var swipes = 0
@@ -69,12 +66,6 @@ final class OCRBillingUITests: XCTestCase {
         }
         XCTAssertTrue(storage.exists, "no storage meter")
         XCTAssertTrue(storage.label.contains("2.4 GB of 50 GB"), "storage reads: \(storage.label)")
-
-        let includes = app.buttons["plan-includes"].firstMatch
-        XCTAssertTrue(app.waitAndReveal(includes, timeout: 10), "no \"What your plan includes\" row")
-        includes.tap()
-        let support = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch
-        XCTAssertTrue(poll { support.exists }, "the inclusions did not open")
         XCTAssertFalse(app.buttons["Upgrade"].exists, "the plan sheet sells")
         XCTAssertFalse(app.staticTexts["Upgrade"].exists, "the plan sheet sells")
     }

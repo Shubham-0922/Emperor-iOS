@@ -128,11 +128,11 @@ final class GapFixTests: XCTestCase {
         HTTPStub.always(.json(#"{"success":true}"#))
         let auth = AuthService(client: client)
 
-        try await auth.requestPasswordReset(email: "  R.Iyer@Example.TEST ")
+        try await auth.requestPasswordReset(email: "  R.Iyer@Chambers.IN ")
 
         let sent = try XCTUnwrap(HTTPStub.lastRequest)
         XCTAssertEqual(sent.path, "/api/forgot-password")
-        XCTAssertEqual(sent.bodyJSON["email"] as? String, "r.iyer@example.test")
+        XCTAssertEqual(sent.bodyJSON["email"] as? String, "r.iyer@chambers.in")
         XCTAssertNil(sent.header("Authorization"), "you are locked out — there is no token")
     }
 

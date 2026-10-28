@@ -5,7 +5,7 @@ import Foundation
 /// under its own launch argument, so every other run is served as it always was.
 ///
 /// - `-UITestOCRNotes`: one layout-engine job with a page breakdown and two warnings.
-/// - `-UITestPlanDetail`: a Junior Associate plan sized in binary units, five days from ending.
+/// - `-UITestPlanDetail`: a Junior Associate plan's allowances, its storage in binary units.
 enum OCRBillingStubs {
     private static var arguments: [String] { ProcessInfo.processInfo.arguments }
 
@@ -14,12 +14,8 @@ enum OCRBillingStubs {
         if arguments.contains("-UITestOCRNotes"), path == "/ocr-history" {
             return .json(ocrHistory)
         }
-        if arguments.contains("-UITestPlanDetail") {
-            switch path {
-            case "/billing/entitlements": return .json(entitlements)
-            case "/billing/me": return .json(billingMe())
-            default: return nil
-            }
+        if arguments.contains("-UITestPlanDetail"), path == "/billing/entitlements" {
+            return .json(entitlements)
         }
         return nil
     }
@@ -53,10 +49,5 @@ enum OCRBillingStubs {
                 {"key":"master-brief","label":"Master Brief","status":"in-development","detail":"d"},
                 {"key":"devils-advocate","label":"Devil's Advocate","status":"available","detail":"d"}]}
     """#
-
-    private static func billingMe() -> String {
-        let ends = ISO8601DateFormatter().string(from: Date().addingTimeInterval(4.5 * 86_400))
-        return #"{"success":true,"plan":{"planSource":"purchase","expiresAt":"\#(ends)","expired":false,"displayLabel":"Junior Associate","feeTier":"essential"}}"#
-    }
 }
 #endif

@@ -1,55 +1,92 @@
 import Foundation
 
-/// A matter's banner, as the web paints it (`src/components/projects/ProjectBanner.jsx`): one of
-/// eight two-hue gradients, each end mixed a little with the card's own surface so the same
-/// "wine" reads as wine on a white card and on a navy one. Nothing on a banner relies on the
-/// gradient for contrast — text sits on `plate`, near-black glass, which also keeps it legible
-/// over an uploaded photo (`MatterBannerPaletteTests` holds that for every preset and theme).
-enum MatterBanner {
+/// The eight banner presets a matter can wear (docs/projects.md → banner presets), each two
+/// colours for a diagonal gradient — the web's `ProjectBanner` pairs, unchanged.
+///
+/// Nothing on a banner relies on the gradient for contrast: anything laid over it sits on its own
+/// dark plate, which is also what keeps it legible over an uploaded picture.
+enum BannerPreset: String, CaseIterable, Identifiable, Sendable {
+    case navy, slate, indigo, teal, forest, wine, gold, sand
 
-    typealias Preset = MatterVocabulary.BannerPreset
+    var id: String { rawValue }
 
-    /// `PRESETS`: [from, to] per preset.
-    static let presets: [Preset: (from: UInt32, to: UInt32)] = [
-        .navy: (0x252A47, 0x464E85),
-        .slate: (0x343A4F, 0x6B7187),
-        .indigo: (0x464E85, 0x8B95CC),
-        .teal: (0x24555C, 0x6F9AC0),
-        .forest: (0x22463A, 0x5C8569),
-        .wine: (0x4A2034, 0x8B4A64),
-        .gold: (0x6A4C14, 0xC29A48),
-        .sand: (0x7E6E55, 0xD2C2A2),
-    ]
-
-    /// How much of each end's own hue survives the mix with the surface.
-    static let fromShare = 0.90
-    static let toShare = 0.78
-
-    /// `color-mix(in srgb, hex share%, surface)`: a straight mix of the encoded components.
-    static func mix(_ hex: UInt32, share: Double, with surface: PaletteColor) -> PaletteColor {
-        let c = PaletteColor(hex: hex)
-        return PaletteColor(c.red * share + surface.red * (1 - share),
-                            c.green * share + surface.green * (1 - share),
-                            c.blue * share + surface.blue * (1 - share))
+    /// The gradient's two ends, `#RRGGBB`, from the top-left corner to the bottom-right.
+    var hexColors: (from: String, to: String) {
+        switch self {
+        case .navy: return ("#252A47", "#464E85")
+        case .slate: return ("#343A4F", "#6B7187")
+        case .indigo: return ("#464E85", "#8B95CC")
+        case .teal: return ("#24555C", "#6F9AC0")
+        case .forest: return ("#22463A", "#5C8569")
+        case .wine: return ("#4A2034", "#8B4A64")
+        case .gold: return ("#6A4C14", "#C29A48")
+        case .sand: return ("#7E6E55", "#D2C2A2")
+        }
     }
 
-    /// The gradient's two stops (drawn at 135°) on a given card surface.
-    static func gradient(_ preset: Preset, surface: PaletteColor) -> (start: PaletteColor, end: PaletteColor) {
-        let stops = presets[preset] ?? presets[.navy]!
-        return (mix(stops.from, share: fromShare, with: surface), mix(stops.to, share: toShare, with: surface))
+    /// The preset nearest each folder colour, so "the amber folder" is the gold banner rather
+    /// than an unrelated second colour for the same matter.
+    static let presetForColor: [String: BannerPreset] = [
+        "indigo": .indigo, "violet": .indigo, "fuchsia": .wine, "rose": .wine,
+        "amber": .gold, "green": .forest, "teal": .teal, "sky": .navy,
+    ]
+
+    /// The web's `bannerPresetOf`: the matter's own preset, else the one nearest its folder
+    /// colour, else navy. An `image` banner resolves the same way — the gradient is drawn under
+    /// the picture, and instead of it when the picture cannot be shown.
+    static func preset(for project: Project?) -> BannerPreset {
+        if let banner = project?.banner, let preset = BannerPreset(rawValue: banner) { return preset }
+        if let color = project?.color, let preset = presetForColor[color] { return preset }
+        return .navy
     }
 
-    /// The lit top-left corner laid over the gradient (`rgba(255,255,255,.16)` fading out).
-    static let highlight = PaletteColor.white(0.16)
+    /// One `#RRGGBB` as three components in 0…1, for a view to build a colour from.
+    static func components(_ hex: String) -> (red: Double, green: Double, blue: Double)? {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+        return (Double((value >> 16) & 0xFF) / 255, Double((value >> 8) & 0xFF) / 255, Double(value & 0xFF) / 255)
+    }
+}
 
-    /// The plate every overlay sits on: `rgba(12, 14, 28, .55)`, white text.
-    static let plate = PaletteColor(hex: 0x0C0E1C, opacity: 0.55)
+/// A picture for a matter's banner, as `POST /project-banner` takes it: a PNG, JPEG or WebP data
+/// URL of at most 2 MB.
+///
+/// The size is checked here, before anything is sent. The view shrinks a photo first (to at most
+/// 1,600 pixels wide, as a JPEG) — that needs UIKit, so it is not done in the core.
+enum BannerImage {
+    static let maxBytes = 2 * 1024 * 1024
+    static let acceptedTypes = ["image/png", "image/jpeg", "image/webp"]
 
-    /// The plate's hairline: `rgba(255, 255, 255, .16)`.
-    static let plateBorder = PaletteColor.white(0.16)
+    /// The data URL for these bytes, or a worded refusal.
+    static func dataURL(data: Data, mime: String) throws -> String {
+        var type = mime.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if type == "image/jpg" { type = "image/jpeg" }
+        guard acceptedTypes.contains(type) else {
+            throw APIError.server(status: 400, message: "The banner has to be a PNG, JPEG or WebP image.")
+        }
+        guard !data.isEmpty else {
+            throw APIError.server(status: 400, message: "That image could not be read.")
+        }
+        guard data.count <= maxBytes else {
+            let megabytes = (Double(data.count) / 1_048_576 * 10).rounded() / 10
+            throw APIError.server(
+                status: 413,
+                message: "That image is \(String(format: "%.1f", megabytes)) MB — a banner can be up to 2 MB.")
+        }
+        return "data:\(type);base64,\(data.base64EncodedString())"
+    }
 
-    /// `STATUS_DOT` of the workspace header.
-    static let statusDot: [MatterVocabulary.ProjectStatus: UInt32] = [
-        .active: 0x4ADE80, .onHold: 0xFBBF24, .disposed: 0xCBD5E1, .archived: 0x94A3B8,
-    ]
+    /// The widest a banner picture is drawn at before it is sent.
+    static let maxWidth = 1600.0
+
+    /// The JPEG qualities the view tries in turn until the picture fits under `maxBytes`.
+    static let jpegQualities = [0.85, 0.75, 0.6, 0.45, 0.3]
+
+    /// The size, in pixels, to draw a picture of this size at: no wider than `maxWidth`, never
+    /// enlarged, the proportions kept.
+    static func targetSize(width: Double, height: Double) -> (width: Double, height: Double)? {
+        guard width > 0, height > 0 else { return nil }
+        let scale = min(1, maxWidth / width)
+        return ((width * scale).rounded(), max(1, (height * scale).rounded()))
+    }
 }

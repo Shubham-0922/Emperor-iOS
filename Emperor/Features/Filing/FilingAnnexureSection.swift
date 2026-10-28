@@ -12,9 +12,9 @@ struct FilingAnnexureSection: View {
     let onAdd: () -> Void
 
     /// Asks for a new title; the parent holds the alert.
-    let onRename: (FilingAnnexure) -> Void
+    let onRename: (AssemblyAnnexure) -> Void
     /// Asks before removing; the parent holds the confirmation.
-    let onRemove: (FilingAnnexure) -> Void
+    let onRemove: (AssemblyAnnexure) -> Void
 
     var body: some View {
         Section {
@@ -113,7 +113,7 @@ struct FilingAnnexureSection: View {
         }
     }
 
-    private func row(_ annexure: FilingAnnexure) -> some View {
+    private func row(_ annexure: AssemblyAnnexure) -> some View {
         let index = model.annexures.firstIndex { $0.id == annexure.id } ?? 0
         let isFirst = index == 0
         let isLast = index == model.annexures.count - 1

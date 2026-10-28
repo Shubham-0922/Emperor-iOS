@@ -15,12 +15,19 @@ struct ChatThreadView: View {
     @State private var isBrowsingFiles = false
     @State private var isFillingBlanks = false
     @State private var isReporting = false
+    /// The account's research sources on this device; its web row is "Always search the web".
+    @State private var sources: ResearchSourcesModel?
+    @State private var isChoosingSources = false
     @State private var editing: ChatMessage?
     @State private var editText = ""
     /// The reader pressed Stop on the answer now on screen. Cleared when the next question goes.
     @State private var stoppedByReader = false
     @State private var isChoosingMode = false
     @State private var toast: String?
+    /// The draft open full screen. Held here rather than on the answer it came from: an edit
+    /// rewrites that answer, and with it the identity the transcript draws it under, which
+    /// would otherwise take the open draft down with the old row.
+    @State private var openDraft: OpenDraft?
     /// The composer's keyboard. Lowered when a question is sent, so the answer has the screen.
     /// Nothing raises it again: tapping the field does that on its own, which is the behaviour
     /// the platform already gives a focusable field and the one a reader expects.
@@ -63,8 +70,8 @@ struct ChatThreadView: View {
     /// not on screen, and nothing is passed.
     var onTurnFinished: (() -> Void)?
 
-    /// The matter this conversation belongs to, when it does. A reference in its answers names
-    /// one of the matter's documents, and is looked for there.
+    /// The matter this conversation belongs to, when it was opened from one. Every turn names
+    /// it, and the documents offered are the matter's own rather than My Files.
     var projectID: String?
 
     var body: some View {
@@ -93,12 +100,9 @@ struct ChatThreadView: View {
         }
         .task {
             guard model == nil else { return }
-            // A matter's conversation carries the matter on every turn, through the service: the
-            // server then reads only the matter's files and adds what it knows of the matter.
-            let chatService: ChatService = projectID.map { session.chats.scoped(toProject: $0) } ?? session.chats
             let created = ChatViewModel(
                 chatID: chatID,
-                service: chatService,
+                service: session.chats,
                 files: session.files,
                 detached: StoredDetachedDocuments(store: Preferences.detachedDocuments),
                 // Fast, or deep thinking on the top plan tier — see `AnswerModeDefault`.
@@ -106,7 +110,9 @@ struct ChatThreadView: View {
                 // Kept for reading offline, and read back only when the server cannot be
                 // reached — never sent. See `ChatViewModel.savedCopyAt`.
                 offline: session.offlineCopies?.conversations,
-                connectivity: AppConnectivity.current)
+                connectivity: AppConnectivity.current,
+                projectID: projectID,
+                draftEdits: session.draftEdits)
             // Asked for in the role the user practises in, and only that: the conversation
             // offers no role of its own to pick, so the one chosen in Settings governs every
             // answer. Without this every conversation would open as a litigator regardless of
@@ -115,7 +121,10 @@ struct ChatThreadView: View {
             // A reference to one of the reader's documents is looked up on the server, in the
             // matter's documents when this conversation is a matter's.
             created.citedSources = session.citedSources
-            created.projectID = projectID
+            // Web search follows the account's Sources choice, which is what "Always" now means.
+            let researchSources = ResearchSourcesModel(store: Preferences(), userID: session.currentUser?.id)
+            created.webSearch = researchSources.searchesWeb
+            sources = researchSources
             composer = PromptEnhancerViewModel(service: session.enhancer)
             model = created
             await created.load()
@@ -131,14 +140,6 @@ struct ChatThreadView: View {
             // out — and count against the plan — after the person had already backed out.
             if !initialAttachments.isEmpty, created.messages.isEmpty {
                 created.setAttachments(initialAttachments)
-            }
-            // A new conversation of a matter starts with the matter's readable documents, which
-            // the documents button can change before the first question — as on the web.
-            if let projectID, created.messages.isEmpty, created.attachments.isEmpty, !Task.isCancelled {
-                if let listing = try? await session.matterFiles.listing(projectID: projectID),
-                   created.messages.isEmpty, created.attachments.isEmpty {
-                    created.setAttachments(listing.readyAttachments)
-                }
             }
             if let initialModel { created.model = initialModel }
             if let seed, !seed.isEmpty, !Task.isCancelled {
@@ -164,21 +165,17 @@ struct ChatThreadView: View {
 
     private func thread(_ model: ChatViewModel) -> some View {
         @Bindable var model = model
+        // The List of Annexures goes under one answer: the last finished draft.
+        let draftAnswerID = AnnexureListViewModel.draftAnswerID(
+            in: model.messages, isStreaming: model.isStreaming)
         let open = OpenCitedDocumentAction { reference in
             openCited(reference, in: model)
         }
-
-        // The files the conversation has carried, for filing a draft from it.
-        let filingFiles = FilingChatScope.attachments(in: model.messages)
 
         return VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        // A matter's new conversation opens on what it can be asked.
-                        if projectID != nil, model.messages.isEmpty, model.live == nil, !model.isStreaming {
-                            MatterChatIntro(onAsk: { question in send(question, in: model) })
-                        }
                         ForEach(model.messages, id: \.stableID) { message in
                             // Explicit labels rather than trailing closures: both of these
                             // structs carry a private @State property, so the synthesised
@@ -198,7 +195,12 @@ struct ChatThreadView: View {
                                 onFollowUp: { question in send(question, in: model) },
                                 onCopied: { toast = "Copied with its sources" },
                                 projectID: model.projectID,
-                                filingFiles: filingFiles)
+                                showsAnnexures: message.stableID == draftAnswerID,
+                                onOpenArtifact: { artifact in
+                                    openDraft = OpenDraft(
+                                        artifact: artifact,
+                                        target: model.draftEditTarget(for: message))
+                                })
                                 .id(message.stableID)
                                 .transition(Motion.rise(reduceMotion: reduceMotion))
                         }
@@ -350,6 +352,13 @@ struct ChatThreadView: View {
             }
         }
         .recordToast($toast)
+        // Full screen, not a sheet — see `AnswerView`. The last draft opens editable.
+        .fullScreenCover(item: $openDraft) { draft in
+            ArtifactDetailView(
+                artifact: draft.artifact, chatID: chatID, editTarget: draft.target,
+                conversation: model,
+                filingAttachments: FilingChatScope.attachments(in: model.messages))
+        }
         .alert("Ask this again?", isPresented: Binding(
             get: { editing != nil },
             set: { if !$0 { editing = nil } }
@@ -371,9 +380,10 @@ struct ChatThreadView: View {
             }
         }
         .sheet(isPresented: $isBrowsingFiles) {
-            // A matter's conversation reads only the matter's files, so it picks from them.
+            // A matter's conversation reads only the matter's documents, so it is offered those
+            // and never My Files.
             if let projectID {
-                MatterFilesPicker(projectID: projectID, alreadyAttached: model.attachments) { chosen in
+                MatterFilePicker(projectID: projectID, alreadyAttached: model.attachments) { chosen in
                     model.setAttachments(chosen)
                 }
             } else {
@@ -521,11 +531,23 @@ struct ChatThreadView: View {
             // "Search the web" rather than a switch labelled "web search": the server searches
             // on its own when the question looks like it needs it, so this can turn searching
             // ON but cannot turn it off. Wording that implied otherwise would be contradicted.
+            //
+            // Kept for the account on this device, and the same switch as Web search in Sources.
             Toggle(isOn: Binding(
                 get: { model.webSearch },
-                set: { model.webSearch = $0 }
+                set: {
+                    model.webSearch = $0
+                    sources?.setSearchesWeb($0)
+                }
             )) {
                 Label("Always search the web", systemImage: "globe")
+            }
+
+            // The web's Sources menu. Only Web search reaches the server; the sheet says so.
+            Button {
+                isChoosingSources = true
+            } label: {
+                Label("Research sources", systemImage: "books.vertical")
             }
 
             Divider()
@@ -546,7 +568,16 @@ struct ChatThreadView: View {
             Label("More options", systemImage: "ellipsis.circle")
         }
         .sheet(isPresented: $isReporting) {
-            ReportAnswerSheet(chatID: chatID)
+            DraftFeedbackSheet(
+                target: DraftFeedbackTarget(subject: "answer", title: "", chatID: chatID, docHTML: nil),
+                initialRating: .down)
+        }
+        .sheet(isPresented: $isChoosingSources) {
+            if let sources {
+                ResearchSourcesSheet(model: sources) {
+                    model.webSearch = sources.searchesWeb
+                }
+            }
         }
         .disabled(model.isStreaming)
     }
@@ -773,11 +804,20 @@ private struct MessageBubble: View {
     var onCopied: () -> Void = {}
     /// The matter the conversation belongs to, for checking its citations there.
     var projectID: String?
-    /// The files the conversation has carried, offered when a draft in it is filed.
-    var filingFiles: [ChatAttachment] = []
+    /// Whether the List of Annexures is drawn under this answer — see
+    /// `AnnexureListViewModel.draftAnswerID`.
+    var showsAnnexures = false
+    /// Opens a draft from this answer. Nil leaves the answer to open it itself.
+    var onOpenArtifact: ((StreamArtifact) -> Void)?
 
-    @State private var isReporting = false
+    /// The feedback sheet, open on the rating its thumb asked for — or on none.
+    @State private var feedback: FeedbackOpening?
     @State private var sharing: SharedAnswer?
+
+    private struct FeedbackOpening: Identifiable {
+        let id = UUID()
+        let rating: DraftFeedbackRating?
+    }
 
     /// An answer's PDF, ready for the share sheet.
     private struct SharedAnswer: Identifiable {
@@ -817,6 +857,9 @@ private struct MessageBubble: View {
                 CitationMetaLine(
                     content: StreamContent.parse(message.content).prose,
                     messageID: message.stableID, projectID: projectID)
+                if showsAnnexures, let chatID {
+                    AnnexuresCard(chatID: chatID)
+                }
                 actions
                 if !followUps.isEmpty {
                     followUpList
@@ -888,8 +931,8 @@ private struct MessageBubble: View {
             content: StreamContent.parse(message.content),
             isStreaming: false,
             onSelectCitation: onSelectCitation,
-            filingChatID: chatID,
-            filingFiles: filingFiles)
+            chatID: chatID,
+            onOpenArtifact: onOpenArtifact)
             // On the answer only. Reporting your own question would file a complaint about
             // something the model did not write.
             .contextMenu {
@@ -904,23 +947,32 @@ private struct MessageBubble: View {
                     Label("Export as PDF", systemImage: "square.and.arrow.up")
                 }
                 Button(role: .destructive) {
-                    isReporting = true
+                    feedback = FeedbackOpening(rating: .down)
                 } label: {
                     Label("Report this answer", systemImage: "flag")
                 }
             }
-            .sheet(isPresented: $isReporting) {
-                ReportAnswerSheet(chatID: chatID)
+            .sheet(item: $feedback) { opening in
+                // About the answer's draft when it carries one, whose text then goes with it.
+                DraftFeedbackSheet(
+                    target: .answer(StreamContent.parse(message.content), chatID: chatID),
+                    initialRating: opening.rating)
             }
     }
 
-    /// Copy, share, ask again — the row under a finished answer.
+    /// Copy, share, ask again, and a thumb either way — the row under a finished answer.
     private var actions: some View {
         HStack(spacing: 2) {
             actionButton("doc.on.doc", label: "Copy", action: copy)
             actionButton("square.and.arrow.up", label: "Share", action: share)
             if let onAskAgain {
                 actionButton("arrow.clockwise", label: "Ask again", action: onAskAgain)
+            }
+            actionButton("hand.thumbsup", label: "Good answer, send feedback") {
+                feedback = FeedbackOpening(rating: .up)
+            }
+            actionButton("hand.thumbsdown", label: "Needs work, send feedback") {
+                feedback = FeedbackOpening(rating: .down)
             }
         }
         .padding(.leading, -10)
@@ -986,14 +1038,18 @@ private struct MessageBubble: View {
     }
 }
 
-private struct AnswerView: View {
+/// A finished or streaming answer: its prose, citations, drafts and notices. Not private: the
+/// read-only shared conversation (`SharedChatView`) draws its answers with it too, so a shared
+/// answer reads as an answer.
+struct AnswerView: View {
     @Environment(\.theme) private var theme
     let content: StreamContent
     let isStreaming: Bool
     var onSelectCitation: (AnnexureMention) -> Void = { _ in }
-    /// The stored conversation a finished answer belongs to, so a draft in it can be filed.
-    var filingChatID: String?
-    var filingFiles: [ChatAttachment] = []
+    /// Handed to the full-screen draft, whose download menu offers the filing-ready package.
+    var chatID: String?
+    /// Opens a draft somewhere that outlives this answer; nil opens it from here.
+    var onOpenArtifact: ((StreamArtifact) -> Void)?
     @State private var openArtifact: StreamArtifact?
 
     var body: some View {
@@ -1012,12 +1068,15 @@ private struct AnswerView: View {
 
             ForEach(content.artifacts) { artifact in
                 Button {
-                    openArtifact = artifact
+                    if let onOpenArtifact {
+                        onOpenArtifact(artifact)
+                    } else {
+                        openArtifact = artifact
+                    }
                 } label: {
                     ArtifactCard(artifact: artifact)
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("artifact-card")
             }
 
             ForEach(content.errors, id: \.self) { error in
@@ -1036,12 +1095,16 @@ private struct AnswerView: View {
         // fraction of the display, which is the wrong shape for reading a pleading —
         // and the one device where there is most room to give it.
         .fullScreenCover(item: $openArtifact) { artifact in
-            ArtifactDetailView(
-                artifact: artifact,
-                filing: FilingChatScope.context(
-                    for: artifact, chatID: filingChatID, attachments: filingFiles))
+            ArtifactDetailView(artifact: artifact, chatID: chatID)
         }
     }
+}
+
+/// A draft opened full screen, and the turn it can take an edit back into, if any.
+private struct OpenDraft: Identifiable {
+    let id = UUID()
+    let artifact: StreamArtifact
+    let target: DraftEditTarget?
 }
 
 /// Drafts and chronologies are delivered as separate documents rather than inline prose, so

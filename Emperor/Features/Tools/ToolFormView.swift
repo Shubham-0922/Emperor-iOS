@@ -13,11 +13,17 @@ import SwiftUI
 /// why `ToolValues.text` takes a fallback rather than returning an empty string.
 struct ToolFormView: View {
     @Environment(\.theme) private var theme
+    @Environment(\.practice) private var practice
+    @Environment(Session.self) private var session
 
     let tool: ToolSpec
 
     @State private var values: [String: String] = [:]
     @State private var startedChatID: String?
+    /// Short or Detailed — the web's Length toggle on its draft page. Remembered for the account
+    /// on this device, so a chosen length carries from one tool to the next, as on the web.
+    @State private var depth = DraftDepth.default
+    private let preferences = Preferences()
 
     var body: some View {
         Form {
@@ -43,6 +49,26 @@ struct ToolFormView: View {
                 }
             } footer: {
                 Text("Everything here is optional. Anything you leave blank, the assistant works out from the record.")
+                    .font(.brand(.caption))
+                    .foregroundStyle(theme.textTertiary)
+            }
+            .listRowBackground(theme.surface)
+
+            Section {
+                RecordSegmentedControl(
+                    label: "Length",
+                    options: DraftDepth.allCases.map { (value: $0, title: $0.label) },
+                    selection: Binding(
+                        get: { depth },
+                        set: { chosen in
+                            depth = chosen
+                            chosen.save(to: preferences, userID: session.currentUser?.id)
+                        }))
+                    .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
+            } header: {
+                SectionHeader(title: "Length")
+            } footer: {
+                Text(depth.hint + ".")
                     .font(.brand(.caption))
                     .foregroundStyle(theme.textTertiary)
             }
@@ -78,7 +104,16 @@ struct ToolFormView: View {
         .navigationTitle(tool.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $startedChatID) { id in
-            ChatThreadView(chatID: id, seed: tool.prompt(ToolValues(values)))
+            // The tool's prompt, then the length line, then the role's guardrail — the order
+            // the web's draft page composes it at generate time (for Devil's Advocate, the side
+            // under attack; `Practice`).
+            ChatThreadView(
+                chatID: id,
+                seed: tool.draftPrompt(ToolValues(values), depth: depth)
+                    + practice.toolPromptGuardrail)
+        }
+        .onAppear {
+            depth = DraftDepth.stored(in: preferences, userID: session.currentUser?.id)
         }
     }
 

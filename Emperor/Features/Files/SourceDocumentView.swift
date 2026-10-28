@@ -38,6 +38,8 @@ struct SourceDocumentView: View {
     @State private var sharing: SharedDocumentFile?
     /// The quoted words' marks, by 0-based page, in page space.
     @State private var highlights: [Int: [CGRect]] = [:]
+    /// The PDF's searchable copy, fetched when asked for.
+    @State private var searchable: SearchableCopyViewModel?
 
     private struct SharedDocumentFile: Identifiable {
         let id = UUID()
@@ -74,6 +76,21 @@ struct SourceDocumentView: View {
         .sheet(item: $sharing) { shared in
             ActivityView(url: shared.url) { sharing = nil }
                 .presentationDetents([.medium, .large])
+        }
+        .onChange(of: searchable?.copy) { _, copy in
+            guard let copy else { return }
+            searchable?.copy = nil
+            if let url = ShareableFile.url(for: copy.data, named: copy.fileName) {
+                sharing = SharedDocumentFile(url: url)
+            }
+        }
+        .alert("Couldn't get the searchable copy", isPresented: Binding(
+            get: { searchable?.errorMessage != nil },
+            set: { if !$0 { searchable?.errorMessage = nil } }
+        )) {
+            Button("OK") { searchable?.errorMessage = nil }
+        } message: {
+            Text(searchable?.errorMessage ?? "")
         }
         .task {
             guard model == nil else { return }
@@ -224,6 +241,27 @@ struct SourceDocumentView: View {
             }
             .buttonStyle(.primaryAction)
             .disabled(model?.data == nil)
+
+            // The web viewer's second download: the same PDF with its scanned pages made
+            // searchable, so the words can be found and copied in any reader.
+            if SearchableCopyViewModel.isOffered(for: attachment) {
+                Button {
+                    let fetcher = searchable ?? SearchableCopyViewModel(files: session.fileManagement)
+                    searchable = fetcher
+                    Task { await fetcher.fetch(attachment) }
+                } label: {
+                    if searchable?.isFetching == true {
+                        ProgressView()
+                    } else {
+                        Label("Searchable PDF", systemImage: "doc.text.magnifyingglass")
+                            .labelStyle(.iconOnly)
+                    }
+                }
+                .buttonStyle(.compactSecondaryAction)
+                .disabled(searchable?.isFetching == true)
+                .accessibilityLabel("Searchable PDF")
+                .accessibilityHint("Shares a copy whose scanned pages can be searched and copied from")
+            }
         }
         .padding(.horizontal, Spacing.lg)
         .padding(.top, Spacing.md)

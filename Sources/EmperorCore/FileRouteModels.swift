@@ -1,44 +1,6 @@
 import Foundation
 
-// Wire types for the small file routes: saving an edited draft, a folder as one archive, a
-// document's extracted text, a server-rendered PDF, the account's starting model, and the
-// maintenance notice. See `FileRouteService`.
-
-/// The body of `POST /save-document`.
-///
-/// Sent with the row's own id, `type` and `chat_id`: the server replaces the row with that id
-/// when it is the caller's, and writes the chat id and source it is sent — so leaving either out
-/// would move the draft out of its conversation (`lib/canvasStore.js`).
-struct SaveDocumentRequest: Encodable, Equatable, Sendable {
-    let userId: String
-    let id: String
-    let title: String
-    let content: String
-    let type: String
-    let source: String
-    /// Left out when the row has none; the server then files it under the account's own drafts.
-    let chatId: String?
-}
-
-/// What `POST /save-document` answers.
-///
-/// `id` is the row that now holds the content — the one sent, or another when the same content
-/// was already saved in that conversation (`deduped`) or the id was not the caller's. Always
-/// adopt it.
-struct SaveDocumentResult: Decodable, Equatable, Sendable {
-    let success: Bool?
-    let id: String?
-    let type: String?
-    let deduped: Bool?
-    let reclassified: Bool?
-    let error: String?
-}
-
-/// One document in a `POST /download-files` archive. The storage root is spelled `"."`.
-struct ZipEntry: Encodable, Equatable, Sendable {
-    let folderName: String
-    let fileName: String
-}
+// Wire types for `/file-text` and `/maintenance`. See `FileRouteService`.
 
 /// What `GET /file-text` answers: the text read out of a document when it was uploaded, one
 /// entry per page as the extractor found it.
@@ -59,21 +21,6 @@ struct FileTextResponse: Decodable, Equatable, Sendable {
         /// The extractor's own page number — never an index into `pages`.
         let page: Int
         let content: String
-    }
-}
-
-/// The paper a server-rendered PDF is laid out on, in millimetres — the web's
-/// `DEFAULT_PAGE_SETUP` (`src/lib/pageSetup.js`), held to it by a golden fixture.
-struct PageSetup: Encodable, Equatable, Sendable {
-    var size = "a4"
-    var orientation = "portrait"
-    var margins = Margins()
-
-    struct Margins: Encodable, Equatable, Sendable {
-        var top = 25.0
-        var right = 20.0
-        var bottom = 25.0
-        var left = 25.0
     }
 }
 

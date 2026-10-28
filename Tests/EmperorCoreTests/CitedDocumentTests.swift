@@ -48,8 +48,7 @@ final class CitedDocumentTests: XCTestCase {
     }
 
     func testInAMattersConversationTheMatterIsAskedAndNamed() async {
-        await withChat { fake, _, model in
-            model.projectID = "12"
+        await withChat(projectID: "12") { fake, _, model in
             await model.showCitedDocument(DocumentReference(file: "Notes.pdf", page: nil, quote: ""))
             XCTAssertEqual(fake.resolves, [.init(name: "Notes.pdf", quote: nil, projectID: "12")])
             XCTAssertEqual(
@@ -83,8 +82,7 @@ final class CitedDocumentTests: XCTestCase {
     /// A page mention the conversation and the library cannot place is asked of the server
     /// before it is called missing — a matter's file is not in the library listing.
     func testAMentionMissingFromTheLibraryIsAskedOfTheServer() async {
-        await withChat { fake, files, model in
-            model.projectID = "12"
+        await withChat(projectID: "12") { fake, files, model in
             fake.files["Sale_Deed.pdf"] = resolvedFile("Sale_Deed.pdf", folder: "_projects/12")
             let mention = AnnexureMention(fileName: "Sale_Deed.pdf", mark: "P-3", startPage: 5, endPage: nil)
             await model.showSource(mention)
@@ -205,11 +203,12 @@ final class CitedDocumentTests: XCTestCase {
 @MainActor
 private func withChat(
     resolver: Bool = true,
+    projectID: String? = nil,
     _ body: @MainActor (FakeCitedSources, FakeFiles, ChatViewModel) async -> Void
 ) async {
     let fake = FakeCitedSources()
     let files = FakeFiles()
-    let model = ChatViewModel(chatID: "chat-1", service: InertChat(), files: files)
+    let model = ChatViewModel(chatID: "chat-1", service: InertChat(), files: files, projectID: projectID)
     if resolver { model.citedSources = fake }
     await body(fake, files, model)
 }

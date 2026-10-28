@@ -90,12 +90,7 @@ struct DraftHistoryView: View {
             get: { model.opened },
             set: { if $0 == nil { model.close() } }
         )) { opened in
-            DraftReaderView(draft: opened) { content, id in
-                // Saved over its row: the reader shows it at once, and the list is read again,
-                // where the server has dated the draft now and put it first.
-                model.replaceOpened(content: content, id: id)
-                Task { await model.load() }
-            }
+            DraftReaderView(draft: opened)
         }
     }
 
@@ -158,83 +153,47 @@ struct DraftHistoryView: View {
 struct DraftReaderView: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
-    @Environment(Session.self) private var session
 
     let draft: DraftHistoryViewModel.OpenedDraft
-    /// Told after an edit is saved: the content saved and the row that now holds it.
-    var onSaved: (_ content: String, _ id: String) -> Void = { _, _ in }
 
-    @State private var editor: DraftEditorModel?
-    @State private var toast: String?
     @State private var isAssemblingFiling = false
-
-    private var isHTML: Bool { draft.format == .html }
-
-    /// HTML drafts are edited in their web view only while `DraftEditor.htmlEditingEnabled`.
-    private var canEdit: Bool { !isHTML || DraftEditor.htmlEditingEnabled }
-
-    private var isEditing: Bool { editor?.isEditing == true }
 
     var body: some View {
         NavigationStack {
-            content
+            Group {
+                // Routed on what the body *is*, as the chat's own artifact viewer does. A draft
+                // is usually an inline-styled HTML fragment, and this screen used to hand every
+                // one of them to the Markdown renderer.
+                switch draft.format {
+                case .html:
+                    DocumentWebView(html: draft.content)
+                case .markdown:
+                    MarkdownArtifactView(markdown: draft.content)
+                }
+            }
                 .background(theme.canvas)
                 .navigationTitle(draft.item.displayTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
-                            .disabled(isEditing)
                     }
                     ToolbarItemGroup(placement: .primaryAction) {
-                        if !isEditing {
-                            if canEdit {
-                                Button("Edit") { beginEditing() }
-                                    .accessibilityIdentifier("draft-edit")
-                                    .accessibilityHint("Edit this draft and save it over the one in your drafts")
-                            }
-                            Button("Assemble filing", systemImage: "books.vertical") {
-                                isAssemblingFiling = true
-                            }
-                            .accessibilityIdentifier("draft-assemble-filing")
-                            DocumentExportMenu(
-                                content: draft.content,
-                                isHTML: isHTML,
-                                title: draft.item.displayTitle)
+                        // A saved draft filed as it is, its annexures and a cover made into
+                        // one bundle — as from the web's Filing Assembly.
+                        Button("Assemble filing", systemImage: "books.vertical") {
+                            isAssemblingFiling = true
                         }
+                        .accessibilityIdentifier("draft-assemble-filing")
+                        DocumentExportMenu(
+                            content: draft.content,
+                            isHTML: draft.format == .html,
+                            title: draft.item.displayTitle)
                     }
                 }
-                .recordToast($toast)
                 .sheet(isPresented: $isAssemblingFiling) {
                     FilingAssemblyScreen(scope: .draft(FilingDraft(draft.item)))
                 }
         }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if let editor, editor.isEditing {
-            DraftEditorView(editor: editor, isHTML: isHTML) { saved, id in
-                toast = "Saved to your drafts"
-                onSaved(saved, id)
-            }
-        } else {
-            // Routed on what the body *is*, as the chat's own artifact viewer does. A draft is
-            // usually an inline-styled HTML fragment, and this screen used to hand every one of
-            // them to the Markdown renderer.
-            switch draft.format {
-            case .html:
-                DocumentWebView(html: draft.content)
-            case .markdown:
-                MarkdownArtifactView(markdown: draft.content)
-            }
-        }
-    }
-
-    private func beginEditing() {
-        let model = editor ?? DraftEditorModel(
-            item: draft.item, content: draft.content, service: session.fileRoutes)
-        editor = model
-        model.beginEditing()
     }
 }

@@ -3,11 +3,11 @@ import Foundation
 
 /// A filing server in memory: annexures held per draft, marks assigned as the server assigns
 /// them, every call recorded.
-final class FakeFiling: FilingProviding, @unchecked Sendable {
+final class FakeFilingAssembly: FilingProviding, @unchecked Sendable {
     private let lock = NSLock()
 
     var draftList: [FilingDraft] = []
-    var rows: [FilingAnnexure] = []
+    var rows: [AssemblyAnnexure] = []
     var bundleList: [FilingBundle] = []
     var checklistAnswer = FilingChecklist(forum: "High Court", items: [])
     var assembleAnswer = FilingAssemblyResult(success: true, bundleId: 7, pageCount: 42)
@@ -44,17 +44,17 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
         return draftList
     }
 
-    func annexures(draftID: String?, chatID: String?) async throws -> [FilingAnnexure] {
+    func annexures(draftID: String?, chatID: String?) async throws -> [AssemblyAnnexure] {
         lock.withLock { _annexureReads.append((draftID, chatID)) }
         try record("annexures")
         return rows
     }
 
-    func addAnnexure(draftID: String, folderName: String, fileName: String) async throws -> FilingAnnexure {
+    func addAnnexure(draftID: String, folderName: String, fileName: String) async throws -> AssemblyAnnexure {
         lock.withLock { _adds.append((draftID, folderName, fileName)) }
         try record("add")
         let next = (rows.compactMap { FilingMarks.parse($0.mark).number }.max() ?? 0) + 1
-        let row = FilingAnnexure(
+        let row = AssemblyAnnexure(
             id: (rows.map(\.id).max() ?? 0) + 1, draftID: draftID, mark: "P-\(next)",
             title: fileName, sourceFilePath: "/data/\(folderName)/\(fileName)")
         rows.append(row)
@@ -63,7 +63,7 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
 
     func update(
         id: Int, title: String?, treatment: FilingTreatment?, verifyStatus: FilingVerify?
-    ) async throws -> FilingAnnexure {
+    ) async throws -> AssemblyAnnexure {
         lock.withLock { _updates.append((id, title, treatment, verifyStatus)) }
         try record("update")
         guard let i = rows.firstIndex(where: { $0.id == id }) else {
@@ -80,7 +80,7 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
         rows.removeAll { $0.id == id }
     }
 
-    func reorder(draftID: String, orderedIDs: [Int]) async throws -> (Bool, [FilingAnnexure]) {
+    func reorder(draftID: String, orderedIDs: [Int]) async throws -> (Bool, [AssemblyAnnexure]) {
         lock.withLock { _reorders.append(orderedIDs) }
         try record("reorder")
         rows = orderedIDs.compactMap { id in rows.first { $0.id == id } }
@@ -112,14 +112,7 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
 
     // MARK: - A conversation's annexures
 
-    /// `"chatAdd"`, `"chatAssemble"`, `"typedCopy"`, `"original"`, `"originalPages"` and
-    /// `"typedCopies"` are the names `errors` takes for these; `"original:P-3"` and
-    /// `"originalPages:P-3"` fail one mark.
-    var typedCopyAnswer = FilingTypedCopy(html: "<p>typed</p>", skipped: false, reason: nil)
-    var originalAnswers: [String: FilingOriginal] = [:]
-    var pageAnswers: [String: FilingOriginalPages] = [:]
-    var typedCopiesHTML = ""
-
+    /// `"chatAdd"` and `"chatAssemble"` are the names `errors` takes for these.
     private var _chatAdds: [(chatID: String, folderName: String, fileName: String)] = []
     private var _chatAssembles: [(chatID: String, html: String, title: String, cover: FilingCover)] = []
 
@@ -128,16 +121,11 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
         lock.withLock { _chatAssembles }
     }
 
-    private func recordMark(_ name: String, _ mark: String) throws {
-        try record(name)
-        if let error = errors["\(name):\(mark)"] { throw error }
-    }
-
-    func addAnnexure(chatID: String, folderName: String, fileName: String) async throws -> FilingAnnexure {
+    func addAnnexure(chatID: String, folderName: String, fileName: String) async throws -> AssemblyAnnexure {
         lock.withLock { _chatAdds.append((chatID, folderName, fileName)) }
         try record("chatAdd")
         let next = (rows.compactMap { FilingMarks.parse($0.mark).number }.max() ?? 0) + 1
-        let row = FilingAnnexure(
+        let row = AssemblyAnnexure(
             id: (rows.map(\.id).max() ?? 0) + 1, chatID: chatID, mark: "P-\(next)",
             title: fileName, sourceFilePath: "/data/\(folderName)/\(fileName)")
         rows.append(row)
@@ -149,28 +137,5 @@ final class FakeFiling: FilingProviding, @unchecked Sendable {
         bundleList.append(contentsOf: bundlesMadeByAssemble)
         try record("chatAssemble")
         return assembleAnswer
-    }
-
-    func typedCopy(chatID: String, mark: String) async throws -> FilingTypedCopy {
-        try recordMark("typedCopy", mark)
-        return typedCopyAnswer
-    }
-
-    func original(chatID: String, mark: String) async throws -> FilingOriginal {
-        try recordMark("original", mark)
-        guard let answer = originalAnswers[mark] else {
-            throw APIError.server(status: 404, message: "annexure not found")
-        }
-        return answer
-    }
-
-    func originalPages(chatID: String, mark: String) async throws -> FilingOriginalPages {
-        try recordMark("originalPages", mark)
-        return pageAnswers[mark] ?? FilingOriginalPages(success: false, error: "annexure not found")
-    }
-
-    func typedCopies(chatID: String) async throws -> String {
-        try record("typedCopies")
-        return typedCopiesHTML
     }
 }

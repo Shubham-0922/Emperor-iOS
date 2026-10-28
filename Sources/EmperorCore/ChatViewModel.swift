@@ -112,10 +112,6 @@ final class ChatViewModel {
     /// Finds the stored document a reference names (`/resolve-file`). Set by the screen; without
     /// it a reference opens only from the documents this conversation already knows.
     var citedSources: (any CitedSourceResolving)?
-    /// The matter this conversation belongs to, if any. Its documents are where a citation's file
-    /// is looked for — a matter's file is never found without it. Set by the screen hosting a
-    /// matter's conversation.
-    var projectID: String?
 
     /// A question the server refused to start, handed back so the composer can restore it.
     ///
@@ -125,6 +121,11 @@ final class ChatViewModel {
     var restoredDraft: String?
 
     let chatID: String
+    /// The matter this conversation belongs to, when it was opened from one. Named on every
+    /// turn — the first, every follow-up, an edit and a re-answer alike — because a turn sent
+    /// without it is read without the matter's documents; and where a citation's file is looked
+    /// for, since a matter's file is never found without it.
+    let projectID: String?
     var attachments: [ChatAttachment] = []
 
     /// The documents to name above the composer, which is none once the conversation has started.
@@ -175,12 +176,25 @@ final class ChatViewModel {
     /// Whether the system says there is no connection, so the saved copy can be shown at once
     /// rather than after a request has waited out its timeout.
     private let connectivity: (any ConnectivityReporting)?
+    /// Where an edited draft is stored. Absent means an edit is kept in the conversation and
+    /// stored with the next question — see `commitDraftEdit`.
+    private let draftEdits: (any DraftEditSaving)?
     private var streamTask: Task<Void, Never>?
     /// The loop following a server run, and the wait it is currently in — cancelled on its own
     /// to poll at once when the app comes back to the foreground.
     private var followTask: Task<Void, Never>?
     private var followNap: Task<Void, Never>?
     private var wakeRequested = false
+
+    /// What became of the last attempt to store an edited draft. Kept so it can be tested.
+    private(set) var draftEditSave: DraftEditSaveOutcome?
+    /// The turn an edit was folded into, and the content the server is believed to hold for it
+    /// — what a fresh read must match before the edit is written back. Nil once the server holds
+    /// what is on screen.
+    private var storedDraftTurn: (index: Int, content: String)?
+    /// The last edit folded in, so a retry of an edit already in the turn still stores it (the
+    /// web's `placedEditRef`).
+    private var placedDraftEdit: String?
 
     /// The document tree, fetched on the first citation tap that needs it.
     ///
@@ -196,6 +210,8 @@ final class ChatViewModel {
     ///   - detached: where removals are remembered. Without it a removal lasts the session only.
     ///   - offline: where this account keeps conversations for reading offline.
     ///   - connectivity: whether the device is known to have no connection.
+    ///   - projectID: the matter this conversation was opened from, if any.
+    ///   - draftEdits: where an edited draft is stored.
     init(
         chatID: String,
         service: any ChatProviding,
@@ -203,15 +219,20 @@ final class ChatViewModel {
         detached: (any DetachedDocuments)? = nil,
         preferredModel: String? = nil,
         offline: OfflineStore? = nil,
-        connectivity: (any ConnectivityReporting)? = nil
+        connectivity: (any ConnectivityReporting)? = nil,
+        projectID: String? = nil,
+        draftEdits: (any DraftEditSaving)? = nil
     ) {
         self.chatID = chatID
+        let trimmedProject = projectID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.projectID = (trimmedProject?.isEmpty ?? true) ? nil : trimmedProject
         self.service = service
         self.files = files
         self.detached = detached
         self.model = ChatModel.fromPreference(preferredModel)
         self.offline = offline
         self.connectivity = connectivity
+        self.draftEdits = draftEdits
     }
 
     // MARK: - Documents on this conversation
@@ -266,6 +287,9 @@ final class ChatViewModel {
             messages = try await uncancelledRead { try await service.messages(chatID: chatID) }
             // The server's transcript replaces any saved copy on screen, and the notice goes.
             savedCopyAt = nil
+            // What is on screen is now what the server holds, edits and all.
+            storedDraftTurn = nil
+            placedDraftEdit = nil
             // Reopening a matter has to reopen its documents. They are not a field on the chat —
             // they live on the turns that carried them — so they are reconstructed here; see
             // `attachedDocuments`. Without this, a conversation opened from History listed no
@@ -696,6 +720,9 @@ final class ChatViewModel {
             turn.attachments = attachments.map(\.jsonValue)
         }
         messages.append(turn)
+        // `/chat` stores exactly what it is sent, so an edited draft goes with this turn.
+        storedDraftTurn = nil
+        placedDraftEdit = nil
         isStreaming = true
         live = StreamContent()
         status = "Preparing…"
@@ -724,7 +751,8 @@ final class ChatViewModel {
                     model: self.model,
                     role: self.role,
                     attachments: outbound,
-                    webSearch: self.webSearch)
+                    webSearch: self.webSearch,
+                    projectID: self.projectID)
 
                 var refusedAsBusy = false
                 for try await event in stream {
@@ -993,6 +1021,84 @@ final class ChatViewModel {
     private func isUnchanged(count: Int, lastID: String) -> Bool {
         !isStreaming && historyIsIntact && !isShowingSavedCopy
             && messages.count == count && messages.last?.stableID == lastID
+    }
+
+    // MARK: - Editing a drafted document
+
+    /// The turn `message` is, when its draft can be edited in place: the last assistant turn,
+    /// carrying exactly one document, in a conversation loaded whole with nothing streaming. Only
+    /// the last assistant turn — an edit is put back by position, as on the web (`withEditedDraft`).
+    func draftEditTarget(for message: ChatMessage) -> DraftEditTarget? {
+        guard message.role == .assistant, !isStreaming, historyIsIntact, !isShowingSavedCopy,
+              let index = indexOf(message), index == DraftEdit.lastAssistantIndex(messages),
+              StreamContent.parse(message.content).artifacts.count == 1
+        else { return nil }
+        return DraftEditTarget(index: index, messageCount: messages.count)
+    }
+
+    /// Folds an edited draft into its turn, then stores the conversation.
+    ///
+    /// The fold is the part that cannot fail quietly: once it is in `messages`, every later
+    /// question carries the edit, and `/chat` stores what it is sent — which is all the web's chat
+    /// path guarantees. Storing it now goes through `DraftEditSaving` under the conditions that
+    /// make rewriting a stored conversation safe; the next question waits for it, as it waits for
+    /// a work-log save, so the two writes can never arrive out of order.
+    func commitDraftEdit(_ html: String, target: DraftEditTarget) async -> DraftEditCommitResult {
+        guard !isStreaming, messages.count == target.messageCount,
+              DraftEdit.lastAssistantIndex(messages) == target.index
+        else { return .notPlaced }
+        let index = target.index
+        if let folded = DraftEdit.withEditedDraft(messages, html: html, ownerIndex: index) {
+            if storedDraftTurn?.index != index {
+                storedDraftTurn = (index, messages[index].content)
+            }
+            messages = folded
+            placedDraftEdit = html
+            keepCopy()
+        } else if placedDraftEdit != html {
+            return .notPlaced
+        }
+
+        guard historyIsIntact, !isShowingSavedCopy else {
+            draftEditSave = .kept(.historyNotIntact)
+            return .folded(.kept(.historyNotIntact))
+        }
+        // A retry of an edit whose write has since been confirmed: the server holds it.
+        guard let stored = storedDraftTurn else {
+            draftEditSave = .saved(rowUpdated: false)
+            return .folded(.saved(rowUpdated: false))
+        }
+        guard let draftEdits else {
+            draftEditSave = .kept(.unavailable)
+            return .folded(.kept(.unavailable))
+        }
+
+        var transcript = messages
+        transcript[index].content = stored.content
+        let edited = messages[index].content
+        let request = DraftEditSaveRequest(
+            chatID: chatID, storedTranscript: transcript, index: index, editedContent: edited)
+        let count = messages.count
+        let pending = saveTask
+        let save = Task { () -> DraftEditSaveOutcome in
+            await pending?.value
+            return await draftEdits.save(request, commit: { [weak self] in
+                await self?.holdsDraftEdit(count: count, index: index, content: edited) ?? false
+            })
+        }
+        saveTask = Task { _ = await save.value }
+        let outcome = await save.value
+        if case .saved = outcome, holdsDraftEdit(count: count, index: index, content: edited) {
+            storedDraftTurn = nil
+        }
+        draftEditSave = outcome
+        return .folded(outcome)
+    }
+
+    /// Whether the conversation is still the one the edit was stored from.
+    private func holdsDraftEdit(count: Int, index: Int, content: String) -> Bool {
+        !isStreaming && historyIsIntact && !isShowingSavedCopy && messages.count == count
+            && messages.indices.contains(index) && messages[index].content == content
     }
 
     /// Waits for a work-log save still on its way. For tests, which otherwise cannot tell a save

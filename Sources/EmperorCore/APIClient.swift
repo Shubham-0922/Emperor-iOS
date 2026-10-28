@@ -19,8 +19,10 @@ struct APIConfig: Sendable {
 
 /// Who we are, as far as this API is concerned.
 ///
-/// Both fields are sent on every request, deliberately, so the client keeps working unchanged
-/// as the backend's identity handling is consolidated onto the token alone.
+/// Both fields are sent on every request, deliberately. The bearer token is currently only
+/// enforced on `/filing/*` and upload placement; everything else selects data from a
+/// client-supplied `userId`. Sending both means the client keeps working unchanged once the
+/// backend is hardened to derive the user from the token.
 struct Credentials: Equatable, Sendable {
     var token: String
     var userID: Int
@@ -93,10 +95,25 @@ enum APIError: LocalizedError, Equatable {
         }
         if status == 401 { return .invalidCredentials }
         let decoded = try? JSONDecoder().decode(APIErrorBody.self, from: body)
+        if decoded == nil, Self.gatewayStatuses.contains(status) {
+            // Nothing of the platform's answered: a bad gateway, a gateway timeout, or the
+            // front door's own 503 with an HTML page for a body. That is the platform being
+            // restarted or unreachable — the state the web shows its "backend down" page for —
+            // and it is worth saying so instead of "status 502", because it is neither the
+            // person's fault nor permanent, and a retry a minute later usually succeeds.
+            return .maintenance(message: Self.unreachableMessage)
+        }
         return .server(
             status: status,
             message: decoded?.error ?? "The server returned status \(status).")
     }
+
+    /// The statuses a gateway answers on its own when the platform behind it does not.
+    static let gatewayStatuses: Set<Int> = [502, 503, 504]
+
+    static let unreachableMessage =
+        "Emperor's server is not reachable right now. It is usually back within a minute — "
+        + "try again shortly."
 }
 
 /// The body the server sends while maintenance is on (`sync-server.js:6250-6260`).
@@ -160,6 +177,12 @@ actor APIClient {
     /// For the transports that classify outside this actor — the chat stream.
     func noteRefusal(_ refusal: Refusal) {
         onRefusal?(refusal)
+    }
+
+    /// For callers that read a 401 themselves (the Library's coded errors): the session is over,
+    /// and the app signs out as it would from any other route.
+    func noteAuthenticationLost() {
+        onAuthenticationLost?()
     }
 
     func currentCredentials() -> Credentials? { credentials }

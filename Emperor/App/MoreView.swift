@@ -17,7 +17,7 @@ import SwiftUI
 ///   wrong one. So each carries its own "Done" at `.cancellationAction`, and You owns the one
 ///   sheet they are presented in.
 enum ToolDestination: String, Identifiable {
-    case deck, corporateCalendar, library, tools, fileTools, ocr, translate, eAuctions
+    case deck, corporateCalendar, library, fetchOrders, projects, tools, analysis, limitationRadar, filingAssembly, mcaRegistry, fileTools, ocr, translate, eAuctions
 
     var id: String { rawValue }
 
@@ -27,7 +27,19 @@ enum ToolDestination: String, Identifiable {
         case .deck: return "Your workspace"
         case .corporateCalendar: return "Corporate Calendar"
         case .library: return "Library"
+        // Read any court case — orders, hearings, parties — without adding it.
+        case .fetchOrders: return "Fetch Orders"
+        // The tab is Matters; these are the workspaces behind them (the web's Matters page).
+        case .projects: return "Matter workspaces"
         case .tools: return "All tools"
+        // The server-run Doc Index, List of Dates and Devil's Advocate, with their history.
+        case .analysis: return "Analysis tools"
+        // Is a suit in time, and by how much — date arithmetic against the Limitation Act.
+        case .limitationRadar: return "Limitation Radar"
+        // A saved draft, its annexures and a cover made into one court-ready bundle (`/filing`).
+        case .filingAssembly: return "Filing Assembly"
+        // Decode a CIN offline; open the companies named in liquidation notices.
+        case .mcaRegistry: return "MCA Registry"
         case .fileTools: return "File tools"
         case .ocr: return "OCR"
         case .translate: return "Translate"
@@ -41,7 +53,13 @@ enum ToolDestination: String, Identifiable {
         case .deck: return role.systemImage
         case .corporateCalendar: return "calendar.badge.checkmark"
         case .library: return "books.vertical"
+        case .fetchOrders: return "doc.text.magnifyingglass"
+        case .projects: return "folder.badge.gearshape"
         case .tools: return "wrench.and.screwdriver"
+        case .analysis: return "exclamationmark.shield"
+        case .limitationRadar: return "hourglass"
+        case .filingAssembly: return "books.vertical.fill"
+        case .mcaRegistry: return "building.2"
         case .fileTools: return "scissors"
         case .ocr: return "doc.text.viewfinder"
         case .translate: return "character.bubble"
@@ -56,7 +74,13 @@ enum ToolDestination: String, Identifiable {
         case .deck: RoleHomeView()
         case .corporateCalendar: ComplianceCalendarView()
         case .library: LibraryView()
+        case .fetchOrders: CourtSearchView(purpose: .lookup, onSaved: {})
+        case .projects: ProjectListView()
         case .tools: ToolsListView()
+        case .analysis: AnalysisHubView()
+        case .limitationRadar: LimitationRadarView()
+        case .filingAssembly: FilingAssemblyScreen()
+        case .mcaRegistry: McaRegistryView()
         case .fileTools: PDFToolsView()
         // One screen with an OCR | Translate switch at its head; each row opens it in its own mode.
         case .ocr: OCRView(mode: .ocr)
@@ -68,10 +92,10 @@ enum ToolDestination: String, Identifiable {
 
 /// The Tools rows of You: "Your practice" and "Tools", in the platform's own order.
 ///
-/// eAuctions is hidden for now, at the product owner's request. Only the row is gone: its screen,
-/// view model, service and tests are all still here and still built. To bring it back, add
-/// `row(.eAuctions)` after `row(.translate)` — and add its row to the UI tests and the screenshot
-/// tour. Matters (the web's projects) live on the Matters tab, under All matters.
+/// eAuctions is hidden for now, at the product owner's request. Only the row is gone: its
+/// screen, view model, service and tests are all still here and still built. To bring it back,
+/// add `row(.eAuctions)` after `row(.translate)` — and add its row to the UI tests and the
+/// screenshot tour. Matter workspaces returned when the web's Matters page shipped (2026-10).
 struct ToolsSections: View {
     @Environment(\.theme) private var theme
     @Environment(\.practice) private var practice
@@ -82,6 +106,8 @@ struct ToolsSections: View {
             row(.deck)
             row(.corporateCalendar)
             row(.library)
+            row(.fetchOrders)
+            row(.projects)
         } header: {
             SectionHeader(title: "Your practice")
         }
@@ -89,6 +115,10 @@ struct ToolsSections: View {
 
         Section {
             row(.tools)
+            row(.analysis)
+            row(.limitationRadar)
+            row(.filingAssembly)
+            row(.mcaRegistry)
             row(.fileTools)
             row(.ocr)
             row(.translate)

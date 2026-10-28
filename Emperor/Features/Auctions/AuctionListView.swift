@@ -9,11 +9,13 @@ import SwiftUI
 /// Unlike every other list in this app, these are not the user's own matters: the feed is public
 /// market data, global and unscoped.
 ///
-/// - Important: **watchlists are built and held back, not missing.** A watchlist states which
-///   companies a firm is tracking — litigation strategy rather than a preference — so it is
-///   withheld until the contract of that endpoint is confirmed. The service, the view model and
-///   their tests all stand; only the reach from here is withdrawn, so the feature ships the day
-///   that is settled. The Android client made the same call independently.
+/// - Important: **watchlists are built and held back, not missing.** `/auction-watchlists`
+///   takes a `userId` from the query or body with no token check (`sync-server.js:10368` and
+///   `:10378`), so an unauthenticated caller can both read *and write* any account's list. A
+///   watchlist states which companies a firm is tracking, which is litigation strategy rather
+///   than a preference. The service, the view model and their tests all stand; only the reach
+///   from here is withdrawn, so the feature ships the day the route takes a token. The Android
+///   client made the same call — see `Jithro_Android/BACKEND_REQUESTS.md` item 3.
 struct AuctionListView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session

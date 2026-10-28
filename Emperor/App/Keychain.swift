@@ -3,8 +3,9 @@ import Security
 
 /// The real `CredentialStore`: an iOS Keychain item.
 ///
-/// The token must not live in `UserDefaults`: it is a long-lived bearer credential, so anything
-/// that leaks it grants access to the account's matters for as long as it stays valid.
+/// The token must not live in `UserDefaults`: it is a bearer credential valid for 30 days
+/// with **no server-side revocation** — there is no logout endpoint — so anything that leaks
+/// it grants full access to the account's matters until it expires on its own.
 struct Keychain: CredentialStore {
     private let service = "com.emperorailabs.emperor"
 

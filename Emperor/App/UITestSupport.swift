@@ -38,13 +38,6 @@ enum UITestSupport {
         ProcessInfo.processInfo.arguments.contains("-UITestEmpty")
     }
 
-    /// Toasts stay on screen for half a minute instead of seconds, for a test that reads one
-    /// after an action that leaves the simulator busy (a sheet closing, a page loading): by the
-    /// time it is idle enough to be asked, a toast of a few seconds can already have gone.
-    static var keepsToasts: Bool {
-        ProcessInfo.processInfo.arguments.contains("-UITestLongToasts")
-    }
-
     /// A one-page PDF where iOS would put a document another app handed over, for
     /// `-UITestIncomingDocument`. Written fresh on each launch; the app moves it into its own
     /// store, as it does the real inbox copy.
@@ -194,6 +187,11 @@ enum UITestSupport {
     enum Fixtures {
         static func body(for path: String) -> String {
             if isEmpty, let empty = emptyBody(for: path) { return empty }
+            // A shared conversation (`emperor://share/<id>`), as `/shared-chat/:shareId` answers:
+            // a question carrying a document, and an answer with a heading and a list.
+            if path.hasPrefix("/shared-chat/") {
+                return #"{"id":"c9","title":"Bail in a commercial dispute","role":"Litigator","updated_at":"2026-10-17 10:12:30","messages":[{"role":"user","content":"Is anticipatory bail available here?","attachments":[{"name":"FIR_Copy.pdf"}]},{"role":"assistant","content":"Yes. The dispute is commercial.\n\n## Why\n\n1. The FIR discloses no custodial need.\n2. The accused has joined the investigation."}]}"#
+            }
             switch path {
             // `success` is **not** optional on `AuthResponse`. Omitting it fails the decode and
             // sign-in never happens.
@@ -208,7 +206,15 @@ enum UITestSupport {
             // A metered account part-way through a month, so the usage meters have something
             // to draw — including one running low and one used up.
             case "/billing/entitlements":
-                return #"{"success":true,"signedIn":true,"planLabel":"Essential","expired":false,"metered":true,"limits":{"matters":-1,"storageGb":10,"documents":-1,"scannedPages":6000,"chatQueries":1000,"deepThinkingQueries":150},"usage":{"resetsAt":"2026-10-31T18:30:00.000Z","chatQueries":812,"deepThinkingQueries":150,"scannedPages":120,"documents":44,"matters":7,"storageUsedBytes":2400000000,"storageAllowanceBytes":10000000000}}"#
+                return #"{"success":true,"signedIn":true,"planLabel":"Junior Associate","expired":false,"metered":true,"limits":{"matters":-1,"storageGb":10,"documents":-1,"scannedPages":6000,"chatQueries":1000,"deepThinkingQueries":150},"usage":{"resetsAt":"2026-10-31T18:30:00.000Z","chatQueries":812,"deepThinkingQueries":150,"scannedPages":120,"documents":44,"matters":7,"storageUsedBytes":2400000000,"storageAllowanceBytes":10000000000}}"#
+            // You → Plan → Billing: the same plan, one paid order with its invoice and one that
+            // failed, and the catalogue that names them.
+            case "/billing/me":
+                return #"{"success":true,"plan":{"plan":"pro","planSource":"purchase","expiresAt":"2026-11-18T10:00:00.000Z","expired":false,"marketingPlan":"essential_monthly","marketingPlanLabel":"Junior Associate","displayLabel":"Junior Associate"},"orders":[{"razorpay_order_id":"order_UI1","plan_key":"essential_monthly","tier":"pro","amount_paise":299900,"currency":"INR","status":"paid","created_at":"2026-10-18 09:00:00","paid_at":"2026-10-18 09:02:11"},{"razorpay_order_id":"order_UI0","plan_key":"essential_monthly","tier":"pro","amount_paise":299900,"currency":"INR","status":"failed","created_at":"2026-10-17 09:00:00","paid_at":null}]}"#
+            case "/billing/config":
+                return #"{"success":true,"plans":[{"key":"essential_monthly","label":"Junior Associate","periodMonths":1,"totalPaise":299900,"action":"renew"},{"key":"premium_monthly","label":"Premium","periodMonths":1,"totalPaise":499900,"action":"upgrade"}]}"#
+            case "/billing/invoice":
+                return #"{"success":true,"invoice":{"number":"EA-000012","orderId":"order_UI1","paymentId":"pay_UI1","status":"paid","issuedAt":"2026-10-18 09:02:11","billTo":{"name":"John Doe","email":"john.doe@firm.com"},"plan":{"key":"essential_monthly","tier":"pro","periodMonths":1,"periodDays":0},"lines":{"basePaise":299900,"gstPaise":null,"discountPaise":0,"couponCode":null,"totalPaise":299900},"currency":"INR"}}"#
             // Two, so the iPad's list beside its conversation has another row to choose; `c2`
             // answers `/messages` with an exchange of its own (`itemBody`).
             case "/chats":
@@ -227,6 +233,14 @@ enum UITestSupport {
                 return casesBody()
             case "/case":
                 return caseBody()
+            // One matter workspace, linked to `case1`, with a task, a fee and a person — enough
+            // for the Overview's setup strip, tiles and sections to have something to draw.
+            case "/projects":
+                return #"{"success":true,"projects":[{"id":"prj1","name":"Bakshi v. State of NCT of Delhi","client":"Bakshi Enterprises","practice_area":"criminal","our_side":"petitioner","opposite_party":"State of NCT of Delhi","linked_case_id":"case1","status":"active","priority":"high","next_hearing_date":"2026-10-21","file_count":2,"open_tasks":1,"next_task_due":"2026-10-20","billed":50000,"received":20000}]}"#
+            case "/project":
+                return #"{"success":true,"project":{"id":"prj1","name":"Bakshi v. State of NCT of Delhi","client":"Bakshi Enterprises","practice_area":"criminal","our_side":"petitioner","opposite_party":"State of NCT of Delhi","linked_case_id":"case1","status":"active","priority":"high","next_hearing_date":"2026-10-21"},"updates":[{"id":"u1","kind":"event","title":"FIR registered","event_date":"2026-02-11","source":"ai","source_ref":"FIR.pdf, p. 1"}],"courtHistory":[],"linkedCase":{"id":"case1","title":"Bakshi v. State","court_name":"Delhi High Court","next_hearing_date":"2026-10-21","last_synced_at":"2026-10-19 02:00:00"},"tasks":[{"id":"t1","title":"File reply to the status report","due_date":"2026-10-20","kind":"filing","priority":"high","status":"open"}],"ledger":[{"id":"l1","kind":"fee","title":"Appearance fee","amount":50000,"amount_paise":5000000,"entry_date":"2026-09-01"},{"id":"l2","kind":"payment","amount":20000,"amount_paise":2000000,"entry_date":"2026-09-15","mode":"upi"}],"people":[{"id":"p1","role":"client","name":"Bakshi Enterprises","phone":"+91 98100 00000"}],"totals":{"billed":50000,"received":20000,"outstanding":30000,"expenses":0}}"#
+            case "/project-files":
+                return #"{"success":true,"root":"_projects/prj1","folders":[{"name":"Pleadings","path":"_projects/prj1/Pleadings","type":"folder","files":[{"name":"Bail_Application.pdf","path":"_projects/prj1/Pleadings/Bail_Application.pdf","type":"file","status":"ready"}]}],"files":[]}"#
             // `listings`, not `cases`; `date` and `caseId` are the two keys `CauseListing`
             // requires. Dated today, in India, so Home and the Calendar have a row to draw — with
             // the court, item, coram and time a published list supplies, which is what the row

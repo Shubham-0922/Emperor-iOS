@@ -2,7 +2,7 @@ import XCTest
 @testable import EmperorCore
 
 /// `CourtCatalogue` held to the platform's `src/lib/courts.js`
-/// (`scripts/generate-lookup-fixtures.mjs` → `court-catalogue.json`): the courts, their order and
+/// (`scripts/generate-court-catalogue-fixtures.mjs` → `court-catalogue.json`): the courts, their order and
 /// names, the published case types and benches, and the High Court state codes. A change on the
 /// web fails here instead of drifting. Regenerate on a platform change; never edit.
 final class CourtCatalogueGoldenTests: XCTestCase {

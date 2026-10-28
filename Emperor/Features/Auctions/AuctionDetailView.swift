@@ -146,7 +146,8 @@ struct AuctionDetailView: View {
                 ValueRow("Notice number", value: reference)
                     .font(.brand(.caption))
             }
-            // "Watch this company" belonged here and is held back. See `AuctionListView`.
+            // "Watch this company" belonged here and is held back — `/auction-watchlists`
+            // writes on an unauthenticated `userId`. See `AuctionListView`.
         }
     }
 

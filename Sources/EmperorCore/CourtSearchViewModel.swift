@@ -45,9 +45,9 @@ final class CourtSearchViewModel {
     private let metadata: CourtMetadataProviding
     /// Called after a case is pinned, so the dashboard behind this screen refreshes.
     private let onSaved: (() -> Void)?
-    /// Pick mode: a result is handed back to the screen that opened the search (a new matter, a
-    /// matter's Court section) instead of being added to the dashboard here.
-    private let onPick: ((CourtSearchResult) -> Void)?
+    /// Fetch Orders: the cases looked up lately on this device, offered as a way back.
+    private let recent: RecentLookups?
+    private(set) var recentLookups: [RecentLookup] = []
 
     #if canImport(Darwin)
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -62,21 +62,23 @@ final class CourtSearchViewModel {
         service: CourtSearching,
         metadata: CourtMetadataProviding,
         onSaved: (() -> Void)? = nil,
-        onPick: ((CourtSearchResult) -> Void)? = nil
+        recent: RecentLookups? = nil
     ) {
         self.service = service
         self.metadata = metadata
         self.onSaved = onSaved
-        self.onPick = onPick
+        self.recent = recent
+        self.recentLookups = recent?.read() ?? []
     }
 
-    /// Whether a result is chosen rather than saved.
-    var isPicking: Bool { onPick != nil }
+    /// Re-reads the recent list — after a record was read, which adds to it.
+    func refreshRecent() {
+        recentLookups = recent?.read() ?? []
+    }
 
-    /// Hands the result back in pick mode. Nothing is written here: whoever asked tracks the
-    /// case, so the same case is never filed twice.
-    func pick(_ result: CourtSearchResult) {
-        onPick?(result)
+    func forgetRecent(_ entry: RecentLookup) {
+        recent?.forget(entry.key)
+        refreshRecent()
     }
 
     var canSearch: Bool { !isSearching && query.isComplete }
@@ -94,6 +96,12 @@ final class CourtSearchViewModel {
 
     /// Whether a lookup here is the slow kind, so the wait can be explained rather than endured.
     var expectsLongWait: Bool { query.forum.solvesCaptcha(in: query.mode) }
+
+    /// What the long wait is, in words: a High Court on its own portal is slow for its own
+    /// reasons, not the eCourts security check.
+    var longWaitNote: String {
+        query.highCourtDedicated ? Copy.dedicatedWait : Copy.captchaWait
+    }
 
     // MARK: - Searching
 
@@ -465,7 +473,7 @@ final class CourtSearchViewModel {
     /// only honest thing is to say so before the button is pressed.
     ///
     /// - Note: this is unavoidable from the client. Fixing it properly means the server
-    ///   including `diaryNumber` in `ext_id`.
+    ///   including `diaryNumber` in `ext_id`; see `GAPS.md`.
     func collisionWarning(for result: CourtSearchResult) -> String? {
         guard !result.hasDistinguishingNumber else { return nil }
         return "The \(query.forum.name) has not given this case a number yet, so it can only "
@@ -474,17 +482,38 @@ final class CourtSearchViewModel {
 
     func isSaved(_ result: CourtSearchResult) -> Bool { savedIDs.contains(result.id) }
 
+    /// A case pinned from its record (`CourtLookupViewModel.addToMatters`) rather than from
+    /// this row: the row must show it saved too, or it offers to add it again.
+    func markSaved(_ result: CourtSearchResult) { savedIDs.insert(result.id) }
+
     enum Copy {
         static let title = "Find a case"
+        /// The same search, opened to read a case rather than to add one (Fetch Orders).
+        static let lookupTitle = "Fetch Orders"
+        /// New matter's search: the web's heading over the same panel.
+        static let pickTitle = "Find the case in court records"
+        static let useThisCase = "Use this case"
+        static let readFirst = "Read it first"
+        static let fetchThisCase = "Fetch this case"
+        static let lookedUpRecently = "Looked up recently"
+        /// Fetch Orders' front door: what this is, in one line.
+        static let lookupLead = "Read any court case, in one place."
+        static let lookupBlurb = "Orders, hearing history, parties and advocates — straight from the court’s own records, without adding the case to your dashboard."
+        /// The three steps from "I have a case number" to "I have it in Matters".
+        static let lookupSteps: [(title: String, text: String, symbol: String)] = [
+            ("Search", "Pick the court, type the case number or diary number.", "magnifyingglass"),
+            ("Read", "Every order, hearing, party and advocate on one page. Nothing is saved.", "book"),
+            ("Keep it, if you want", "Add it to Matters for hourly tracking and alerts. Or just close the page.", "folder.badge.plus"),
+        ]
         static let searchButton = "Search the court"
         static let searching = "Asking the court…"
         /// Said out loud because ten seconds of silence reads as a hang.
+        static let dedicatedWait = "The court’s own website can take up to a minute to answer."
         static let captchaWait = """
             High Court lookups go through the court's own security check, which usually takes \
             a few seconds and sometimes longer.
             """
         static let saveButton = "Add to my cases"
-        static let pickButton = "Use this case"
         static let savedLabel = "On your dashboard"
 
         /// Why the district courts are listed but cannot be chosen.

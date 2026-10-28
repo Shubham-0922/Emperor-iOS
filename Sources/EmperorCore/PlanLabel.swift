@@ -28,4 +28,11 @@ enum PlanLabel {
     static func pill(session: String?, tierLabel: String?) -> String {
         customerFacing(session) ?? customerFacing(tierLabel) ?? "Plan"
     }
+
+    /// The account card's pill: "Junior Associate plan", or "Plan" when nothing customer-facing
+    /// is known.
+    static func accountPill(session: String?) -> String {
+        guard let name = customerFacing(session) else { return "Plan" }
+        return "\(name) plan"
+    }
 }

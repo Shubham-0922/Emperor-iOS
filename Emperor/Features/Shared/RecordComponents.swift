@@ -811,16 +811,6 @@ struct RecordSheetHeader: View {
 
 // MARK: - Toasts
 
-/// How long a toast stays: what it is given, or half a minute under `-UITestLongToasts`.
-enum ToastLifetime {
-    static func of(_ normal: Duration) -> Duration {
-        #if DEBUG
-        if UITestSupport.keepsToasts { return .seconds(30) }
-        #endif
-        return normal
-    }
-}
-
 /// A short confirmation from the top of the screen — "Copied with its sources" — popping in,
 /// staying 2.6 seconds, and leaving. Said to VoiceOver as it appears.
 private struct RecordToast: ViewModifier {
@@ -858,7 +848,7 @@ private struct RecordToast: ViewModifier {
                     .accessibilityAddTraits(.isStaticText)
                     .onAppear { VoiceOver.announce(message) }
                     .task(id: message) {
-                        try? await Task.sleep(for: ToastLifetime.of(.milliseconds(2600)))
+                        try? await Task.sleep(for: .milliseconds(2600))
                         withAnimation(Motion.easeOut(Motion.Duration.fade)) { self.message = nil }
                     }
                 }

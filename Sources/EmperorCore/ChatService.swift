@@ -19,12 +19,11 @@ struct ChatAttachment: Codable, Equatable, Hashable {
 
     /// The same attachment as an untyped value, for embedding on a message.
     ///
-    /// Attachments must travel in **two** places, which is what the web client does: the
-    /// top-level array and the last message are read by different passes, so both must carry
-    /// them or the model sees an incomplete set. Putting them on the user turn also keeps files
-    /// in scope on later turns, since prior user messages are re-walked.
-    ///
-    /// - Important: send both. Omitting the per-message copy is not an optimisation.
+    /// Attachments must travel in **two** places, which is what the web client does. The
+    /// top-level array is what the pre-RAG pass reads, but the scanned-document refusal check
+    /// looks at `messages[last].attachments` instead (`sync-server.js:7334`) — so sending only
+    /// the top-level array bypasses that check silently. Putting them on the user turn also
+    /// keeps files in scope on later turns, since the server re-walks prior user messages.
     var jsonValue: JSONValue {
         var object: [String: JSONValue] = ["name": .string(name)]
         if let folderName, !folderName.isEmpty {
@@ -105,10 +104,11 @@ struct ChatRequest: Encodable {
     var searchMode: String?
     var attachments: [ChatAttachment]?
     var source: String?
-    /// The matter this conversation belongs to, on every turn of a matter's conversation; absent
-    /// (never null or empty) for an ordinary one. The server keeps a matter's conversation to that
-    /// matter's own files and context.
-    var projectId: String? = nil
+    /// The matter this turn is asked inside (docs/projects.md). With it, the server keeps only
+    /// that matter's documents among the attachments and gives the model the matter's context;
+    /// without it, any attachment from inside a matter is dropped. `nil` omits the key, which is
+    /// an ordinary conversation — never an empty string, which the server would try to own.
+    var projectId: String?
 }
 
 /// Everything the reasoning panel needs, as of this moment in the stream.
@@ -188,6 +188,19 @@ protocol ChatProviding: Sendable {
         attachments: [ChatAttachment]?,
         webSearch: Bool
     ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error>
+    /// The same turn, asked inside a matter: `projectID` names it on the request, so the turn
+    /// reads the matter's documents and the conversation is filed under the matter. `nil` is an
+    /// ordinary conversation. Stand-ins that do not care get the default below, which forwards
+    /// to the six-argument form.
+    func send(
+        history: [ChatMessage],
+        chatID: String,
+        model: ChatModel,
+        role: ChatRole?,
+        attachments: [ChatAttachment]?,
+        webSearch: Bool,
+        projectID: String?
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error>
     /// Stores a finished turn's work log on its answer, the way the web does. Never throws and
     /// never surfaces: see `WorkLogSync` for when it declines, and why that is always silent.
     ///
@@ -231,6 +244,21 @@ struct StopReply: Codable, Equatable, Sendable {
 }
 
 extension ChatProviding {
+    /// Drops the matter, for stand-ins that do not exercise it. `ChatService` implements the
+    /// seven-argument form itself, so this is never what a real turn goes through.
+    func send(
+        history: [ChatMessage],
+        chatID: String,
+        model: ChatModel,
+        role: ChatRole?,
+        attachments: [ChatAttachment]?,
+        webSearch: Bool,
+        projectID: String?
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
+        try await send(
+            history: history, chatID: chatID, model: model, role: role,
+            attachments: attachments, webSearch: webSearch)
+    }
     /// A stand-in that cannot stop anything, for fakes that do not exercise stopping.
     func stopRun(chatID: String) async throws -> StopReply { .unsupported }
 
@@ -256,53 +284,13 @@ protocol ChatListProviding: Sendable {
 
 struct ChatService: ChatProviding, ChatListProviding {
     let client: APIClient
-    /// The matter every turn sent through this service belongs to; nil for ordinary conversations.
-    /// Set through `scoped(toProject:)`, never derived from the documents a turn carries.
-    var projectID: String? = nil
-
-    /// The same service, with every turn sent as part of matter `id`'s conversations.
-    func scoped(toProject id: String) -> ChatService {
-        var scoped = self
-        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
-        scoped.projectID = trimmed.isEmpty ? nil : trimmed
-        return scoped
-    }
 
     // MARK: - History
 
-    /// The conversations History and Home list: a matter's own conversations are left out, as
-    /// the web leaves them out — they are reached from their matter's Ask section.
     func chats() async throws -> [ChatSummary] {
         try await withRetry {
             let request = try await client.makeRequest("GET", "/chats")
-            return try await client.send(request, as: HistoryChatList.self).chats
-        }
-    }
-
-    /// `GET /chats`, each row read for its `project_id` as well, and the matter's rows dropped.
-    struct HistoryChatList: Decodable, Sendable {
-        let chats: [ChatSummary]
-
-        private enum Keys: String, CodingKey { case chats }
-
-        init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: Keys.self)
-            let rows = try c.decode([Row].self, forKey: .chats)
-            chats = rows.filter { $0.projectID == nil }.map(\.summary)
-        }
-
-        private struct Row: Decodable {
-            let summary: ChatSummary
-            let projectID: String?
-
-            private enum Keys: String, CodingKey { case projectID = "project_id" }
-
-            init(from decoder: Decoder) throws {
-                summary = try ChatSummary(from: decoder)
-                let c = try decoder.container(keyedBy: Keys.self)
-                let raw = c.wireString(.projectID)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                projectID = raw.isEmpty ? nil : raw
-            }
+            return try await client.send(request, as: ChatListResponse.self).chats
         }
     }
 
@@ -375,13 +363,42 @@ struct ChatService: ChatProviding, ChatListProviding {
         attachments: [ChatAttachment]? = nil,
         webSearch: Bool = false
     ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
+        try await send(
+            history: history, chatID: chatID, model: model, role: role,
+            attachments: attachments, webSearch: webSearch, projectID: nil)
+    }
+
+    /// The same turn, asked inside a matter (docs/projects.md, "Chat plumbing"). This is the
+    /// form `ChatViewModel` calls; the six-argument one above forwards here with no matter.
+    func send(
+        history: [ChatMessage],
+        chatID: String,
+        model: ChatModel,
+        role: ChatRole?,
+        attachments: [ChatAttachment]?,
+        webSearch: Bool,
+        projectID: String?
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
         guard let credentials = await client.currentCredentials() else {
             throw APIError.notAuthenticated
         }
 
-        let payload = turnBody(
-            history: history, chatID: chatID, model: model, role: role, attachments: attachments,
-            webSearch: webSearch, userID: credentials.userIDString)
+        let trimmedProject = projectID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = ChatRequest(
+            messages: history,
+            userId: credentials.userIDString,
+            chatId: chatID,
+            model: model.rawValue,
+            // A nil here omits the key, which is the only safe way to take the server's
+            // default: `getLeadingIdentity` defaults on `undefined` only, so an empty string
+            // or null would be spliced into the system prompt verbatim.
+            role: role?.wireValue,
+            // Only the literal "web" is meaningful. Note the server also auto-triggers web
+            // search on keywords in the message, so this cannot fully opt out.
+            searchMode: webSearch ? "web" : nil,
+            attachments: attachments,
+            source: "chat",
+            projectId: (trimmedProject?.isEmpty ?? true) ? nil : trimmedProject)
 
         var request = try await client.makeRequest("POST", "/chat", body: payload)
         request.setValue("text/plain", forHTTPHeaderField: "Accept")
@@ -418,30 +435,6 @@ struct ChatService: ChatProviding, ChatListProviding {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
-    }
-
-    /// The body of one turn, as `send` posts it.
-    func turnBody(
-        history: [ChatMessage], chatID: String, model: ChatModel, role: ChatRole?,
-        attachments: [ChatAttachment]?, webSearch: Bool, userID: String
-    ) -> ChatRequest {
-        ChatRequest(
-            messages: history,
-            userId: userID,
-            chatId: chatID,
-            model: model.rawValue,
-            // A nil here omits the key, which is the only safe way to take the server's
-            // default: `getLeadingIdentity` defaults on `undefined` only, so an empty string
-            // or null would be spliced into the system prompt verbatim.
-            role: role?.wireValue,
-            // Only the literal "web" is meaningful. Note the server also auto-triggers web
-            // search on keywords in the message, so this cannot fully opt out.
-            searchMode: webSearch ? "web" : nil,
-            attachments: attachments,
-            source: "chat",
-            // Every turn of a matter's conversation, not only the first: the server reads the
-            // matter's files and context from this on each request.
-            projectId: projectID)
     }
 
     // MARK: - Storing the work log

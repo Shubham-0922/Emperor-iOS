@@ -34,19 +34,15 @@ final class DraftHistoryViewModel {
 
     private let service: any DraftHistoryProviding
 
+    /// Set for a matter's Drafts section: its documents **and** tables, in one list.
+    let projectID: String?
+    /// Said above a matter's list when one of its two halves could not be loaded.
+    private(set) var partialNotice: String?
+
     struct OpenedDraft: Equatable, Identifiable {
         let item: DraftedItem
         let content: String
-        /// Which opening this is — the row first opened, kept when a save moves the draft to
-        /// another row, so the reader on screen stays the same reader.
-        let presentationID: String
-        var id: String { presentationID }
-
-        init(item: DraftedItem, content: String, presentationID: String? = nil) {
-            self.item = item
-            self.content = content
-            self.presentationID = presentationID ?? item.id
-        }
+        var id: String { item.id }
 
         /// How to draw it — read from the content, never taken from the row's `type`.
         ///
@@ -65,9 +61,13 @@ final class DraftHistoryViewModel {
         }
     }
 
-    init(service: any DraftHistoryProviding) {
+    init(service: any DraftHistoryProviding, projectID: String? = nil) {
         self.service = service
+        let trimmed = projectID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.projectID = (trimmed?.isEmpty ?? true) ? nil : trimmed
     }
+
+    var isMatterScoped: Bool { projectID != nil }
 
     var presentation: ListPresentation {
         ListPresentation(state: state, isEmpty: visible.isEmpty)
@@ -121,9 +121,12 @@ final class DraftHistoryViewModel {
     // MARK: - Loading
 
     func load() async {
+        if let projectID { return await loadMatter(projectID) }
         state = .loading
         do {
-            items = try await service.drafts(kind)
+            // A matter's drafts are the matter's, as its conversations are — see
+            // `ChatListViewModel.ownConversations`.
+            items = try await service.drafts(kind).filter { !$0.belongsToMatter }
             state = .loaded
         } catch is CancellationError {
             // Switching the Drafts/Tables control cancels the in-flight fetch, and a cancelled
@@ -137,6 +140,66 @@ final class DraftHistoryViewModel {
             items = []
             state = .failed(LoadFailure(error))
         }
+    }
+
+    /// A matter's documents and tables, merged newest first.
+    ///
+    /// Only rows that name **this** matter are kept, as the web keeps them — a listing that held
+    /// anything else would put a draft from another conversation inside the matter. One half
+    /// failing still shows the other, with a line saying which is missing.
+    private func loadMatter(_ projectID: String) async {
+        state = .loading
+        partialNotice = nil
+        let service = self.service
+        async let documents = Self.attempt { try await service.drafts(.document, projectID: projectID) }
+        async let tables = Self.attempt { try await service.drafts(.table, projectID: projectID) }
+        let (docs, tabs) = await (documents, tables)
+        if Task.isCancelled { return }
+        switch (docs, tabs) {
+        case (.failure(let error), .failure):
+            items = []
+            state = .failed(LoadFailure(error))
+            return
+        case (.failure, .success):
+            partialNotice = "Documents could not be loaded."
+        case (.success, .failure):
+            partialNotice = "Tables could not be loaded."
+        case (.success, .success):
+            break
+        }
+        let rows = ((try? docs.get()) ?? []).map { Self.typed($0, .document) }
+            + ((try? tabs.get()) ?? []).map { Self.typed($0, .table) }
+        items = Self.matterRows(rows, projectID: projectID)
+        state = .loaded
+    }
+
+    /// The web's filter and order: this matter's rows only, each once, newest first.
+    static func matterRows(_ rows: [DraftedItem], projectID: String) -> [DraftedItem] {
+        var seen = Set<String>()
+        let mine = rows.filter { row in
+            let owner = row.projectID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard owner == projectID, !row.id.isEmpty, !seen.contains(row.id) else { return false }
+            seen.insert(row.id)
+            return true
+        }
+        return mine.enumerated().sorted { a, b in
+            let ta = a.element.createdAt?.timeIntervalSince1970 ?? 0
+            let tb = b.element.createdAt?.timeIntervalSince1970 ?? 0
+            return ta == tb ? a.offset < b.offset : ta > tb
+        }.map(\.element)
+    }
+
+    /// A row that does not say what it is takes the kind of the route that listed it.
+    private static func typed(_ row: DraftedItem, _ kind: DraftKind) -> DraftedItem {
+        var row = row
+        if row.type?.isEmpty ?? true { row.type = kind.rawValue }
+        return row
+    }
+
+    private static func attempt(
+        _ body: @Sendable () async throws -> [DraftedItem]
+    ) async -> Result<[DraftedItem], Error> {
+        do { return .success(try await body()) } catch { return .failure(error) }
     }
 
     // MARK: - Opening
@@ -161,23 +224,4 @@ final class DraftHistoryViewModel {
     }
 
     func close() { opened = nil }
-
-    // MARK: - Editing
-
-    /// The draft on screen was saved: it now reads `content`, held by the row `id` (the server
-    /// may answer with another row than the one opened). The row is patched in place at once;
-    /// the screen then reloads the list, where the server has dated it now and put it first.
-    func replaceOpened(content: String, id: String) {
-        guard let current = opened else { return }
-        let old = current.item
-        let row = DraftedItem(
-            id: id, chatID: old.chatID, title: old.title, type: old.type,
-            createdAtRaw: old.createdAtRaw, chatTitle: old.chatTitle)
-        opened = OpenedDraft(item: row, content: content, presentationID: current.presentationID)
-        var patched: [DraftedItem] = []
-        for item in items where item.id != id || item.id == old.id {
-            patched.append(item.id == old.id ? row : item)
-        }
-        items = patched
-    }
 }

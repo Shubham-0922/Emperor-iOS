@@ -1,384 +1,406 @@
 import XCTest
 @testable import EmperorCore
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
-/// The Library's home, search, collections, Acts index, books and covers, driven with
-/// `FakeLibrary`.
-final class LibraryTests: XCTestCase {
+// The catalogue-backed Library (docs/library.md): what goes on the wire, and how the wire's
+// shapes decode. Every JSON below is the platform's own (lib/library/query.js toItem, act.js,
+// judgment.js, routes.js), trimmed.
 
-    // MARK: - Home
+private let browseJSON = #"""
+{"success":true,"items":[
+ {"id":257708,"title":"Union Of India vs Sistema Shyam Teleservices Limited on 20 February, 2026","displayTitle":"Union Of India vs Sistema Shyam Teleservices Limited on 20 February, 2026",
+  "category":"case-law","court":"supremecourt","courtLabel":"Supreme Court","year":2026,"decidedOn":"2026-02-20","petitioner":"UNION OF INDIA","respondent":"SISTEMA SHYAM TELESERVICES LIMITED",
+  "neutralCitation":"2026 INSC 210","caseType":"Civil Appeal","caseNumber":"4629 of 2008","bench":"B.R. Gavai, K. Vinod Chandran","ext":".txt","fileSize":653000,"render":"html"},
+ {"id":3461,"title":"BIHAR MOTOR VEHICLES RULES, 1992","displayTitle":"Bihar Motor Vehicles Rules, 1992","category":"bare-acts","docType":"rules","jurisdiction":"Bihar","year":1992,
+  "ext":".pdf","fileSize":2300000,"render":"pdf","hasChildren":3,"coverUrl":"/api/library/catalogue/cover?id=3461&w=320","anomalies":["future_year"]},
+ {"id":280398,"title":"Calcutta Law Journal, Vol-91","category":"books-and-law-reports","series":"Calcutta Law Journal","volume":"Vol-91","volumeNo":91,"year":1953,"issue":"615","ext":".pdf","fileSize":"8123456","render":"pdf"}
+],"total":271480,"page":2,"pageSize":20,"sort":"date_desc"}
+"""#
 
-    func testUnavailableCatalogueIsNotAFailure() async {
-        await libraryRun { fake in
-            fake.categoriesResult = .failure(LibraryError.catalogueUnavailable)
-            let model = LibraryHomeViewModel(service: fake)
-            await model.load()
-            XCTAssertTrue(model.isUnavailable)
-            XCTAssertNil(model.state.failure)
-            XCTAssertEqual(LibraryHomeViewModel.unavailableMessage, "The catalogue has not been built on this server yet.")
+private let searchJSON = #"""
+{"success":true,"items":[{"id":1,"title":"A vs B","category":"case-law","court":"delhi","courtLabel":"Delhi High Court","ext":".txt","render":"html",
+ "snippet":{"text":"the bona fide purchaser for value without notice","before":true,"after":false,"term":"bona fide purchaser"}}],
+ "total":1000,"totalIsCapped":true,"page":1,"pageSize":20,"sort":null,"search":"\"bona fide purchaser\"","mode":"body",
+ "index":{"available":true,"ready":true,"complete":false,"indexed":200000,"pending":71480,"noText":0,"total":271480}}
+"""#
 
-            fake.categoriesResult = .failure(APIError.server(status: 500, message: "library_failed"))
-            await model.load()
-            XCTAssertFalse(model.isUnavailable)
-            XCTAssertNotNil(model.state.failure, "any other failure is a failure, with Try again")
-        }
+private let judgmentJSON = #"""
+{"success":true,"doc":{"id":257708,"title":"Union Of India vs Sistema","category":"case-law","court":"supremecourt","ext":".txt"},
+ "header":{"court":"supremecourt","courtLabel":"Supreme Court","title":"Union Of India vs Sistema Shyam Teleservices Limited on 20 February, 2026",
+  "petitioner":"UNION OF INDIA","respondent":"SISTEMA SHYAM TELESERVICES LIMITED","caseNumber":"4629 of 2008","caseType":"Civil Appeal",
+  "decidedOn":"2026-02-20","year":2026,"bench":["B.R. Gavai","K. Vinod Chandran"],"author":"B.R. Gavai","citations":["2026 INSC 210","(2026) 3 SCC 1"],
+  "neutralCitation":"2026 INSC 210","source":"https://indiankanoon.org/doc/174288830/","citesCount":12,"citedByCount":0},
+ "blocks":[
+  {"id":"b-0","type":"cause","text":"UNION OF INDIA ..... Appellant\nVersus\nSISTEMA ..... Respondent","lines":["UNION OF INDIA ..... Appellant","Versus","SISTEMA ..... Respondent"]},
+  {"id":"h-1","type":"heading","level":1,"text":"JUDGMENT"},
+  {"id":"para-1","type":"para","n":"1","text":"Leave granted."},
+  {"id":"para-2","type":"para","n":2,"text":"The appeal arises from the order of the High Court."},
+  {"id":"b-4","type":"quote","text":"\"No person shall be deprived of his property save by authority of law.\""},
+  {"id":"b-5","type":"list","marker":"(a)","text":"the first ground"},
+  {"id":"b-6","type":"meta","role":"signature","lines":["..................J.","(B.R. GAVAI)","New Delhi;"],"text":"..................J.\n(B.R. GAVAI)\nNew Delhi;"},
+  {"id":"b-7","type":"table","lines":["Sl.  Date      Event","1.   01.01.26  Filed"],"text":"Sl.  Date      Event\n1.   01.01.26  Filed"}
+ ],
+ "toc":[{"id":"h-1","label":"Judgment","level":1},{"id":"para-2","label":"Para 2","level":3}],
+ "stats":{"paragraphs":2,"words":1204,"blocks":8,"layout":"wrapped","debrisLines":3,"formatMs":120},"formatterVersion":7,"cached":false}
+"""#
+
+private let actJSON = #"""
+{"success":true,"act":{"id":2478,"title":"THE PREVENTION OF MONEY-LAUNDERING ACT, 2002","category":"bare-acts","docType":"act","jurisdiction":"Central","jurisdictionInferred":false,
+  "jurisdictionSource":"catalogue","year":2002,"ext":".pdf","fileSize":512000,"render":"pdf","aliases":["PMLA"]},
+ "bundleId":2478,"kind":"act","requestedId":5333,"selectedId":5333,"selectedTab":"rules","orphan":false,
+ "tabs":[{"key":"act","label":"The Act","count":1,"docs":[{"id":2478,"title":"THE PREVENTION OF MONEY-LAUNDERING ACT, 2002","category":"bare-acts","docType":"act","year":2002,"ext":".pdf"}]},
+        {"key":"rules","label":"Rules","count":2,"docs":[{"id":5333,"title":"Prevention of Money-laundering (Appeal) Rules, 2005","category":"bare-acts","docType":"rules","year":2005,"ext":".pdf","copies":[9001]},
+                                                       {"id":5334,"title":"Prevention of Money-laundering (Forms) Rules, 2005 (Rep., Act 1 of 2020)","category":"bare-acts","docType":"rules","year":2005,"ext":".pdf","repealed":true}]},
+        {"key":"editions","label":"Other editions","count":1,"docs":[{"id":7001,"title":"The Prevention of Money-Laundering Act, 2002","category":"bare-acts","docType":"act","jurisdiction":"Assam","year":2002,"ext":".pdf","fileSize":40000}]}]}
+"""#
+
+private let foldersJSON = #"""
+{"success":true,"items":[{"id":2478,"title":"THE PREVENTION OF MONEY-LAUNDERING ACT, 2002","category":"bare-acts","docType":"act","jurisdiction":"Central","year":2002,"ext":".pdf",
+ "firstLetter":"P","kind":"act","tabCounts":{"rules":9,"notifications":17,"amendments":25,"editions":3},"instruments":28,"hasChildren":28,"aliases":["PMLA"],"jurisdictionInferred":false}],
+ "total":1,"page":1,"pageSize":60,
+ "letters":[{"letter":"A","count":210},{"letter":"P","count":98},{"letter":"#","count":4}],
+ "jurisdictions":[{"value":"Central","label":"Central","count":1206},{"value":"Assam","label":"Assam","count":401},{"value":"none","label":"Unspecified","count":293}]}
+"""#
+
+private let facetsJSON = #"""
+{"success":true,"facets":{"category":"case-law","label":"Case law",
+ "courts":[{"value":"chennai","label":"Madras High Court","count":74760},{"value":"supremecourt","label":"Supreme Court","count":30724}],
+ "years":[{"year":2026,"count":12},{"year":2025,"count":9000}],"yearRange":{"min":1950,"max":2027},
+ "docTypes":[],"jurisdictions":[],"series":[{"value":"Calcutta Law Journal","count":66,"yearMin":1904,"yearMax":1952}],
+ "sorts":[{"value":"date_desc","label":"Newest"},{"value":"date_asc","label":"Oldest"}],
+ "publishers":[{"value":"sebi","label":"SEBI","name":"Securities and Exchange Board of India","count":1200}],
+ "kinds":[{"value":"adjudication","label":"Adjudication orders","count":300}],
+ "letters":[{"letter":"A","count":10},{"letter":"#","count":1}]}}
+"""#
+
+final class LibraryWireTests: XCTestCase {
+
+    private static let config = APIConfig(baseURL: URL(string: "https://example.test/api")!)
+
+    override func setUp() { super.setUp(); HTTPStub.reset() }
+    override func tearDown() { HTTPStub.reset(); super.tearDown() }
+
+    private func makeService() async -> (LibraryService, APIClient) {
+        let client = APIClient(config: Self.config, session: HTTPStub.session())
+        await client.setCredentials(Credentials(token: "tok-abc", userID: 42))
+        return (LibraryService(client: client), client)
     }
 
-    func testShelvesFollowTheWebOrderAndLoadOnce() async {
-        await libraryRun { fake in
-            fake.categoriesResult = .success([
-                LibraryCategory(key: "books-and-law-reports", count: 1),
-                LibraryCategory(key: "case-law", count: 3),
-                LibraryCategory(key: "bare-acts", count: 2),
-                LibraryCategory(key: "something-new", count: 1),
-            ])
-            fake.shelves["case-law"] = [.sample(1), .sample(2)]
-            let model = LibraryHomeViewModel(service: fake)
-            await model.load()
-            XCTAssertEqual(model.shelfKeys, ["bare-acts", "case-law", "books-and-law-reports"])
-            XCTAssertEqual(model.orderedCategories.map(\.key).last, "something-new")
-            await model.loadShelf("case-law")
-            await model.loadShelf("case-law")
-            XCTAssertEqual(fake.count("shelf:case-law"), 1)
-            XCTAssertEqual(model.shelf("case-law").items.map(\.id), [1, 2])
-            XCTAssertEqual(model.shelf("case-law").state, .loaded)
-        }
+    private func query(_ request: URLRequest?) -> [String: String] {
+        guard let url = request?.url, let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else { return [:] }
+        return Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
     }
 
-    func testAFailedShelfIsAskedAgain() async {
-        await libraryRun { fake in
-            fake.shelfError = APIError.server(status: 500, message: "x")
-            let model = LibraryHomeViewModel(service: fake)
-            await model.loadShelf("bare-acts")
-            XCTAssertNotNil(model.shelf("bare-acts").state.failure)
-            fake.shelfError = nil
-            await model.loadShelf("bare-acts")
-            XCTAssertEqual(model.shelf("bare-acts").state, .loaded)
-            XCTAssertEqual(fake.count("shelf:bare-acts"), 2)
-        }
+    func testEveryRouteIsUnderTheCatalogueAndCarriesTheBearerToken() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(#"{"success":true,"categories":[{"key":"case-law","label":"Case law","count":271480}]}"#))
+        let categories = try await service.categories()
+        XCTAssertEqual(categories.first?.count, 271_480)
+        let request = try XCTUnwrap(HTTPStub.lastRequest)
+        XCTAssertEqual(request.url?.path, "/api/library/catalogue/categories")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer tok-abc")
     }
 
-    func testSearchAsksTitlesAndPassagesAndSurvivesOneFailing() async {
-        await libraryRun { fake in
-            fake.titleSearchResult = .success(LibraryGroupedResults(groups: [
-                .init(category: "case-law", label: "Case law", total: 3400, items: [.sample(1)]),
-                .init(category: "bare-acts", label: "Bare acts", total: 12, items: [.sample(2, category: "bare-acts")]),
-                .init(category: "tribunals", label: "Tribunals", total: 0, items: []),
-            ]))
-            fake.searchHandler = { _ in throw APIError.server(status: 503, message: "search_busy") }
-            let model = LibraryHomeViewModel(service: fake)
-            model.query = "  penal "
-            await model.submitSearch()
-            XCTAssertEqual(model.submittedQuery, "penal")
-            XCTAssertEqual(fake.count("titleSearch"), 1)
-            XCTAssertEqual(fake.count("search"), 1)
-            XCTAssertEqual(fake.searchCalls.first?.category, "case-law")
-            XCTAssertEqual(fake.searchCalls.first?.pageSize, 5)
-            XCTAssertEqual(model.resultGroups.map(\.category), ["bare-acts", "case-law"], "shelf order, empty ones dropped")
-            XCTAssertTrue(model.passagesFailed)
-            XCTAssertFalse(model.searchFailed)
-            XCTAssertFalse(model.foundNothing)
-            XCTAssertEqual(LibraryHomeViewModel.resultTitle(for: model.resultGroups[1]), "Case law by name")
-        }
+    /// The filters in force, and only those, reach the query string; the page size is clamped
+    /// to what the route accepts.
+    func testBrowseSendsOnlyTheFiltersInForce() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(browseJSON))
+        var filters = LibraryBrowseFilters(category: "case-law", query: "state", sort: "date_desc", page: 2, pageSize: 500)
+        filters.court = "delhi"
+        filters.yearFrom = 2015
+        filters.series = ""
+        let page = try await service.browse(filters)
+        let q = query(HTTPStub.lastRequest)
+        XCTAssertEqual(q["category"], "case-law")
+        XCTAssertEqual(q["court"], "delhi")
+        XCTAssertEqual(q["yearFrom"], "2015")
+        XCTAssertEqual(q["q"], "state")
+        XCTAssertEqual(q["page"], "2")
+        XCTAssertEqual(q["pageSize"], "100")
+        XCTAssertNil(q["series"])
+        XCTAssertNil(q["yearTo"])
+        XCTAssertEqual(page.total, 271_480)
+        XCTAssertEqual(page.pageCount, 13_574)
+        XCTAssertTrue(page.hasMore)
     }
 
-    func testSearchThatFindsNothingOrFailsEverywhere() async {
-        await libraryRun { fake in
-            let model = LibraryHomeViewModel(service: fake)
-            model.query = "zzz"
-            await model.submitSearch()
-            XCTAssertTrue(model.foundNothing)
-            XCTAssertEqual(model.nothingFoundTitle, "Nothing found for “zzz”")
+    /// The row's many optional fields, including the ones that arrive in more than one type.
+    func testADocumentRowDecodesItsManyShapes() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(browseJSON))
+        let items = try await service.browse(LibraryBrowseFilters(category: "case-law")).items
+        XCTAssertEqual(items.count, 3)
+        let judgment = items[0]
+        XCTAssertEqual(judgment.court, "supremecourt")
+        XCTAssertTrue(judgment.isTextDocument)
+        XCTAssertFalse(judgment.isPDF)
+        XCTAssertEqual(judgment.bench, "B.R. Gavai, K. Vinod Chandran")
+        let rules = items[1]
+        XCTAssertTrue(rules.isPDF)
+        XCTAssertEqual(rules.hasChildren, 3)
+        XCTAssertEqual(rules.anomalies, ["future_year"])
+        XCTAssertTrue(rules.opensAsAct, "an instrument with children is a bundle: it opens the Act page")
+        let volume = items[2]
+        XCTAssertEqual(volume.fileSize, 8_123_456, "a size sent as a string still reads")
+        XCTAssertEqual(volume.volumeNo, 91)
+        XCTAssertEqual(volume.issue, "615")
+    }
 
-            fake.titleSearchResult = .failure(APIError.transport("offline"))
-            fake.searchHandler = { _ in throw APIError.transport("offline") }
-            await model.submitSearch()
-            XCTAssertTrue(model.searchFailed)
-            XCTAssertFalse(model.foundNothing)
+    func testBodySearchReadsPassagesTheCapAndTheIndex() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(searchJSON))
+        var filters = LibraryBrowseFilters(category: "case-law", query: "\"bona fide purchaser\"")
+        filters.pageSize = 80
+        let page = try await service.search(filters)
+        XCTAssertEqual(HTTPStub.lastRequest?.url?.path, "/api/library/catalogue/search")
+        XCTAssertEqual(query(HTTPStub.lastRequest)["pageSize"], "50", "body search pages are at most 50")
+        XCTAssertEqual(page.totalIsCapped, true)
+        XCTAssertEqual(page.items.first?.snippet?.text, "the bona fide purchaser for value without notice")
+        XCTAssertEqual(page.items.first?.snippet?.before, true)
+        XCTAssertEqual(page.items.first?.snippet?.after, false)
+        XCTAssertEqual(page.index?.complete, false)
+        XCTAssertEqual(page.index?.indexed, 200_000)
+    }
 
-            fake.searchHandler = { _ in
-                var page = LibraryPage(items: [.sample(9)], total: 1000)
-                page.totalIsCapped = true
-                return page
+    func testFacetsDecodeEveryGroup() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(facetsJSON))
+        let facets = try await service.facets(category: "case-law")
+        XCTAssertEqual(facets.courts?.count, 2)
+        XCTAssertEqual(facets.yearRange?.max, 2027)
+        XCTAssertEqual(facets.series?.first?.yearMax, 1952)
+        XCTAssertEqual(facets.publishers?.first?.name, "Securities and Exchange Board of India")
+        XCTAssertEqual(facets.kinds?.first?.displayLabel, "Adjudication orders")
+        XCTAssertEqual(facets.letters?.last?.letter, "#")
+        XCTAssertEqual(facets.sorts?.map(\.value), ["date_desc", "date_asc"])
+    }
+
+    /// A paragraph number arrives as a string or a number; a block's lines are kept.
+    func testAJudgmentDecodesItsBlocks() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(judgmentJSON))
+        let judgment = try await service.judgment(id: 257_708)
+        XCTAssertEqual(judgment.blocks.count, 8)
+        XCTAssertEqual(judgment.blocks[2].n, "1")
+        XCTAssertEqual(judgment.blocks[3].n, "2", "a numeric n reads as its string")
+        XCTAssertEqual(judgment.blocks[0].lines?.count, 3)
+        XCTAssertEqual(judgment.blocks[6].role, "signature")
+        XCTAssertEqual(judgment.header?.bench, ["B.R. Gavai", "K. Vinod Chandran"])
+        XCTAssertEqual(judgment.header?.citations.count, 2)
+        XCTAssertEqual(judgment.toc.count, 2)
+        XCTAssertEqual(judgment.stats?.words, 1204)
+    }
+
+    func testAnActBundleDecodesWithItsTabsAndCopies() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(actJSON))
+        let bundle = try await service.act(id: 5333)
+        XCTAssertEqual(query(HTTPStub.lastRequest)["id"], "5333")
+        XCTAssertEqual(bundle.selectedTab, "rules")
+        XCTAssertEqual(bundle.selectedId, 5333)
+        XCTAssertEqual(bundle.tabs.map(\.key), ["act", "rules", "editions"])
+        XCTAssertEqual(bundle.tabs[1].docs[0].copies, [9001])
+        XCTAssertEqual(bundle.tabs[1].docs[1].repealed, true)
+        XCTAssertEqual(bundle.act.aliases, ["PMLA"])
+        XCTAssertEqual(bundle.resolvedKind, "act")
+    }
+
+    func testTheActIndexCarriesLettersAndJurisdictions() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(foldersJSON))
+        var filters = ActIndexFilters()
+        filters.letter = "P"
+        filters.jurisdiction = "Central"
+        filters.has = "rules"
+        filters.pageSize = 999
+        let page = try await service.actIndex(filters)
+        let q = query(HTTPStub.lastRequest)
+        XCTAssertEqual(HTTPStub.lastRequest?.url?.path, "/api/library/catalogue/folders")
+        XCTAssertEqual(q["letter"], "P")
+        XCTAssertEqual(q["jurisdiction"], "Central")
+        XCTAssertEqual(q["has"], "rules")
+        XCTAssertEqual(q["pageSize"], "200")
+        XCTAssertEqual(page.letters.count, 3)
+        XCTAssertEqual(page.jurisdictions.last?.label, "Unspecified")
+        XCTAssertEqual(page.items.first?.tabCounts?["amendments"], 25)
+        XCTAssertEqual(page.items.first?.firstLetter, "P")
+    }
+
+    /// `/doc` folds the family into the row itself.
+    func testADocumentDetailDecodesItsFamily() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(#"""
+        {"success":true,"doc":{"id":2478,"title":"PMLA","category":"bare-acts","docType":"act","ext":".pdf","hasFile":false,
+         "childGroups":[{"key":"rules","label":"Rules","items":[{"id":5333,"title":"Appeal Rules","category":"bare-acts"}]}],"childCount":1,
+         "editions":[{"id":7001,"title":"PMLA (Assam)","category":"bare-acts"}],"parent":null}}
+        """#))
+        let detail = try await service.document(id: 2478)
+        XCTAssertEqual(detail.doc.hasFile, false)
+        XCTAssertEqual(detail.childGroups.first?.items.first?.id, 5333)
+        XCTAssertEqual(detail.editions.count, 1)
+        XCTAssertNil(detail.parent)
+    }
+
+    func testTheGroupedSearchAndTheShelves() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.respond { request in
+            let q = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems } ?? []
+            if q.contains(where: { $0.name == "groupBy" }) {
+                return .json(#"{"success":true,"groups":[{"category":"bare-acts","label":"Bare acts","total":12,"items":[{"id":1,"title":"PMLA"}]}],"search":"money","pageSize":6}"#)
             }
-            await model.submitSearch()
-            XCTAssertEqual(model.passageCountText, "1,000+")
-            model.query = ""
-            await model.submitSearch()
-            XCTAssertFalse(model.isShowingResults)
-        }
-    }
-
-    // MARK: - Collections
-
-    private static func pages(total: Int = 45) -> (LibraryFilters) throws -> LibraryPage {
-        { f in
-            let page = f.page ?? 1
-            let size = f.pageSize ?? 20
-            let first = (page - 1) * size
-            let items = (first..<min(total, first + size)).map { LibraryDoc.sample($0 + 1) }
-            var out = LibraryPage(items: items, total: total, page: page, pageSize: size)
-            out.sort = f.sort
-            return out
-        }
-    }
-
-    func testCaseLawPagesThroughThreePages() async {
-        await libraryRun { fake in
-            fake.browseHandler = Self.pages()
-            let model = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), service: fake)
-            await model.load()
-            XCTAssertEqual(model.pageLabel, "Page 1 of 3")
-            XCTAssertEqual(fake.browseCalls.last?.sort, "date_desc", "Case Law is a chronology")
-            XCTAssertEqual(fake.browseCalls.last?.pageSize, 20)
-            XCTAssertFalse(model.canGoBack)
-            await model.nextPage()
-            await model.nextPage()
-            XCTAssertEqual(model.pageLabel, "Page 3 of 3")
-            XCTAssertFalse(model.canGoForward)
-            XCTAssertEqual(model.items.count, 5)
-            await model.nextPage()
-            XCTAssertEqual(fake.browseCalls.count, 3, "no page past the last")
-            XCTAssertEqual(model.countLine, "45 judgments")
-        }
-    }
-
-    func testAPageBeingReplacedStaysOnScreen() async {
-        await libraryRun { fake in
-            fake.browseHandler = Self.pages()
-            let model = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), service: fake)
-            await model.load()
-            let gate = LibraryGate()
-            fake.gate = { _ in await gate.wait() }
-            let task = Task { @MainActor in await model.nextPage() }
-            await libraryUntil { fake.browseCalls.count == 2 }
-            XCTAssertTrue(model.isStale)
-            XCTAssertEqual(model.items.first?.id, 1, "the old page is kept while the next loads")
-            gate.open()
-            await task.value
-            XCTAssertFalse(model.isStale)
-            XCTAssertEqual(model.items.first?.id, 21)
-        }
-    }
-
-    func testALateAnswerForOldFiltersIsDropped() async {
-        await libraryRun { fake in
-            fake.browseHandler = { f in LibraryPage(items: [.sample(f.court == "delhi" ? 100 : 200)], total: 1) }
-            let model = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), service: fake)
-            let gate = LibraryGate()
-            fake.gate = { f in if f.court == "delhi" { await gate.wait() } }
-            let slow = Task { @MainActor in await model.setCourt("delhi") }
-            await libraryUntil { fake.browseCalls.count == 1 }
-            await model.setCourt("bombay")
-            XCTAssertEqual(model.items.map(\.id), [200])
-            gate.open()
-            await slow.value
-            XCTAssertEqual(model.items.map(\.id), [200], "the slower, older answer does not overwrite the newer one")
-        }
-    }
-
-    func testSwitchingCollectionKeepsTheSearchAndDropsTheFilters() async {
-        await libraryRun { fake in
-            let model = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), query: "bail", service: fake)
-            await model.setCourt("delhi")
-            await model.setYears(from: 2015, to: 2020)
-            XCTAssertEqual(model.activeFilterCount, 2)
-            XCTAssertEqual(model.activeFilters.map(\.label), ["Delhi HC", "2015–2020"])
-            await model.switchCategory(to: LibraryCategory(key: "tribunals"))
-            XCTAssertEqual(model.query, "bail")
-            XCTAssertEqual(model.activeFilterCount, 0)
-            XCTAssertEqual(fake.browseCalls.last?.q, "bail")
-            XCTAssertNil(fake.browseCalls.last?.court)
-            XCTAssertEqual(fake.browseCalls.last?.category, "tribunals")
-            XCTAssertEqual(fake.browseCalls.last?.sort, "year_desc", "the web's default for tribunals")
-        }
-    }
-
-    func testWordsInsideIsOnlyForCaseLawWithASearch() async {
-        await libraryRun { fake in
-            let plain = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), service: fake)
-            await plain.setMode(.text)
-            XCTAssertEqual(plain.effectiveMode, .titles)
-            XCTAssertEqual(fake.count("search"), 0)
-
-            let other = LibraryCollectionViewModel(category: LibraryCategory(key: "regulator-orders"), query: "kyc", service: fake)
-            await other.setMode(.text)
-            XCTAssertEqual(other.effectiveMode, .titles)
-            XCTAssertEqual(fake.count("search"), 0)
-
-            let caseLaw = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), query: "bail", service: fake)
-            await caseLaw.setMode(.text)
-            XCTAssertEqual(caseLaw.effectiveMode, .text)
-            XCTAssertEqual(fake.count("search"), 1)
-            XCTAssertNil(fake.searchCalls.last?.sort, "best match by default")
-            XCTAssertEqual(caseLaw.sortOptions.first?.label, "Best match")
-            XCTAssertEqual(caseLaw.emptyTitle, "No judgments contain “bail”")
-        }
-    }
-
-    func testUnclearDatesGoToTheEndOfANewestPage() async {
-        await libraryRun { fake in
-            var odd = LibraryDoc.sample(2, decidedOn: "2099-01-01")
-            odd.category = "case-law"
-            var flagged = LibraryDoc.sample(3, decidedOn: "2001-01-01")
-            flagged.anomalies = [LibraryAnomaly(kind: "future_date")]
-            fake.browseHandler = { _ in LibraryPage(items: [odd, flagged, .sample(1, decidedOn: "2020-01-01")], total: 3) }
-            let model = LibraryCollectionViewModel(category: LibraryCategory(key: "case-law"), service: fake,
-                                                   today: { "2026-10-27" })
-            await model.load()
-            XCTAssertEqual(model.items.map(\.id), [1, 2, 3])
-            XCTAssertTrue(model.isDateUnclear(odd))
-            await model.setSort("date_asc")
-            XCTAssertEqual(model.items.map(\.id), [2, 3, 1], "only the newest list moves them")
-        }
-    }
-
-    func testFacetRowsAndLetters() async {
-        await libraryRun { fake in
-            var facets = LibraryFacets()
-            facets.yearRange = LibraryYearRange(min: 1990, max: 2025)
-            facets.sorts = [LibrarySortOption(value: "title_asc", label: "Title A–Z")]
-            fake.facetsByCategory["professional-institutes"] = facets
-            let model = LibraryCollectionViewModel(category: LibraryCategory(key: "professional-institutes"), service: fake)
-            await model.load()
-            XCTAssertEqual(model.facetRows, [.publishers, .letters])
-            XCTAssertEqual(model.rowLabel(.publishers), "Institute")
-            XCTAssertFalse(model.showsList)
-            XCTAssertEqual(model.pageSize, 36)
-            await model.setLetter("B")
-            XCTAssertEqual(fake.browseCalls.last?.letter, "B")
-            XCTAssertEqual(fake.browseCalls.last?.sort, "title_asc", "a letter sorts A–Z")
-            await model.setYears(from: 2000, to: nil)
-            XCTAssertEqual(model.yearText, "2000–2025")
-            await model.clearFilters()
-            XCTAssertEqual(model.activeFilterCount, 0)
-        }
-    }
-
-    // MARK: - Acts index
-
-    func testActIndexSearchesEverythingAndDescribesTheCount() async {
-        await libraryRun { fake in
-            fake.actIndexHandler = { q in
-                if q.kind == "featured" { return LibraryActIndexPage(items: [.sample(1, category: "bare-acts")], total: 1) }
-                return LibraryActIndexPage(items: [.sample(2478, category: "bare-acts")], total: 83)
+            if q.contains(where: { $0.name == "by" && $0.value == "series" }) {
+                return .json(#"{"success":true,"seriesTotal":200,"shelves":[{"series":"Calcutta Law Journal","count":66,"yearMin":1904,"yearMax":1952,"items":[{"id":3}]}],"standalone":{"count":1000,"items":[{"id":4}]},"day":"2026-10-19"}"#)
             }
-            let model = LibraryActIndexViewModel(service: fake)
-            await model.load()
-            XCTAssertTrue(model.isBrowsing)
-            XCTAssertEqual(model.featured.map(\.id), [1])
-            XCTAssertNil(fake.actIndexCalls.first { $0.kind != "featured" }?.kind, "browsing shows Acts")
-            await model.setJurisdiction("Central")
-            await model.setLetter("I")
-            await model.setHas("rules")
-            XCTAssertEqual(model.countLine, "83 Central Acts under I, with rules")
-            await model.search("pmla")
-            XCTAssertEqual(fake.actIndexCalls.last?.kind, "all")
-            XCTAssertNil(fake.actIndexCalls.last?.letter, "a search clears the letter")
-            XCTAssertEqual(fake.actIndexCalls.last?.pageSize, 60)
-            XCTAssertFalse(model.isBrowsing)
-            var act = LibraryDoc.sample(5, category: "bare-acts")
-            act.tabCounts = ["amendments": 25, "rules": 9, "editions": 2]
-            XCTAssertEqual(model.holds(act), "9 rules · 25 amendments", "the chosen Contains leads")
+            return .json(#"{"success":true,"category":"case-law","label":"Case law","day":"2026-10-19","items":[{"id":2,"title":"A vs B","category":"case-law"}]}"#)
+        }
+        let grouped = try await service.browseGrouped(query: "money", pageSize: 99)
+        XCTAssertEqual(query(HTTPStub.lastRequest)["pageSize"], "20", "grouped pages are at most 20")
+        XCTAssertEqual(grouped.groups.first?.total, 12)
+        let shelf = try await service.shelf(category: "case-law", limit: 14)
+        XCTAssertEqual(shelf.items.first?.id, 2)
+        let series = try await service.seriesShelves(limit: 12, per: 14)
+        XCTAssertEqual(series.shelves.first?.yearMin, 1904)
+        XCTAssertEqual(series.standalone?.count, 1000)
+    }
+
+    /// The cover route's three answers: bytes, "not yet", "never".
+    func testTheCoverRouteAnswersThreeWays() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(HTTPStub.Reply(status: 200, body: Data([0xFF, 0xD8, 0xFF]), headers: ["Content-Type": "image/jpeg"]))
+        if case .image(let data) = try await service.cover(id: 3461, width: 640) {
+            XCTAssertEqual(data.count, 3)
+        } else { XCTFail("expected an image") }
+        XCTAssertEqual(query(HTTPStub.lastRequest)["w"], "640")
+
+        HTTPStub.always(HTTPStub.Reply(status: 404, body: Data(#"{"error":"cover_pending"}"#.utf8),
+                                       headers: ["Content-Type": "application/json", "Retry-After": "5"]))
+        let pending = try await service.cover(id: 3461, width: 320)
+        XCTAssertEqual(pending, .pending(retryAfter: 5))
+
+        HTTPStub.always(.json(#"{"error":"no_cover","reason":"not_pdf"}"#, status: 404))
+        let none = try await service.cover(id: 257_708, width: 320)
+        XCTAssertEqual(none, .none(reason: "not_pdf"))
+
+        _ = try await service.cover(id: 1, width: 999)
+        XCTAssertEqual(query(HTTPStub.lastRequest)["w"], "320", "an unknown width falls back to the default rather than earning a 400")
+    }
+
+    func testTheCatalogueErrorsCarryTheirCodes() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(.json(#"{"error":"not_an_act"}"#, status: 404))
+        do {
+            _ = try await service.act(id: 257_708)
+            XCTFail("expected a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertEqual(error.code, "not_an_act")
+            XCTAssertEqual(error.errorDescription, "This document is not part of the Bare Acts.")
+        }
+        HTTPStub.always(.json(#"{"error":"file_missing"}"#, status: 404))
+        do {
+            _ = try await service.judgment(id: 1)
+            XCTFail("expected a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertTrue(error.isFileMissing)
+        }
+        HTTPStub.always(.json(#"{"error":"catalogue_unavailable","message":"The library catalogue has not been built on this host."}"#, status: 503))
+        do {
+            _ = try await service.categories()
+            XCTFail("expected a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertTrue(error.isUnavailable)
+            XCTAssertEqual(error.errorDescription, "The library catalogue has not been built on this host.")
+        }
+        HTTPStub.always(.json(#"{"error":"unknown_library_route","path":"/library/catalogue/shelf"}"#, status: 404))
+        do {
+            _ = try await service.shelf(category: "case-law", limit: 14)
+            XCTFail("expected a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertTrue(error.isMissingRoute)
         }
     }
 
-    // MARK: - Books
-
-    func testASeriesIsReadInThreePagesAndGroupedByDecade() async {
-        await libraryRun { fake in
-            fake.browseHandler = { f in
-                let page = f.page ?? 1
-                var items: [LibraryDoc] = []
-                for i in 0..<(page < 3 ? 100 : 20) {
-                    var d = LibraryDoc(id: page * 1000 + i, title: "Volume \(i)", category: "books-and-law-reports")
-                    d.year = 1900 + (page * 100 + i) % 90
-                    items.append(d)
-                }
-                return LibraryPage(items: items, total: 320, page: page, pageSize: 100)
-            }
-            let model = LibrarySeriesViewModel(series: "ALL INDIA REPORTER", service: fake)
-            await model.load()
-            XCTAssertEqual(model.title, "All India Reporter")
-            XCTAssertEqual(fake.browseCalls.map { $0.page ?? 1 }, [1, 2, 3])
-            XCTAssertEqual(fake.browseCalls.first?.series, "ALL INDIA REPORTER")
-            XCTAssertEqual(fake.browseCalls.first?.sort, "year_asc")
-            XCTAssertEqual(model.volumes.count, 220)
-            XCTAssertFalse(model.decades.isEmpty)
-            XCTAssertTrue(model.summary.hasPrefix("320 volumes"))
+    /// A 401 is the session ending, and the app is told so it signs out as from any other route.
+    func testAnAuthRefusalEndsTheSession() async throws {
+        let (service, client) = await makeService()
+        final class Flag: @unchecked Sendable { var value = false }
+        let lost = Flag()
+        await client.setAuthenticationLostHandler { lost.value = true }
+        HTTPStub.always(.json(#"{"success":false,"error":"auth_required","message":"Sign in to use the Library."}"#, status: 401))
+        do {
+            _ = try await service.categories()
+            XCTFail("expected 401")
+        } catch let error as APIError {
+            XCTAssertEqual(error, .invalidCredentials)
         }
+        XCTAssertTrue(lost.value)
     }
 
-    // MARK: - Covers
-
-    func testCoversAskOnlyWhenWorthItAndRetryWhilePending() async {
-        let fake = FakeLibrary()
-        let loader = LibraryCoverLoader(service: fake, retryDelays: [0, 0])
-        var none = LibraryDoc.sample(1, category: "books-and-law-reports")
-        none.cover = "none"
-        let none1 = await loader.image(for: none, width: 160)
-        XCTAssertNil(none1)
-        let text = await loader.image(for: .sample(2, ext: ".txt"), width: 160)
-        XCTAssertNil(text)
-        XCTAssertTrue(fake.coverCalls.isEmpty, "cover: none and a text document never ask")
-
-        fake.coverResults[4] = [.pending(retryAfter: 5), .image(Data([1, 2]))]
-        let image = await loader.image(for: .sample(4), width: 320)
-        XCTAssertEqual(image, Data([1, 2]))
-        XCTAssertEqual(fake.coverCalls.map(\.attempt), [0, 1])
-        let again = await loader.image(for: .sample(4), width: 320)
-        XCTAssertEqual(again, Data([1, 2]))
-        XCTAssertEqual(fake.coverCalls.count, 2, "cached")
-
-        fake.coverResults[5] = [.none]
-        _ = await loader.image(for: .sample(5), width: 160)
-        _ = await loader.image(for: .sample(5), width: 320)
-        XCTAssertEqual(fake.coverCalls.filter { $0.id == 5 }.count, 1, "no cover is remembered")
-
-        fake.coverResults[6] = [.pending(retryAfter: 1), .pending(retryAfter: 1), .pending(retryAfter: 1), .image(Data([9]))]
-        let gaveUp = await loader.image(for: .sample(6), width: 160)
-        XCTAssertNil(gaveUp, "pending three times: the typographic cover stays")
-        XCTAssertEqual(fake.coverCalls.filter { $0.id == 6 }.count, 3)
+    /// A HEAD tells a file apart from a catalogue row whose bytes are elsewhere.
+    func testFileExistsReadsTheHead() async throws {
+        let (service, _) = await makeService()
+        HTTPStub.always(HTTPStub.Reply(status: 200, body: Data(), headers: ["Content-Type": "application/pdf"]))
+        let present = try await service.fileExists(id: 7)
+        XCTAssertTrue(present)
+        XCTAssertEqual(HTTPStub.lastRequest?.httpMethod, "HEAD")
+        HTTPStub.always(.json(#"{"error":"not_found"}"#, status: 404))
+        let absent = try await service.fileExists(id: 7)
+        XCTAssertFalse(absent)
+        HTTPStub.always(.json(#"{"error":"not_found"}"#, status: 404))
+        do {
+            _ = try await service.file(id: 7, prefer: .text)
+            XCTFail("expected 404")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertEqual(error.status, 404)
+        }
+        XCTAssertEqual(query(HTTPStub.lastRequest)["prefer"], "text")
     }
 }
 
-// MARK: - Helpers
+final class LibraryModelTests: XCTestCase {
 
-@MainActor
-func libraryRun(_ body: @MainActor (FakeLibrary) async -> Void) async {
-    await body(FakeLibrary())
-}
-
-/// Waits (briefly) until a condition holds — for a request a task has started but not finished.
-@MainActor
-func libraryUntil(_ condition: @MainActor () -> Bool) async {
-    for _ in 0..<500 where !condition() {
-        try? await Task.sleep(nanoseconds: 2_000_000)
-    }
-}
-
-/// Holds an answer back until opened.
-final class LibraryGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var isOpen = false
-    private var waiting: [CheckedContinuation<Void, Never>] = []
-
-    func wait() async {
-        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-            let resume = lock.withLock { () -> Bool in
-                if isOpen { return true }
-                waiting.append(c)
-                return false
-            }
-            if resume { c.resume() }
+    func testEveryCollectionHasAThemeAndAnUnknownKeyFallsBack() {
+        for collection in LibraryCollection.allCases {
+            XCTAssertFalse(collection.theme.label.isEmpty, collection.rawValue)
+            XCTAssertEqual(collection.theme.cloth.count >= 3, true)
         }
+        let unknown = LibraryCollectionTheme.theme(for: "gazettes")
+        XCTAssertEqual(unknown.label, "Library")
+        XCTAssertEqual(unknown.key, "gazettes")
+        XCTAssertEqual(LibraryCategoryCount(key: "gazettes", label: "Gazettes", count: 3).theme.label, "Gazettes",
+                       "a new collection shows under the name the server gave it")
     }
 
-    func open() {
-        let all = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            isOpen = true
-            defer { waiting = [] }
-            return waiting
+    func testAnActOpensItsPageAndEverythingElseTheReadingRoom() {
+        var act = CatalogueDocument(id: 1, title: "IPC", category: "bare-acts")
+        act.docType = "act"
+        XCTAssertTrue(act.opensAsAct)
+        var rule = CatalogueDocument(id: 2, title: "Rules", category: "bare-acts")
+        rule.docType = "rules"
+        XCTAssertFalse(rule.opensAsAct)
+        rule.hasChildren = 2
+        XCTAssertTrue(rule.opensAsAct, "an instrument with children is a bundle of its own")
+        var judgment = CatalogueDocument(id: 3, title: "A v. B", category: "case-law")
+        judgment.docType = "act"
+        XCTAssertFalse(judgment.opensAsAct)
+    }
+
+    func testAPageCountsItsPages() {
+        XCTAssertEqual(LibraryPage(items: [], total: 0, page: 1, pageSize: 36).pageCount, 1)
+        XCTAssertEqual(LibraryPage(items: [], total: 37, page: 1, pageSize: 36).pageCount, 2)
+        XCTAssertFalse(LibraryPage(items: [], total: 36, page: 1, pageSize: 36).hasMore)
+        XCTAssertEqual(LibraryPage(items: [], total: 10, page: 1, pageSize: 0).pageCount, 1, "a zero page size does not divide")
+    }
+
+    func testTheErrorWordingCoversEveryCode() {
+        for code in ["catalogue_unavailable", "auth_required", "not_found", "unknown_category", "unknown_library_route",
+                     "not_an_act", "not_a_judgment", "file_missing", "too_large", "search_busy", "bad_id"] {
+            XCTAssertFalse(LibraryCatalogueError.wording(for: code, status: 400).contains("("), code)
         }
-        all.forEach { $0.resume() }
+        XCTAssertEqual(LibraryCatalogueError(status: 500, code: "library_failed").errorDescription, "The library did not answer (500). Try again in a moment.")
+        XCTAssertTrue(LibraryCatalogueError(status: 413, code: "too_large").isTooLarge)
+        XCTAssertTrue(LibraryCatalogueError(status: 404, code: "no_cover", reason: "file_missing").isFileMissing)
     }
 }

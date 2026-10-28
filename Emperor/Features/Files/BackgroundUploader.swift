@@ -247,6 +247,8 @@ final class BackgroundUploader {
                 // take a quarter of an hour — awaiting it here would stall the rest of this
                 // loop, so an upload still needing chunks would not be re-enqueued until an
                 // unrelated one had finished being indexed.
+                // The completing chunk's stored name was written to the manifest when it
+                // landed, so it survives the process that received it.
                 Task { await finish(manifest) }
                 continue
             }
@@ -347,7 +349,12 @@ final class BackgroundUploader {
             batch.setLoaded(updated.bytesSent, of: id, at: Date())
         }
 
-        if updated.isComplete { await finish(updated) }
+        // The manifest now carries the stored name — for a photo, the PDF it was made into —
+        // and the poll asks after that (`pollName`): asked about the photo, `/upload-status`
+        // would answer "reading" until this gave up.
+        if updated.isComplete {
+            await finish(updated)
+        }
     }
 
     /// Every chunk has landed. The bytes are on the server; the document is not yet usable.
@@ -381,7 +388,7 @@ final class BackgroundUploader {
             })
         switch state {
         case .some(.ready), .some(.scanned):
-            batch.markDone(id)
+            batch.markDone(id, savedAs: manifest.storedName)
         case .some(.failed(let reason)):
             batch.markProcessingFailed(
                 id, message: reason.replacingOccurrences(of: "ERROR: ", with: ""))

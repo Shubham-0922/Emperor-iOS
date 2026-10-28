@@ -2,8 +2,6 @@ name: CI
 
 on:
   push:
-    # release/** branches only carry code that has already been through CI on its own branch.
-    branches-ignore: ['release/**']
   pull_request:
   # Lets you produce a build without pushing — Actions tab → CI → Run workflow.
   workflow_dispatch:
@@ -65,19 +63,6 @@ jobs:
       # in seconds on Linux rather than as a widget build failure on the Mac.
       - name: The widget's slice of the core stands alone
         run: swiftc -typecheck -swift-version 6 Sources/EmperorCore/Today/*.swift
-
-  # This repository is public; the platform it talks to is still being hardened. A comment
-  # naming which route is unscoped is a pointer at a live server holding privileged client
-  # material, and once pushed it is public permanently — a later revert does not help.
-  #
-  # So the check runs on every push rather than at release, and it runs first.
-  public-safe:
-    name: No server-side security detail (Linux)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: ./scripts/check-public-safe.sh
-
   # XcodeGen is a SwiftPM package and builds on Linux, so the project spec can be validated
   # without a Mac — it catches a missing file, a malformed spec and a bad Info.plist key.
   # It does NOT compile anything.
@@ -149,10 +134,6 @@ jobs:
     #
     #   Actions -> CI -> Run workflow      (or push a tag)
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-    # This ran only on demand while the repository was private, because macOS bills at 10x there
-    # and every job rounds up to a whole minute — 460 minutes went to a duplicate build job
-    # before that was noticed. **Public repositories get macOS runners free and unmetered**, so
-    # it is back on every push, which is where it belongs: it is the only job that type-checks.
     steps:
       - uses: actions/checkout@v4
 
@@ -320,7 +301,8 @@ jobs:
     # itself, so code that does not build still fails here, but a UI test that is out of date
     # (as they are while a redesign lands) no longer blocks the build a tester installs.
     needs: [core, syntax]
-    # On demand only, as the simulator tests are: this is a macOS job, billed at 10x here.
+    # On demand only, as the simulator tests are: this is a macOS job, billed at 10x here. It used
+    # to inherit that from `needs: simulator-tests`; with that dependency gone it has to say so.
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4

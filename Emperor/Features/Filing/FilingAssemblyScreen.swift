@@ -65,9 +65,9 @@ private struct FilingAssemblyContent: View {
     @State private var isAdding = false
     @State private var openBundle: FilingBundle?
     @State private var editMode: EditMode = .inactive
-    @State private var renaming: FilingAnnexure?
+    @State private var renaming: AssemblyAnnexure?
     @State private var newTitle = ""
-    @State private var removing: FilingAnnexure?
+    @State private var removing: AssemblyAnnexure?
     /// The annexure a seed chip has just made, to be scrolled to.
     @State private var justAdded: Int?
 

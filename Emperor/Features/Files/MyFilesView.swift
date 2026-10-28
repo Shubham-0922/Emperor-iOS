@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// Files — the document library, as the Record design's Files tab and as My Files presented
 /// over the app for a tapped search result.
@@ -19,6 +20,8 @@ struct MyFilesView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var model: MyFilesViewModel?
+    /// Which drives are connected, for Import and "Save to …" — see `CloudFileActionsViewModel`.
+    @State private var cloud: CloudFileActionsViewModel?
     /// The folders opened, deepest last.
     ///
     /// Bound rather than built from `NavigationLink`s, so a folder row, a search result and a
@@ -46,8 +49,8 @@ struct MyFilesView: View {
             Group {
                 if let model {
                     LibraryScreen(
-                        model: model, path: "", rootTitle: rootTitle, openFolders: $openFolders,
-                        opening: opening)
+                        model: model, path: "", rootTitle: rootTitle, cloud: cloud,
+                        openFolders: $openFolders)
                 } else {
                     ProgressView()
                 }
@@ -69,8 +72,8 @@ struct MyFilesView: View {
             .navigationDestination(for: FolderRoute.self) { route in
                 if let model {
                     LibraryScreen(
-                        model: model, path: route.path, rootTitle: rootTitle,
-                        openFolders: $openFolders, opening: opening)
+                        model: model, path: route.path, rootTitle: rootTitle, cloud: cloud,
+                        openFolders: $openFolders)
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
@@ -82,11 +85,11 @@ struct MyFilesView: View {
                     // together, what lets My Files be used with no signal.
                     cache: session.cache,
                     offline: session.offlineCopies.map { OfflineDocuments(store: $0.documents) },
-                    officePreview: session.officePreview,
-                    fileRoutes: session.fileRoutes)
+                    officePreview: session.officePreview)
                 // Each reading of the library keeps the device's search in step with it.
                 created.onTreeLoaded = { AppSpotlight.shared.libraryLoaded($0) }
                 model = created
+                cloud = CloudFileActionsViewModel(service: session.cloudDrives)
                 await created.load()
                 if let opening {
                     openFolders = opening.folderStack.map { FolderRoute(path: $0) }
@@ -117,17 +120,16 @@ private struct LibraryScreen: View {
     @Environment(\.navigator) private var navigator
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.openURL) private var openURL
 
     let model: MyFilesViewModel
     /// `""` for the top level.
     let path: String
     /// "Files" on the tab, "My Files" presented.
     let rootTitle: String
+    /// The connected drives, for Import and "Save to …". `nil` until the screen has made it.
+    let cloud: CloudFileActionsViewModel?
     /// The navigation stack's path. A folder tile opens its folder by appending to it.
     @Binding var openFolders: [FolderRoute]
-    /// The document asked for from outside, with the page and the words a citation names.
-    var opening: DocumentRoute?
 
     @State private var folderQuery = ""
     @State private var previewing: Previewing?
@@ -149,29 +151,27 @@ private struct LibraryScreen: View {
     /// Which picker the menu asked for; only becomes `pickAfterChoosing` once a folder is chosen,
     /// so Cancel on the destination sheet opens nothing.
     @State private var requestedPick: PickAfterChoosing = .files
-    private enum PickAfterChoosing { case files, photos }
+    private enum PickAfterChoosing { case files, photos, folder }
+    /// Whether the open file importer is choosing a whole folder rather than documents. Set every
+    /// time the importer is opened, never reset afterwards, so the answer is read the way it was
+    /// asked.
+    @State private var isImportingFolder = false
+    /// At the top level, where a picked folder goes — `""` for the top of My Files itself.
+    @State private var chosenFolderDestination: String?
+    /// A folder read and planned, waiting on the person's go-ahead.
+    @State private var pendingFolder: PickedFolderUpload?
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var duplicateReview: DuplicateReview?
     @State private var uploadError: String?
     /// This month's allowances, for the storage meter at the head of the library.
     @State private var usage: AccountUsageViewModel?
-    /// Which cloud drives are set up and connected: whether Add offers an import, and which
-    /// "Save to" a document's menu offers.
-    @State private var cloud: CloudConnectionsModel?
-    @State private var cloudExport: CloudExportModel?
-    @State private var isImportingFromCloud = false
-    /// What the import did, kept until its sheet has gone so a failure's alert is not drawn
-    /// under it.
-    @State private var cloudSummary: CloudImportSummary?
+    @State private var isImportingFromDrive = false
 
     /// `FileNode.StoredFile` has no identity of its own, and inventing one for a wire type would
     /// be worse than wrapping it.
     private struct Previewing: Identifiable {
         let id = UUID()
         let file: FileNode.StoredFile
-        /// The page a citation names, 1-based, and the words it quotes — only when one sent it.
-        var page: Int? = nil
-        var quote: String? = nil
     }
 
     private struct Moving: Identifiable {
@@ -211,7 +211,7 @@ private struct LibraryScreen: View {
     }
 
     var body: some View {
-        cloudPresentations(alerts(presentations(chrome(content))))
+        cloudDrives(alerts(presentations(chrome(content))))
     }
 
     /// Split into three so no single expression carries every modifier: a chain this long is
@@ -225,13 +225,20 @@ private struct LibraryScreen: View {
                 ToolbarItem(placement: .primaryAction) {
                     addMenu
                 }
+                if model.offersDownloads {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        selectButton
+                    }
+                }
             }
             .safeAreaInset(edge: .top) {
                 UploadsInFlightBanner()
             }
             // A folder is a matter's papers, so its one primary action is asking about them.
             .safeAreaInset(edge: .bottom) {
-                if !isRoot, !folderAttachments.isEmpty {
+                if model.isSelecting {
+                    SelectionZipBar(model: model)
+                } else if !isRoot, !folderAttachments.isEmpty {
                     Button {
                         navigator.ask(
                             "Summarise the papers in \(title) and list what each document is.",
@@ -261,9 +268,7 @@ private struct LibraryScreen: View {
             // the folder it is in, once that screen is showing.
             .onChange(of: model.pendingPreview, initial: true) { _, _ in
                 if let file = model.takePreview(in: path) {
-                    // Where a citation sent it: its page, and the words to mark there.
-                    let route = opening?.path == file.path ? opening : nil
-                    previewing = Previewing(file: file, page: route?.page, quote: route?.quote)
+                    previewing = Previewing(file: file)
                 }
             }
     }
@@ -272,15 +277,22 @@ private struct LibraryScreen: View {
         view
             .sheet(isPresented: $isChoosingDestination, onDismiss: {
                 switch pickAfterChoosing {
-                case .files: isImporting = true
+                case .files:
+                    isImportingFolder = false
+                    isImporting = true
                 case .photos: isPickingPhotos = true
+                case .folder:
+                    isImportingFolder = true
+                    isImporting = true
                 case nil: break
                 }
                 pickAfterChoosing = nil
             }) {
                 UploadDestinationSheet(
                     destinations: uploadDestinations,
-                    initial: chosenUploadFolder ?? FileLibraryViewModel.uploadFolder,
+                    initial: requestedPick == .folder
+                        ? (chosenFolderDestination ?? "")
+                        : (chosenUploadFolder ?? FileLibraryViewModel.uploadFolder),
                     createFolder: { name in
                         await model.createFolder(named: name, in: "")
                         guard model.actionError == nil else { return nil }
@@ -289,16 +301,28 @@ private struct LibraryScreen: View {
                             .first { $0.path.caseInsensitiveCompare(wanted) == .orderedSame }?.path ?? wanted
                     },
                     onChoose: { folder in
-                        chosenUploadFolder = folder
+                        if requestedPick == .folder {
+                            chosenFolderDestination = folder
+                        } else {
+                            chosenUploadFolder = folder
+                        }
                         pickAfterChoosing = requestedPick
-                    })
+                    },
+                    allowsTopLevel: requestedPick == .folder,
+                    chooseLabel: requestedPick == .folder ? "Choose folder" : "Choose files")
             }
+            // One importer for both, because two on one view do not both present: a folder pick
+            // asks for a folder and takes one, a document pick asks for documents.
             .fileImporter(
                 isPresented: $isImporting,
-                allowedContentTypes: LibraryUploadFlow.importableTypes,
-                allowsMultipleSelection: true
+                allowedContentTypes: isImportingFolder ? [UTType.folder] : LibraryUploadFlow.importableTypes,
+                allowsMultipleSelection: !isImportingFolder
             ) { outcome in
                 guard case .success(let urls) = outcome else { return }
+                if isImportingFolder {
+                    if let folder = urls.first { readFolder(folder) }
+                    return
+                }
                 let picked = urls.map { PickedDocument(url: $0, fileName: $0.lastPathComponent) }
                 Task { await add(picked) }
             }
@@ -317,21 +341,22 @@ private struct LibraryScreen: View {
                     items: review.items,
                     cleared: review.cleared,
                     onConfirm: { chosen in
-                        Task { uploadError = await LibraryUploadFlow.upload(chosen, into: review.folder) }
+                        Task {
+                            uploadError = await LibraryUploadFlow.upload(
+                                chosen, into: review.folder, folders: review.folders, scope: review.scope)
+                        }
                     })
             }
             // The viewer keeps what it opens, so the offline marks are read again once it closes.
             .sheet(item: $previewing, onDismiss: { model.refreshOfflineStatus() }) { item in
-                // Opened from the library, the viewer opens at the top. Sent by a citation, it
-                // opens at the cited page with the quoted words to mark. PDFs render directly;
-                // Word documents go through the server's conversion, which the viewer says out
-                // loud.
+                // No citation brought us here, so there is no mark and no page to land on —
+                // the viewer opens at the top. PDFs render directly; Word documents go through
+                // the server's conversion, which the viewer says out loud.
                 SourceDocumentView(
                     attachment: item.file.attachment,
                     mention: AnnexureMention(
-                        fileName: item.file.name, mark: "", startPage: item.page, endPage: nil),
-                    isCitation: item.quote != nil || item.page != nil,
-                    quote: item.quote ?? "")
+                        fileName: item.file.name, mark: "", startPage: nil, endPage: nil),
+                    isCitation: false)
             }
             .sheet(item: $moving) { item in
                 MoveDocumentSheet(
@@ -355,6 +380,23 @@ private struct LibraryScreen: View {
                 set: { if $0 == nil { model.sharing = nil } }
             )) { shared in
                 shareSheet(for: shared)
+            }
+    }
+
+    /// Import from a drive, and what "Save to …" leaves behind. The drives are read again each
+    /// time the top level appears — a drive connected under You, or on the web, then shows here.
+    private func cloudDrives<V: View>(_ view: V) -> some View {
+        view
+            .modifier(CloudSaveOutcomes(cloud: cloud))
+            .sheet(isPresented: $isImportingFromDrive) {
+                CloudImportSheet(
+                    service: session.cloudDrives,
+                    destinations: uploadDestinations,
+                    initialDestination: uploadFolder,
+                    onImported: { await model.uploadDidFinish() })
+            }
+            .task(id: cloud == nil) {
+                if isRoot { await cloud?.refresh() }
             }
     }
 
@@ -399,6 +441,9 @@ private struct LibraryScreen: View {
             } message: {
                 Text(renameHint)
             }
+            .modifier(FolderUploadConfirmation(pending: $pendingFolder) { picked in
+                Task { await uploadFolder(picked) }
+            })
             .alert("New folder", isPresented: $isNamingFolder) {
                 TextField("Folder name", text: $newFolderName)
                 Button("Cancel", role: .cancel) { newFolderName = "" }
@@ -722,11 +767,11 @@ private struct LibraryScreen: View {
         .accessibilityAction(named: "Move") {
             movingFolder = MovingFolder(folder: folder)
         }
-        .accessibilityAction(named: "Share folder as .zip") {
-            Task { await model.prepareZip(folder) }
-        }
         .accessibilityAction(named: "Delete folder") {
             model.requestDeletion(of: folder)
+        }
+        .accessibilityAction(named: "Download as zip") {
+            Task { await model.downloadAsZip(folder) }
         }
         .contextMenu {
             Button {
@@ -735,11 +780,12 @@ private struct LibraryScreen: View {
             } label: {
                 Label("Rename", systemImage: "pencil")
             }
-            // The folder and everything under it as one archive, as the web's download does.
-            Button {
-                Task { await model.prepareZip(folder) }
-            } label: {
-                Label("Share folder as .zip", systemImage: "archivebox")
+            if model.offersDownloads {
+                Button {
+                    Task { await model.downloadAsZip(folder) }
+                } label: {
+                    Label("Download as zip", systemImage: "doc.zipper")
+                }
             }
             Button {
                 movingFolder = MovingFolder(folder: folder)
@@ -760,14 +806,25 @@ private struct LibraryScreen: View {
         _ file: FileNode.StoredFile, location: String? = nil, date: String? = nil
     ) -> some View {
         Button {
-            previewing = Previewing(file: file)
+            if model.isSelecting {
+                model.toggleSelection(file)
+            } else {
+                previewing = Previewing(file: file)
+            }
         } label: {
-            DocumentRowLabel(
-                file: file, location: location, date: date, isBusy: model.isBusy(file.path),
-                offline: model.offlineStatus(of: file))
+            HStack(spacing: Spacing.sm) {
+                if model.isSelecting {
+                    SelectionMark(isSelected: model.isSelected(file))
+                }
+                DocumentRowLabel(
+                    file: file, location: location, date: date,
+                    isBusy: model.isBusy(file.path) || cloud?.exportingPath == file.path,
+                    offline: model.offlineStatus(of: file))
+            }
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Opens the document")
+        .accessibilityAddTraits(model.isSelecting && model.isSelected(file) ? [.isSelected] : [])
+        .accessibilityHint(model.isSelecting ? "Chooses the document for the zip" : "Opens the document")
         .swipeActions(edge: .leading) {
             Button {
                 Task { await model.toggleFavorite(file) }
@@ -806,6 +863,7 @@ private struct LibraryScreen: View {
             } label: {
                 Label("Share…", systemImage: "square.and.arrow.up")
             }
+            cloudSaveActions(file)
             Button {
                 Task { await model.toggleFavorite(file) }
             } label: {
@@ -814,7 +872,6 @@ private struct LibraryScreen: View {
                     systemImage: file.favorite == true ? "star.slash" : "star")
             }
             offlineAction(file)
-            cloudSaveActions(file)
             if file.name.lowercased().hasSuffix(".pdf") {
                 Button {
                     Task { await model.prepareSearchableCopy(file) }
@@ -849,6 +906,22 @@ private struct LibraryScreen: View {
             }
         }
         .disabled(model.isWorking)
+    }
+
+    /// "Save to Google Drive", "Save to OneDrive" — one for each connected drive, and none when no
+    /// drive is connected. The web offers Google Drive alone; the server takes either.
+    @ViewBuilder
+    private func cloudSaveActions(_ file: FileNode.StoredFile) -> some View {
+        if let cloud {
+            ForEach(cloud.connectedDrives) { drive in
+                Button {
+                    Task { await cloud.export(file, to: drive) }
+                } label: {
+                    Label("Save to \(drive.label)", systemImage: "icloud.and.arrow.up")
+                }
+                .disabled(cloud.isExporting)
+            }
+        }
     }
 
     /// "Save for offline", or "Remove offline copy" once it is saved. A copy kept only because the
@@ -893,10 +966,17 @@ private struct LibraryScreen: View {
                     } label: {
                         Label("From Photos", systemImage: "photo.badge.plus")
                     }
+                    Button {
+                        requestedPick = .folder
+                        isChoosingDestination = true
+                    } label: {
+                        Label("Upload a folder", systemImage: "folder.fill.badge.plus")
+                    }
                 }
             } else {
                 Section("Upload to \(DisplayText.fileName(uploadFolder))") {
                     Button {
+                        isImportingFolder = false
                         isImporting = true
                     } label: {
                         Label("From Files", systemImage: "doc.badge.plus")
@@ -906,20 +986,29 @@ private struct LibraryScreen: View {
                     } label: {
                         Label("From Photos", systemImage: "photo.badge.plus")
                     }
+                    Button {
+                        isImportingFolder = true
+                        isImporting = true
+                    } label: {
+                        Label("Upload a folder", systemImage: "folder.fill.badge.plus")
+                    }
                 }
-            }
-            if cloud?.anyConfigured == true {
-                Button {
-                    isImportingFromCloud = true
-                } label: {
-                    Label(cloudImportTitle, systemImage: "icloud.and.arrow.down")
-                }
-                .accessibilityIdentifier("cloud-import")
             }
             Button {
                 isNamingFolder = true
             } label: {
                 Label(isRoot ? "New folder" : "New folder here", systemImage: "folder.badge.plus")
+            }
+            // Only once a drive is connected: until then there is nothing to import from, and
+            // You → Connected services is where one is connected.
+            if let cloud, cloud.offersImport {
+                Divider()
+                Button {
+                    isImportingFromDrive = true
+                } label: {
+                    Label(cloud.importTitle, systemImage: "icloud.and.arrow.down")
+                }
+                .accessibilityIdentifier("cloud-import")
             }
         } label: {
             Label("Add", systemImage: "plus")
@@ -953,6 +1042,46 @@ private struct LibraryScreen: View {
         }
     }
 
+    /// Reads a picked folder and asks before sending it — a folder can hold far more than the
+    /// person glanced at, which is why the web confirms a folder pick too.
+    private func readFolder(_ url: URL) {
+        let destination = isRoot
+            ? (chosenFolderDestination ?? "")
+            : MyFilesViewModel.uploadDestination(for: path)
+        let picked = LibraryUploadFlow.pickedFolder(at: url, into: destination)
+        guard !picked.plan.isEmpty else {
+            uploadError = picked.plan.emptyMessage
+            return
+        }
+        pendingFolder = picked
+    }
+
+    /// Checks the folder's documents against the library, then hands each to the uploader,
+    /// into its own folder.
+    private func uploadFolder(_ picked: PickedFolderUpload) async {
+        if let review = await LibraryUploadFlow.reviewFolder(
+            picked, duplicates: session.duplicates, existing: FileService.allFiles(in: model.tree)) {
+            duplicateReview = review
+        } else if let failure = await LibraryUploadFlow.uploadFolder(picked) {
+            uploadError = failure
+        }
+    }
+
+    private var selectButton: some View {
+        Button(model.isSelecting ? "Cancel" : "Select") {
+            if model.isSelecting {
+                model.endSelecting()
+            } else {
+                model.beginSelecting()
+            }
+        }
+        .disabled(model.isWorking && !model.isSelecting)
+        .accessibilityHint(model.isSelecting
+            ? "Stops choosing documents"
+            : "Chooses several documents to download as one zip")
+        .accessibilityIdentifier("my-files-select")
+    }
+
     private func addPhotos(_ items: [PhotosPickerItem]) async {
         let converted = await LibraryUploadFlow.documents(from: items)
         if converted.unreadable > 0 {
@@ -962,95 +1091,6 @@ private struct LibraryScreen: View {
         }
         guard !converted.documents.isEmpty else { return }
         await add(converted.documents)
-    }
-
-    // MARK: - Cloud drives
-
-    /// "From Google Drive", or "From OneDrive" when that is the drive the import opens on.
-    private var cloudImportTitle: String {
-        let provider = CloudImportModel.defaultProvider(cloud?.connections ?? [:])
-        return "From \(provider.label)"
-    }
-
-    /// "Save to Google Drive" and "Save to OneDrive", for each drive that is connected.
-    @ViewBuilder
-    private func cloudSaveActions(_ file: FileNode.StoredFile) -> some View {
-        let providers: [CloudProvider] = cloud?.connectedProviders ?? []
-        ForEach(providers, id: \.self) { provider in
-            Button {
-                Task { await cloudExport?.export(path: file.path, to: provider) }
-            } label: {
-                Label("Save to \(provider.label)", systemImage: "square.and.arrow.up.on.square")
-            }
-        }
-    }
-
-    private func cloudPresentations<V: View>(_ view: V) -> some View {
-        view
-            .task {
-                if cloud == nil { cloud = CloudConnectionsModel(service: session.cloud) }
-                if cloudExport == nil { cloudExport = CloudExportModel(service: session.cloud) }
-                await cloud?.load()
-            }
-            .sheet(isPresented: $isImportingFromCloud, onDismiss: applyCloudSummary) {
-                CloudImportSheet(
-                    destination: isRoot ? nil : path,
-                    folders: FileBrowser.allFolders(in: model.tree),
-                    onFinished: { summary in finishCloudImport(summary) })
-                    .pageSizedSheet()
-            }
-            .alert(cloudExportTitle, isPresented: cloudExportShown) {
-                if let url = cloudExport?.exported?.url {
-                    Button("Open") {
-                        cloudExport?.exported = nil
-                        openURL(url)
-                    }
-                    .accessibilityIdentifier("cloud-export-open")
-                }
-                Button("OK", role: .cancel) { cloudExport?.exported = nil }
-            }
-            .alert("Couldn't save to the drive", isPresented: cloudExportFailed) {
-                Button("OK") { cloudExport?.error = nil }
-            } message: {
-                Text(cloudExport?.error ?? "")
-            }
-    }
-
-    private var cloudExportTitle: String { cloudExport?.exported?.message ?? "" }
-
-    private var cloudExportShown: Binding<Bool> {
-        Binding(
-            get: { cloudExport?.exported != nil },
-            set: { if !$0 { cloudExport?.exported = nil } })
-    }
-
-    private var cloudExportFailed: Binding<Bool> {
-        Binding(
-            get: { cloudExport?.error != nil },
-            set: { if !$0 { cloudExport?.error = nil } })
-    }
-
-    /// An import has run: its toast and a fresh read of the library at once, and the sheet
-    /// closed from here, through its binding.
-    ///
-    /// Neither waits on the sheet's own `dismiss()` or on `onDismiss`; when both did, the UI
-    /// tests never saw the word that the files arrived. The toast is an overlay on this screen, not a
-    /// presentation, so it can be set while the sheet slides away. Only a failure, which is an
-    /// alert, waits for the sheet to be gone (`applyCloudSummary`).
-    private func finishCloudImport(_ summary: CloudImportSummary) {
-        if let toast = summary.toast { model.actionNotice = toast }
-        if summary.imported > 0 {
-            Task { await model.uploadDidFinish() }
-        }
-        cloudSummary = summary
-        isImportingFromCloud = false
-    }
-
-    /// The import's first failure, once its sheet has gone, so the alert is not drawn under it.
-    private func applyCloudSummary() {
-        guard let summary = cloudSummary else { return }
-        cloudSummary = nil
-        if let failure = summary.firstFailure { uploadError = failure }
     }
 
     // MARK: - Sharing
@@ -1204,5 +1244,75 @@ private struct MoveDocumentSheet: View {
 
     private func depth(of folder: FolderSummary) -> Int {
         max(0, folder.path.split(separator: "/").count - 1)
+    }
+}
+
+/// Asks before a picked folder is uploaded: how many documents, where they go, how much, and
+/// what was left out — the web's folder confirmation.
+private struct FolderUploadConfirmation: ViewModifier {
+    @Binding var pending: PickedFolderUpload?
+    let onConfirm: (PickedFolderUpload) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .alert(pending?.plan.confirmTitle ?? "Upload folder", isPresented: Binding(
+                get: { pending != nil },
+                set: { if !$0 { pending = nil } }
+            )) {
+                // Captured now: the alert clears its binding after the action runs.
+                let picked = pending
+                Button(picked?.plan.confirmLabel ?? "Upload") {
+                    if let picked { onConfirm(picked) }
+                }
+                Button("Cancel", role: .cancel) { pending = nil }
+            } message: {
+                Text(pending?.plan.confirmMessage ?? "")
+            }
+    }
+}
+
+/// The round tick beside a document while choosing several.
+private struct SelectionMark: View {
+    @Environment(\.theme) private var theme
+    let isSelected: Bool
+
+    var body: some View {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 22))
+            .foregroundStyle(isSelected ? theme.accentText : theme.textTertiary)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The bar under the list while choosing several: how many are chosen, and the zip.
+private struct SelectionZipBar: View {
+    @Environment(\.theme) private var theme
+    let model: MyFilesViewModel
+
+    var body: some View {
+        HStack(spacing: Spacing.md) {
+            Text(model.selectionTitle)
+                .font(.brand(.subheadline, weight: .medium))
+                .foregroundStyle(theme.textPrimary)
+                .monospacedDigit()
+            Spacer(minLength: Spacing.sm)
+            if model.isBusy("zip") {
+                ProgressView().controlSize(.small)
+            }
+            Button {
+                Task { await model.downloadSelectionAsZip() }
+            } label: {
+                Label(model.zipSelectionLabel, systemImage: "doc.zipper")
+            }
+            .buttonStyle(.compactSecondaryAction)
+            .disabled(model.selectedPaths.isEmpty || model.isWorking)
+            .accessibilityIdentifier("my-files-zip")
+        }
+        .padding(.horizontal, Spacing.gutter)
+        .padding(.vertical, Spacing.sm)
+        .background(theme.groupedBackground)
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.separator).frame(height: 0.5)
+        }
     }
 }

@@ -372,8 +372,9 @@ final class EmperorUITests: XCTestCase {
         let app = signedIn()
         openYou(app)
 
-        // Hidden for now at the product owner's request; their screens are kept. See the note
-        // at `ToolsSections` for how to bring them back.
+        // Hidden for now at the product owner's request; its screen is kept. See the note at
+        // `ToolsSections` for how to bring it back. ("Projects" is the old name of the row that
+        // came back as "Matter workspaces".)
         for hidden in ["Projects", "eAuctions"] {
             XCTAssertFalse(app.buttons[hidden].exists, "\(hidden) is meant to be hidden")
         }
@@ -381,7 +382,14 @@ final class EmperorUITests: XCTestCase {
         for (row, title) in [
             ("Corporate Calendar", "Corporate Calendar"),
             ("Library", "Library"),
+            ("Fetch Orders", "Fetch Orders"),
+            // The workspaces open as the web's Matters page, under its name.
+            ("Matter workspaces", "Matters"),
             ("All tools", "Tools"),
+            ("Analysis tools", "Analysis tools"),
+            ("Limitation Radar", "Limitation Radar"),
+            ("Filing Assembly", "Filing Assembly"),
+            ("MCA Registry", "MCA Registry"),
             ("File tools", "File tools"),
             ("OCR", "OCR"),
             ("Translate", "Translate"),
@@ -516,6 +524,14 @@ final class EmperorUITests: XCTestCase {
 
         choice.tap()
         app.buttons["Continue"].tap()
+
+        // The second step: chambers and designation, both optional.
+        let start = app.buttons["Start working"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "the details step did not follow the role")
+        XCTAssertTrue(app.textFields["welcome-organization"].exists, "the chambers field is missing")
+        XCTAssertTrue(app.textFields["welcome-title"].exists, "the designation field is missing")
+        XCTAssertTrue(app.buttons["Skip"].exists, "there must be a way past the details")
+        start.tap()
 
         XCTAssertTrue(
             app.tab("Ask").waitForExistence(timeout: 10),
@@ -834,9 +850,31 @@ final class EmperorUITests: XCTestCase {
         // before the row is tapped, the same way the first open waits for its rows.
         // A tap that lands while the closed sheet is still settling is swallowed, so the row is
         // revealed and tapped again, up to three times, before the picker is called missing.
+        //
+        // `reveal` alone is not enough here. Opening "Your workspace" scrolled You far enough
+        // that, once the Answers section grew a Draft length control and a longer footer, the
+        // Role row comes back sitting *under* the collapsed navigation bar: XCTest calls it
+        // hittable, but the tap lands on the bar and nothing opens. So the list is dragged down
+        // until the row is clear of the bar first. The drag is short and only made while the row
+        // is under the bar — the list is then far from its top, so it scrolls the list and cannot
+        // pull the sheet down.
+        let profileBar = app.navigationBars["Account & Profile"].firstMatch
         var reopened = false
         for _ in 0..<3 where !reopened {
             app.reveal(selector)
+            var nudges = 0
+            while selector.exists, profileBar.exists,
+                  selector.frame.minY < profileBar.frame.maxY + 4, nudges < 4 {
+                // Measured from the row itself, so the drag starts inside the sheet's list on a
+                // phone and on an iPad's form sheet alike.
+                let start = selector.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                    .withOffset(CGVector(dx: 0, dy: 160))
+                let end = start.withOffset(CGVector(dx: 0, dy: 180))
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow,
+                            thenHoldForDuration: 0.2)
+                Thread.sleep(forTimeInterval: 0.3)
+                nudges += 1
+            }
             selector.tap()
             reopened = app.navigationBars["Switch role"].waitForExistence(timeout: 6)
         }
@@ -862,6 +900,8 @@ final class EmperorUITests: XCTestCase {
         XCTAssertTrue(litigator.waitForExistence(timeout: 10), "the role choice did not appear")
         litigator.tap()
         app.buttons["Continue"].tap()
+        let skipDetails = app.buttons["Skip"]
+        if skipDetails.waitForExistence(timeout: 10) { skipDetails.tap() }
 
         openYou(app)
         openToolRow("Your workspace", in: app)
@@ -1623,9 +1663,9 @@ final class EmperorUITests: XCTestCase {
         app.reveal(edit)
         XCTAssertTrue(edit.waitForExistence(timeout: 10), "You has no Edit profile row")
         // Tapped again, up to three times in all, while the row is still there and nothing has
-        // opened: on an iPad, You's page sheet shows Connected services and the plan's standing
-        // at once, and their rows arrive from the server just as the sheet settles — a tap made
-        // while the list takes them in can be lost. A row that opens nothing fails all three.
+        // opened: on an iPad, You's page sheet takes in rows that arrive from the server just as
+        // the sheet settles, and a tap made while the list takes them in can be lost. A row that
+        // opens nothing fails all three.
         let form = app.navigationBars["Edit profile"]
         for _ in 0..<3 {
             guard edit.exists, edit.isHittable else { break }
@@ -1823,6 +1863,22 @@ final class EmperorUITests: XCTestCase {
         updates.buttons["Done"].tap()
         XCTAssertTrue(app.buttons["home-profile"].waitForExistence(timeout: 10))
         XCTAssertTrue(becomesSelected(app.tab("Home")), "Updates opens over Home, where its bell is")
+    }
+
+    /// A shared conversation's link opens it read-only, over whatever is showing — its title, the
+    /// question and the answer, and nothing that writes.
+    func testASharedConversationLinkOpensItReadOnly() {
+        let app = signedIn("-UITestLinkOnReturn", "emperor://share/k3j9x2abq81mz")
+
+        leaveAndReturn(app)
+        let sheet = app.navigationBars["Shared conversation"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the shared conversation did not open")
+        XCTAssertTrue(
+            app.staticTexts["Bail in a commercial dispute"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Is anticipatory bail available here?"].exists)
+
+        sheet.buttons["Done"].tap()
+        XCTAssertFalse(sheet.waitForExistence(timeout: 2))
     }
 
     /// Sends the app to the background and brings it back — the moment a link handed over with

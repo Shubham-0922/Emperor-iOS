@@ -105,14 +105,14 @@ final class MyFilesViewModel {
     private let cache: ResponseCache?
     private let offline: OfflineDocuments?
     private let officePreview: (any OfficePreviewProviding)?
-    private let fileRoutes: (any FileRouteProviding)?
+    private let downloads: (any FileDownloading)?
 
     /// - Parameters:
     ///   - cache: where the library is kept between launches, so it can be browsed offline.
     ///   - offline: where this account keeps documents for reading offline.
     ///   - officePreview: the converter, so a Word document is saved for offline as the viewer
     ///     shows it.
-    ///   - fileRoutes: where a folder is packed into one archive for sharing.
+    ///   - downloads: the zip downloads; without it none is offered.
     init(
         service: any FileProviding,
         manager: any FileManaging,
@@ -120,15 +120,15 @@ final class MyFilesViewModel {
         cache: ResponseCache? = nil,
         offline: OfflineDocuments? = nil,
         officePreview: (any OfficePreviewProviding)? = nil,
-        fileRoutes: (any FileRouteProviding)? = nil
+        downloads: (any FileDownloading)? = nil
     ) {
+        self.downloads = downloads
         self.service = service
         self.manager = manager
         self.now = now
         self.cache = cache
         self.offline = offline
         self.officePreview = officePreview
-        self.fileRoutes = fileRoutes
         refreshOfflineStatus()
     }
 
@@ -161,6 +161,7 @@ final class MyFilesViewModel {
         // A document's reading percentage never steps back within a stage between two reads.
         let fresh = ingestLatch.apply(to: fresh)
         tree = fresh
+        pruneSelection()
         cachedAt = nil
         cache?.save(fresh, for: .fileTree)
         offline?.prune(keepingPaths: Set(FileService.allFiles(in: fresh).map(\.path)))
@@ -403,47 +404,99 @@ final class MyFilesViewModel {
         }
     }
 
-    // MARK: - A folder as one archive
+    // MARK: - Downloads
 
-    /// The most documents one archive may hold here: the whole archive is held in memory before
-    /// it is shared.
-    nonisolated static let zipLimit = 200
+    /// Whether the zip downloads are offered at all. A PDF's searchable copy is not one of
+    /// them: it goes through the library's own service (`prepareSearchableCopy`).
+    var offersDownloads: Bool { downloads != nil }
 
-    nonisolated static let emptyZipNotice = "Nothing to share — this folder holds no documents."
-    nonisolated static let tooManyToZip = "Too many documents to zip on a phone. Share a smaller folder, or download it from the web."
+    // MARK: - Selecting several
 
-    /// Every document under `path`, at any depth, as the archive route names them — the web's
-    /// `filesUnder` (`src/pages/MyFilesPage.jsx`): each document with the folder it sits in, the
-    /// storage root spelled `"."`.
-    nonisolated static func zipEntries(under path: String, in tree: [FileNode]) -> [ZipEntry] {
-        let base = FileBrowser.normalized(path)
-        return FileService.allFiles(in: tree).compactMap { file in
-            let folder = FileBrowser.normalized(file.folderPath)
-            let inside = base.isEmpty || folder == base || folder.hasPrefix(base + "/")
-            guard inside else { return nil }
-            return ZipEntry(folderName: folder.isEmpty ? "." : folder, fileName: file.name)
+    /// Whether the rows are checkboxes rather than links.
+    private(set) var isSelecting = false
+    /// The chosen documents, by path.
+    private(set) var selectedPaths: Set<String> = []
+
+    func beginSelecting() {
+        isSelecting = true
+        selectedPaths = []
+    }
+
+    func endSelecting() {
+        isSelecting = false
+        selectedPaths = []
+    }
+
+    func isSelected(_ file: FileNode.StoredFile) -> Bool { selectedPaths.contains(file.path) }
+
+    func toggleSelection(_ file: FileNode.StoredFile) {
+        guard isSelecting else { return }
+        if selectedPaths.contains(file.path) {
+            selectedPaths.remove(file.path)
+        } else {
+            selectedPaths.insert(file.path)
         }
     }
 
-    /// Packs a folder into `<folder>.zip` for the share sheet.
-    func prepareZip(_ folder: FolderSummary) async {
-        let entries = Self.zipEntries(under: folder.path, in: tree)
-        guard !entries.isEmpty else {
-            actionError = nil
-            actionNotice = Self.emptyZipNotice
+    /// The chosen documents still in the library, in library order.
+    var selectedFiles: [FileNode.StoredFile] {
+        FileService.allFiles(in: tree).filter { selectedPaths.contains($0.path) }
+    }
+
+    /// "Select documents", "1 selected", "3 selected".
+    var selectionTitle: String {
+        selectedPaths.isEmpty ? "Select documents" : "\(selectedPaths.count) selected"
+    }
+
+    /// "Download 3 as zip" — or, for one, "Download as zip".
+    var zipSelectionLabel: String {
+        selectedPaths.count > 1 ? "Download \(selectedPaths.count) as zip" : "Download as zip"
+    }
+
+    /// Lets go of a choice whose document has left the library.
+    private func pruneSelection() {
+        guard !selectedPaths.isEmpty else { return }
+        let present = Set(FileService.allFiles(in: tree).map(\.path))
+        selectedPaths.formIntersection(present)
+    }
+
+    /// Every document under a folder, at any depth, as the zip route names them — the web's
+    /// `filesUnder`.
+    func zipPlan(for folder: FolderSummary) -> [FileZipEntry] {
+        FileBrowser.files(under: folder.path, in: tree).map(FileZipEntry.init)
+    }
+
+    /// The chosen documents as one zip, for the share sheet. Ends selecting once it has arrived.
+    func downloadSelectionAsZip() async {
+        let files = selectedFiles
+        guard !files.isEmpty else {
+            actionError = "Choose at least one document to download."
             return
         }
-        guard entries.count <= Self.zipLimit else {
-            actionNotice = nil
-            actionError = Self.tooManyToZip
+        let delivered = await downloadZip(files.map(FileZipEntry.init), named: nil, busy: "zip")
+        if delivered { endSelecting() }
+    }
+
+    /// A folder's documents, sub-folders and all, as one zip named after the folder.
+    func downloadAsZip(_ folder: FolderSummary) async {
+        let files = zipPlan(for: folder)
+        guard !files.isEmpty else {
+            actionNotice = "\(folder.displayName) holds no documents to download."
             return
         }
-        guard let fileRoutes else { return }
-        await perform(on: folder.path) { [weak self] _ in
-            let data = try await fileRoutes.zip(entries)
-            self?.sharing = SharedDocument(fileName: "\(folder.name).zip", data: data)
-            return nil
+        _ = await downloadZip(files, named: folder.name, busy: folder.path)
+    }
+
+    private func downloadZip(_ files: [FileZipEntry], named name: String?, busy: String) async -> Bool {
+        guard let downloads else { return false }
+        var delivered = false
+        await perform(on: busy) { [weak self] _ in
+            let archive = try await downloads.zip(files: files, suggestedName: name)
+            self?.sharing = SharedDocument(fileName: archive.fileName, data: archive.data)
+            delivered = true
+            return FileDownloadWording.shortfallNotice(asked: files.count, archive: archive)
         }
+        return delivered
     }
 
     // MARK: - Offline

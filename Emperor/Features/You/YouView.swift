@@ -15,6 +15,8 @@ struct YouView: View {
 
     @State private var tool: ToolDestination?
     @State private var isConfirmingSignOut = false
+    /// The draft length a tool starts on — read here, changed here or on any tool's form.
+    @State private var draftDepth = DraftDepth.default
 
     private let preferences = Preferences()
 
@@ -48,6 +50,17 @@ struct YouView: View {
                         value: currentDefaultMode.modeName)
                         .accessibilityElement(children: .combine)
 
+                    RecordSegmentedControl(
+                        label: "Draft length",
+                        options: DraftDepth.allCases.map { (value: $0, title: $0.label) },
+                        selection: Binding(
+                            get: { draftDepth },
+                            set: { chosen in
+                                draftDepth = chosen
+                                chosen.save(to: preferences, userID: session.currentUser?.id)
+                            }))
+                        .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
+
                     NavigationLink {
                         RolePickerView()
                     } label: {
@@ -59,7 +72,7 @@ struct YouView: View {
                 } header: {
                     SectionHeader(title: "Answers")
                 } footer: {
-                    footnote("New questions start on Fast; deep thinking is the default only on the top plan, and any question can be switched from the composer. The role changes the suggestions on Ask and how answers are written, and is saved to your account, so the web opens in the same role.")
+                    footnote("New questions start on Fast; deep thinking is the default only on the top plan, and any question can be switched from the composer. Draft length is how long a tool's draft runs — Short keeps it to two or three pages — and each tool's form can change it. The role changes the suggestions on Ask and how answers are written, and is saved to your account, so the web opens in the same role.")
                 }
                 .listRowBackground(theme.surface)
 
@@ -90,7 +103,7 @@ struct YouView: View {
                 }
                 .listRowBackground(theme.surface)
 
-                CloudConnectionsSection()
+                ConnectedServicesSection()
 
                 ToolsSections(destination: $tool)
 
@@ -169,6 +182,10 @@ struct YouView: View {
             .background(theme.groupedBackground)
             .navigationTitle("Account & Profile")
             .navigationBarTitleDisplayMode(.large)
+            // Re-read on each appearance: a tool's form may have changed it since.
+            .onAppear {
+                draftDepth = DraftDepth.stored(in: preferences, userID: session.currentUser?.id)
+            }
             .sheet(item: $tool) { chosen in
                 chosen.screen
                     .pageSizedSheet()
@@ -222,7 +239,7 @@ struct YouView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             StatusPill(
-                text: PlanLabel.pill(session: session.currentUser?.planLabel, entitlements: nil),
+                text: planPill,
                 tone: .accent,
                 systemImage: "star")
         }
@@ -233,7 +250,7 @@ struct YouView: View {
     }
 
     /// The design's guide card. The tour itself is not built yet — the row is the promise, the
-    /// same stand-in the More tab's case-tool cards are.
+    /// same stand-in the composer's wand and mic are.
     private var demoTourRow: some View {
         Button {
             // A later step: the walkthrough of research, cause lists and citations.
@@ -264,6 +281,12 @@ struct YouView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Start Demo Tour")
         .accessibilityHint("Walkthrough research, cause lists and citations")
+    }
+
+    /// The plan in the account card's pill — never an internal tier or a placeholder name
+    /// (`PlanLabel`).
+    private var planPill: String {
+        PlanLabel.accountPill(session: session.currentUser?.planLabel)
     }
 
     private func displayName(_ user: User) -> String {

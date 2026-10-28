@@ -28,14 +28,6 @@ extension XCUIApplication {
         return navigationBars["Assemble court-ready filing"].waitForExistence(timeout: 10)
     }
 
-    /// Opens one annexure's card under the draft; answers whether its viewer came up.
-    func openAnnexureCard(_ mark: String) -> Bool {
-        let card = buttons["filing-annexure-card-\(mark)"].firstMatch
-        guard waitAndReveal(card, timeout: 15) else { return false }
-        card.tap()
-        return filingElement("filing-viewer").waitForExistence(timeout: 10)
-    }
-
     /// Drags the filing list down a little, at most three times, while `element` sits under the
     /// sheet's bar or within a touch of it. A list scrolled to bring a row on screen can leave
     /// it beneath the bar, where it still reads as hittable but a tap lands on the bar (as on an
@@ -55,19 +47,11 @@ extension XCUIApplication {
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.2)
         }
     }
-
-    /// Closes the annexure viewer by its Done.
-    func closeAnnexureViewer(_ mark: String) {
-        let bar = navigationBars["Annexure \(mark)"]
-        guard bar.waitForExistence(timeout: 5) else { return }
-        bar.buttons["Done"].tap()
-        _ = waitGone(bar)
-    }
 }
 
 /// Filing from a drafted document in a conversation (`FilingStubs`, `-UITestFilingChat`): the
-/// assembler opened on the draft with its cover read from the cause title, a file of the
-/// conversation added in one tap, each annexure opened from its card, and the filing-ready PDF.
+/// assembler opened on the draft with its cover read from the cause title, and a file of the
+/// conversation added in one tap.
 final class FilingChatUITests: XCTestCase {
 
     override func setUp() {
@@ -128,45 +112,5 @@ final class FilingChatUITests: XCTestCase {
         XCTAssertTrue(poll { added.label.contains("P-10") }, "label: \(added.label)")
         XCTAssertTrue(app.waitGone(seed), "the file was still offered once added")
         XCTAssertFalse(app.filingElement("filing-annexure-4").exists, "the file was added twice")
-    }
-
-    func testAnnexureViewerTypedAndOriginal() {
-        let app = XCUIApplication.launchedSignedIn(["-UITestFilingChat"])
-        XCTAssertTrue(app.openFilingChatDraft())
-
-        XCTAssertTrue(app.openAnnexureCard("P-2"), "the typed copy did not open")
-        XCTAssertTrue(
-            app.filingElement("filing-viewer-typed").waitForExistence(timeout: 15),
-            "the typed copy was not shown")
-        app.closeAnnexureViewer("P-2")
-
-        XCTAssertTrue(app.openAnnexureCard("P-1"), "the original did not open")
-        XCTAssertTrue(
-            app.filingElement("filing-viewer-pdf").waitForExistence(timeout: 15),
-            "the original's PDF was not shown")
-        app.closeAnnexureViewer("P-1")
-
-        XCTAssertTrue(app.openAnnexureCard("P-9"), "the photograph did not open")
-        let unpreviewable = app.descendants(matching: .any).matching(NSPredicate(
-            format: "identifier == %@ OR label CONTAINS %@",
-            "filing-viewer-unpreviewable", "can't be previewed here")).firstMatch
-        XCTAssertTrue(
-            unpreviewable.waitForExistence(timeout: 15), "no word that the file cannot be shown")
-    }
-
-    func testFilingReadyPDFProducesShare() {
-        let app = XCUIApplication.launchedSignedIn(["-UITestFilingChat"])
-        XCTAssertTrue(app.openFilingChatDraft())
-
-        let menu = app.buttons["Download this document"].firstMatch
-        XCTAssertTrue(menu.waitForExistence(timeout: 10), "no download menu")
-        menu.tap()
-        let item = app.buttons.matching(NSPredicate(
-            format: "identifier == %@ OR label == %@", "filing-ready-pdf", "Filing ready · PDF")).firstMatch
-        XCTAssertTrue(item.waitForExistence(timeout: 10), "no Filing ready · PDF in the menu")
-        item.tap()
-
-        let share = app.buttons["filing-export-share"].firstMatch
-        XCTAssertTrue(share.waitForExistence(timeout: 45), "the filing-ready PDF was not offered to share")
     }
 }

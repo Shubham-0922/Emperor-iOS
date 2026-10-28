@@ -4,19 +4,19 @@ import XCTest
 import FoundationNetworking
 #endif
 
-// Matters ("projects" on the wire) are hand-made files — user-owned rows typed in by an advocate,
-// as opposed to the team-owned rows the court scrapers fill in. Almost everything that can go
-// wrong here goes wrong *silently*: a key spelled the way the rest of the API spells its keys
-// decodes to nil, a count defaulted to zero states something the server never said. Each test is
-// named for what a user sees when the rule it pins is broken. The list and workspace screens are
-// held by `MattersListViewModelTests` and `MatterWorkspaceViewModelTests`; the full `/project`
-// payload by `ProjectWireTests`.
+// Projects are hand-made matters — user-owned rows typed in by an advocate, as opposed to the
+// team-owned rows the court scrapers fill in. Almost everything that can go wrong here goes wrong
+// *silently*: a key spelled the way the rest of the API spells its keys decodes to nil, a count
+// defaulted to zero states something the server never said, and a filter applied locally shows an
+// empty archive to someone who has one. Each test below is named for what a user sees when the
+// rule it pins is broken.
 
 // MARK: - Builders
 
 private func project(
     _ id: String = "p1",
     name: String? = "Suvarnapatnam v. Ashwatth",
+    client: String? = "Suvarnapatnam Infra",
     caseType: String? = "ARB.P.",
     caseNumber: String? = "112",
     caseYear: String? = "2025",
@@ -24,21 +24,106 @@ private func project(
     forumName: String? = "Delhi International Arbitration Centre",
     forumType: String? = "arbitration",
     priority: String? = "high",
-    status: String? = nil
+    status: String? = nil,
+    nextHearing: String? = "2026-09-18",
+    linkedCaseID: String? = nil,
+    fileCount: Int? = nil,
+    chatCount: Int? = nil
 ) -> Project {
     Project(
-        id: id, name: name, client: "Suvarnapatnam Infra", forumType: forumType, forumName: forumName,
-        caseNumber: caseNumber, caseYear: caseYear, caseType: caseType, cnr: cnr, status: status,
-        priority: priority)
+        id: id, name: name, client: client, caseNumber: caseNumber, caseYear: caseYear,
+        caseType: caseType, cnr: cnr, status: status, priority: priority,
+        nextHearingDateRaw: nextHearing, linkedCaseID: linkedCaseID,
+        fileCount: fileCount, chatCount: chatCount)
+        .with { $0.forumName = forumName; $0.forumType = forumType }
+}
+
+private extension Project {
+    func with(_ mutate: (inout Project) -> Void) -> Project {
+        var copy = self
+        mutate(&copy)
+        return copy
+    }
 }
 
 private func update(
     _ id: String = "u1",
+    kind: String? = "note",
     title: String? = "Counter-claim filed",
     body: String? = "Served on the other side the same day.",
     eventDate: String? = "2026-08-30"
 ) -> ProjectUpdate {
-    ProjectUpdate(id: id, kind: "note", title: title, body: body, eventDateRaw: eventDate)
+    ProjectUpdate(id: id, kind: kind, title: title, body: body, eventDateRaw: eventDate)
+}
+
+private func courtRow(
+    _ id: String = "i1",
+    section: String = "hearings",
+    title: String? = "Part-heard",
+    subtitle: String? = "Before the sole arbitrator",
+    date: String? = "2026-08-12"
+) -> CaseItem {
+    CaseItem(id: id, section: section, title: title, subtitle: subtitle, itemDateRaw: date)
+}
+
+/// A free function rather than a method on the test class, for the reason `withList` gives:
+/// an `XCTestCase` is not `Sendable`, so calling `self.something()` from inside a `@MainActor`
+/// closure is rejected by Swift 6 as sending task-isolated `self` across an isolation boundary.
+private func projectDetail(
+    project matter: Project = project(),
+    updates: [ProjectUpdate] = [update()],
+    courtHistory: [CaseItem] = [courtRow()]
+) -> ProjectDetail {
+    ProjectDetail(project: matter, updates: updates, courtHistory: courtHistory)
+}
+
+// MARK: - Fake
+
+private final class FakeProjects: ProjectProviding, @unchecked Sendable {
+    var list: [Project] = []
+    var detail: ProjectDetail?
+    var listError: Error?
+    var detailError: Error?
+
+    /// Every `includeArchived` value the view model actually asked the server for. The point of
+    /// recording it is that "filtered locally" and "re-fetched" look identical on screen.
+    private(set) var archivedRequests: [Bool] = []
+    private(set) var detailRequests: [String] = []
+
+    func projects(includeArchived: Bool) async throws -> [Project] {
+        archivedRequests.append(includeArchived)
+        if let listError { throw listError }
+        return list
+    }
+
+    func project(id: String) async throws -> ProjectDetail {
+        detailRequests.append(id)
+        if let detailError { throw detailError }
+        guard let detail else {
+            throw APIError.server(status: 404, message: ProjectService.projectGoneMessage)
+        }
+        return detail
+    }
+}
+
+/// Linux XCTest cannot invoke a `@MainActor` test method, and an `XCTestCase` is not `Sendable`
+/// so a `@MainActor` closure may not capture `self`. Hopping through a free function is the only
+/// shape that works on both platforms — see `ChatViewModelTests`.
+@MainActor
+private func withList(
+    _ body: @MainActor (FakeProjects, ProjectListViewModel) async -> Void
+) async {
+    let fake = FakeProjects()
+    await body(fake, ProjectListViewModel(service: fake))
+}
+
+@MainActor
+private func withDetail(
+    projectID: String = "p1",
+    _ body: @MainActor (FakeProjects, ProjectDetailViewModel) async -> Void
+) async {
+    let fake = FakeProjects()
+    await body(fake, ProjectDetailViewModel(projectID: projectID, service: fake))
 }
 
 // MARK: - The wire
@@ -53,9 +138,10 @@ final class ProjectModelTests: XCTestCase {
         try JSONDecoder().decode(ProjectDetailResponse.self, from: Data(json.utf8))
     }
 
-    /// The list route selects `p.*`, so every column the schema ever gained rides out whether
-    /// this build knows it or not — and a matter typed in half-finished is the normal case. A
-    /// model that required any of these would fail the whole page because of one thin row.
+    /// The list route selects `p.*`, so every column the migration block ever added rides out
+    /// whether this build knows it or not — and a matter typed in half-finished is the normal
+    /// case, not the edge one. A model that required any of these would fail to decode the whole
+    /// page because of one thin row.
     func testAMatterWithAlmostEveryFieldNullStillDecodes() throws {
         let response = try decodeList("""
             {"success":true,"projects":[{
@@ -64,66 +150,45 @@ final class ProjectModelTests: XCTestCase {
               "case_year":null,"cnr":null,"stage":null,"status":"active","priority":"normal",
               "next_hearing_date":null,"filing_date":null,"linked_case_id":null,"color":null,
               "created_at":"2026-08-01T09:00:00.000Z","updated_at":"2026-08-01T09:00:00.000Z",
-              "archived_at":null,"case_type":null,"banner":null,"practice_area":null,
-              "our_side":null,"court_status":null,"opposite_party":null,
-              "file_count":0,"chat_count":0,"update_count":0,"last_activity":null,
-              "open_tasks":0,"next_task_due":null,"billed":0,"received":0}]}
+              "archived_at":null,"file_count":0,"chat_count":0,"update_count":0,
+              "last_activity":null}]}
             """)
         let matter = try XCTUnwrap(response.projects?.first)
         XCTAssertEqual(matter.displayName, "Advisory brief")
-        XCTAssertEqual(matter.caseRef, "")
-        // `other` is the server's default for "nobody said", not a court.
-        XCTAssertEqual(matter.courtName, "")
+        XCTAssertNil(matter.caseReference)
+        XCTAssertEqual(matter.forumLabel, "other")
         XCTAssertEqual(matter.fileCount, 0)
-        XCTAssertEqual(matter.openTasks, 0)
-        XCTAssertEqual(matter.billed, 0)
-        XCTAssertEqual(matter.createdAtRaw, "2026-08-01T09:00:00.000Z")
     }
 
-    /// The columns the list carries for its cards: banner, practice area, side, parties, the
-    /// open-task count and the money.
-    func testTheCardColumnsDecode() throws {
-        let response = try decodeList("""
-            {"success":true,"projects":[{"id":"p1","name":"Bhalla v. State","banner":"teal",
-              "practice_area":"writ","our_side":"petitioner","court_status":"not_filed",
-              "opposite_party":"State of Haryana","client":"Ankit Bhalla","open_tasks":2,
-              "next_task_due":"2026-10-11","billed":25000.5,"received":10000,
-              "archived_at":"2026-09-01T00:00:00.000Z"}]}
+    /// **The one camelCase key in the feature.** `courtHistory` is built in JavaScript rather
+    /// than selected from a column (`sync-server.js:9985`), so spelling it `court_history` the
+    /// way every other key on this API is spelled decodes to nil with no error at all — and the
+    /// linked case's entire hearing record vanishes from the screen.
+    func testCourtHistoryIsCamelCaseUnlikeEveryOtherKey() throws {
+        let response = try decodeDetail("""
+            {"success":true,"project":{"id":"p1","name":"M"},
+             "updates":[],"files":[],"chats":[],
+             "courtHistory":[{"id":"i1","section":"hearings","title":"Part-heard",
+                              "item_date":"2026-08-12"}]}
             """)
-        let matter = try XCTUnwrap(response.projects?.first)
-        XCTAssertEqual(matter.bannerPreset, .teal)
-        XCTAssertEqual(matter.practiceArea, "writ")
-        XCTAssertEqual(matter.clientLine, "Ankit Bhalla (Petitioner)")
-        XCTAssertEqual(matter.oppositeParty, "State of Haryana")
-        XCTAssertTrue(matter.isNotFiled)
-        XCTAssertEqual(matter.openTasks, 2)
-        XCTAssertEqual(matter.nextTaskDueRaw, "2026-10-11")
-        XCTAssertEqual(matter.billed, 25000.5)
-        XCTAssertEqual(matter.archivedAtRaw, "2026-09-01T00:00:00.000Z")
+        XCTAssertEqual(response.courtHistory?.count, 1)
+        XCTAssertEqual(response.courtHistory?.first?.title, "Part-heard")
     }
 
-    /// One row the model cannot read — here, no id at all — costs only that row.
-    func testOneUnreadableRowDoesNotEmptyTheList() throws {
-        let response = try decodeList("""
-            {"success":true,"projects":[{"name":"No id"},{"id":"p2","name":"Kept"},42]}
+    /// `files` and `chats` come back on the detail route and are deliberately unmodelled. Their
+    /// presence must not take the decode down with them.
+    func testUnmodelledFilesAndChatsDoNotBreakTheDecode() throws {
+        let response = try decodeDetail("""
+            {"success":true,"project":{"id":"p1","name":"M"},"updates":[],
+             "files":[{"id":"f1","file_name":"Award.pdf"}],
+             "chats":[{"id":"c1","title":"Draft the reply"}],"courtHistory":[]}
             """)
-        XCTAssertEqual(response.projects?.map(\.id), ["p2"])
+        XCTAssertEqual(response.project?.id, "p1")
     }
 
-    /// Ids, case numbers and counts sent as numbers are read as their text and values.
-    func testNumbersWhereTextWasExpectedAreRead() throws {
-        let response = try decodeList("""
-            {"success":true,"projects":[{"id":7,"case_number":4683,"case_year":2023,
-              "case_type":"W.P.(C)","file_count":"3"}]}
-            """)
-        let matter = try XCTUnwrap(response.projects?.first)
-        XCTAssertEqual(matter.id, "7")
-        XCTAssertEqual(matter.caseRef, "W.P.(C) 4683/2023")
-        XCTAssertEqual(matter.fileCount, 3)
-    }
-
-    /// The counts exist only on the list route. Defaulting them to zero would make the
-    /// workspace claim "0 files" about a matter with seven.
+    /// The counts exist only on the list route. Defaulting them to zero would make the detail
+    /// screen claim "0 documents" about a matter with seven — the honest answer there is that
+    /// the route did not say.
     func testTheComputedCountsAreAbsentRatherThanZeroOnTheDetailRoute() throws {
         let response = try decodeDetail("""
             {"success":true,"project":{"id":"p1","name":"M"},"updates":[],"courtHistory":[]}
@@ -131,11 +196,21 @@ final class ProjectModelTests: XCTestCase {
         let matter = try XCTUnwrap(response.project)
         XCTAssertNil(matter.fileCount)
         XCTAssertNil(matter.chatCount)
-        XCTAssertNil(matter.openTasks)
-        XCTAssertNil(matter.billed)
+        XCTAssertNil(matter.updateCount)
     }
 
-    /// A failure with no `success` key reads as a failure, not as a missing field.
+    /// `case_number` and `case_year` are TEXT columns. A JSON number sent in round-trips out as
+    /// a string, so an `Int?` model would fail on the way back.
+    func testCaseNumberAndYearDecodeAsStrings() throws {
+        let response = try decodeList("""
+            {"success":true,"projects":[
+              {"id":"p1","case_type":"W.P.(C)","case_number":"4683","case_year":"2023"}]}
+            """)
+        XCTAssertEqual(response.projects?.first?.caseReference, "W.P.(C) 4683/2023")
+    }
+
+    /// A 500 on this route carries no `success` key at all — the catch writes `{error}` only
+    /// (`sync-server.js:9934-9936`). Absence has to read as failure, not as a missing field.
     func testAServerFailureCarriesNoSuccessKey() throws {
         let response = try decodeList(#"{"error":"Missing userId"}"#)
         XCTAssertNil(response.success)
@@ -145,7 +220,8 @@ final class ProjectModelTests: XCTestCase {
                 success: response.success, error: response.error))
     }
 
-    /// The wire key is `description`; the property is `notes`.
+    /// The wire key is `description`; the property is `notes`. If the mapping is dropped the
+    /// field silently becomes nil and the matter's notes disappear.
     func testTheDescriptionColumnLandsOnNotes() throws {
         let response = try decodeList("""
             {"success":true,"projects":[{"id":"p1","description":"Section 34 challenge."}]}
@@ -155,89 +231,92 @@ final class ProjectModelTests: XCTestCase {
 
     // MARK: - Derived reading
 
-    /// `caseRefOf`: the registry's form; the year only after a slash; the CNR without a number.
-    func testTheCaseReferenceIsTheWebsOwn() {
-        XCTAssertEqual(project(caseType: "ARB.P.", caseNumber: "112", caseYear: nil).caseRef, "ARB.P. 112")
-        XCTAssertEqual(project(caseType: nil, caseNumber: "112", caseYear: "2025").caseRef, "112/2025")
+    /// A hand-typed matter is half-filled far more often than a scraped one. `LegalCase`'s rule
+    /// would render a number with no year as the bare string "112", which reads as nothing —
+    /// so a project draws the slash only when it has both halves.
+    func testACaseNumberWithNoYearDoesNotGrowAStraySlash() {
         XCTAssertEqual(
-            project(caseType: nil, caseNumber: nil, caseYear: nil, cnr: "DLHC010012342026").caseRef,
+            project(caseType: "ARB.P.", caseNumber: "112", caseYear: nil).caseReference,
+            "ARB.P. 112")
+        XCTAssertEqual(
+            project(caseType: nil, caseNumber: "112", caseYear: "2025").caseReference,
+            "112/2025")
+    }
+
+    /// The CNR is a fallback, not a suffix: a matter with neither a number nor a year is still
+    /// addressable by it, and showing both would print the same matter twice.
+    func testTheCNRStandsInWhenThereIsNoNumber() {
+        XCTAssertEqual(
+            project(caseType: nil, caseNumber: nil, caseYear: nil, cnr: "DLHC010012342026")
+                .caseReference,
             "DLHC010012342026")
-        XCTAssertEqual(project(caseType: "ARB.P.", caseNumber: nil, caseYear: nil).caseRef, "")
+        XCTAssertNil(project(caseType: "ARB.P.", caseNumber: nil, caseYear: nil).caseReference)
     }
 
-    func testABlankNameReadsAsUntitled() {
-        XCTAssertEqual(project(name: "   ").displayName, "Untitled matter")
+    /// Blank is not the same as absent. `POST /project` writes `b.client ?? null`, so a form
+    /// submitted with a space in the field stores a space — which would render as a bullet with
+    /// nothing after it.
+    func testWhitespaceOnlyFieldsCountAsAbsent() {
+        let blank = project(name: "   ", client: "  ", forumName: " ", forumType: "  ")
+        XCTAssertEqual(blank.displayName, "Untitled matter")
+        XCTAssertNil(blank.forumLabel)
     }
 
-    /// The card's court line: the court's own name, else the forum's kind without its examples,
-    /// never the default `other`.
-    func testTheCourtLineIsTheNameThenTheForumKind() {
-        XCTAssertEqual(project(forumName: "NCLT New Delhi Bench-III", forumType: "tribunal").courtName,
-                       "NCLT New Delhi Bench-III")
-        XCTAssertEqual(project(forumName: nil, forumType: "tribunal").courtName, "Tribunal")
-        XCTAssertEqual(project(forumName: "", forumType: "other").courtName, "")
+    /// The free-text forum name wins over the grouping key: "NCLT New Delhi Bench-III" is what
+    /// an advocate recognises, `tribunal` is what a database does.
+    func testTheForumNameWinsOverTheForumType() {
+        XCTAssertEqual(
+            project(forumName: "NCLT New Delhi Bench-III", forumType: "tribunal").forumLabel,
+            "NCLT New Delhi Bench-III")
+        XCTAssertEqual(project(forumName: nil, forumType: "tribunal").forumLabel, "tribunal")
     }
 
-    /// Who we act for, as the card says it: with a client, then in brackets; without, as a side.
-    func testTheClientLineNamesTheSide() {
-        var p = Project(id: "p", client: "Ankit Bhalla", ourSide: "respondent")
-        XCTAssertEqual(p.clientLine, "Ankit Bhalla (Respondent)")
-        p.client = nil
-        XCTAssertEqual(p.clientLine, "For the respondent")
-        p.ourSide = "the bank"
-        XCTAssertEqual(p.clientLine, "For the the bank")
-        p.ourSide = nil
-        XCTAssertEqual(p.clientLine, "")
+    /// `priority` and `status` are free strings with no server-side whitelist, and the web
+    /// writes them from a `<select>` whose casing has changed once already.
+    func testPriorityAndStatusAreComparedCaseInsensitively() {
+        XCTAssertTrue(project(priority: "HIGH").isHighPriority)
+        XCTAssertTrue(project(status: "Archived").isArchived)
+        XCTAssertFalse(project(priority: "normal").isHighPriority)
+        XCTAssertFalse(project(status: nil).isArchived)
     }
 
-    /// A status outside the vocabulary files under Active, as the web counts it.
-    func testStatusKeysFallBackToActive() {
-        XCTAssertEqual(project(status: "archived").statusKey, .archived)
-        XCTAssertEqual(project(status: "on_hold").statusKey, .onHold)
-        XCTAssertEqual(project(status: "pending").statusKey, .active)
-        XCTAssertEqual(project(status: nil).statusKey, .active)
-        XCTAssertTrue(project(status: "archived").isArchived)
-        XCTAssertTrue(project(priority: "high").isHighPriority)
+    /// `last_activity` is `COALESCE(event_date, created_at)`, so it is a bare day on some rows
+    /// and a zoneless SQLite timestamp on others — in the same list, from the same query.
+    func testLastActivityParsesBothEncodingsTheQueryCanProduce() {
+        XCTAssertNotNil(project().with { $0.lastActivityRaw = "2026-08-30" }.lastActivity)
+        XCTAssertNotNil(
+            project().with { $0.lastActivityRaw = "2026-08-30 04:11:07" }.lastActivity)
+        XCTAssertNil(project().with { $0.lastActivityRaw = "" }.lastActivity)
     }
 
-    /// "Not filed yet" holds only while no case is linked.
-    func testNotFiledYieldsToALinkedCase() {
-        XCTAssertTrue(Project(id: "p", courtStatus: "not_filed").isNotFiled)
-        XCTAssertFalse(Project(id: "p", linkedCaseID: "c1", courtStatus: "not_filed").isNotFiled)
-    }
-
-    /// An update sorts on when the thing happened, falling back to when it was recorded.
+    /// An update sorts on when the **thing** happened, falling back to when it was recorded —
+    /// the same `COALESCE` the server's `ORDER BY` uses. Sorting on `created_at` alone would
+    /// make backdating an order received last week reshuffle the whole file.
     func testAnUpdateFallsBackFromEventDateToCreatedAt() {
         XCTAssertNotNil(update(eventDate: "2026-08-30").day)
-        let recordedOnly = ProjectUpdate(id: "u2", title: "Filed", createdAtRaw: "2026-08-29 11:02:00")
+        let recordedOnly = ProjectUpdate(
+            id: "u2", title: "Filed", eventDateRaw: nil,
+            createdAtRaw: "2026-08-29 11:02:00")
         XCTAssertNotNil(recordedOnly.day)
     }
 
-    /// A row with nothing to draw is not drawn: an update needs a title or body; a court row a
-    /// title, a subtitle or scraped data.
+    /// A row with neither a title nor a body draws as a date beside blank space, which reads as
+    /// a rendering fault rather than as an empty note.
     func testEmptyRowsAreNotRenderable() {
         XCTAssertFalse(update(title: nil, body: nil).isRenderable)
         XCTAssertFalse(update(title: "  ", body: "").isRenderable)
         XCTAssertTrue(update(title: nil, body: "Served.").isRenderable)
-        XCTAssertFalse(CourtHistoryItem(id: "i", section: "orders").isRenderable)
-        XCTAssertTrue(CourtHistoryItem(id: "i", section: "hearings", data: ["purpose": .string("Arguments")]).isRenderable)
-        XCTAssertTrue(CourtHistoryItem(id: "i", section: "orders", title: "Order").isRenderable)
+        XCTAssertFalse(courtRow(title: nil, subtitle: nil).isRenderable)
+        XCTAssertTrue(courtRow(title: "Part-heard", subtitle: nil).isRenderable)
     }
 
-    /// The adapters hand the ports exactly what the row holds.
-    func testTheAdaptersCarryEveryField() {
-        let u = ProjectUpdate(id: "u", kind: "order", title: "T", body: "B", eventDateRaw: "2026-10-01",
-                              createdAtRaw: "2026-10-02 10:00:00", source: "ai", sourceRef: "doc.pdf")
-        XCTAssertEqual(u.recordUpdate, MatterRecord.Update(
-            id: "u", kind: "order", title: "T", body: "B", eventDate: "2026-10-01",
-            createdAt: "2026-10-02 10:00:00", source: "ai", sourceRef: "doc.pdf"))
-        let l = LedgerEntry(id: "l", kind: "payment", amountPaise: 150_050, amount: 1500.5, entryDateRaw: "2026-10-01")
-        XCTAssertEqual(l.ledgerEntry.amountPaise, 150_050)
-        XCTAssertEqual(l.paise, 150_050)
-        XCTAssertEqual(LedgerEntry(id: "x", kind: "fee", amount: 12.34).paise, 1234)
-        let t = ProjectTask(id: "t", dueDateRaw: "2026-10-01", kind: "limitation", priority: "high", status: "open")
-        XCTAssertEqual(t.taskKey.kind, "limitation")
-        XCTAssertEqual(t.taskKey.dueDate, "2026-10-01")
+    /// `section` is an open string with no server-side whitelist, so a value this build has not
+    /// heard of must still label itself rather than render a blank heading.
+    func testAnUnknownSectionStillLabelsItself() {
+        XCTAssertEqual(courtRow(section: "hearings").sectionLabel, "Hearings")
+        XCTAssertEqual(courtRow(section: "interim_applications").sectionLabel,
+                       "Interim Applications")
+        XCTAssertEqual(courtRow(section: "").sectionLabel, "Other")
     }
 }
 
@@ -247,6 +326,8 @@ final class ProjectServiceWireTests: XCTestCase {
 
     private static let config = APIConfig(baseURL: URL(string: "https://example.test/api")!)
 
+    /// Before each test, not only after. `tearDown` alone leaves the **first** test in the class
+    /// reading whatever the previous suite left in `HTTPStub.seen`. See `HTTPStub.reset`.
     override func setUp() {
         super.setUp()
         HTTPStub.reset()
@@ -263,7 +344,9 @@ final class ProjectServiceWireTests: XCTestCase {
         return ProjectService(client: client)
     }
 
-    /// The route reads the literal "1"; any other spelling is read as false.
+    /// The default must match the web's request exactly. The route tests `=== '1'`, so any
+    /// other spelling — `true`, `0`, `yes` — is read as false; sending one would look like an
+    /// opt-in that never takes effect.
     func testTheArchivedFlagIsOmittedByDefaultAndSentAsTheLiteralOne() async throws {
         let service = await makeService()
         HTTPStub.always(.json(#"{"success":true,"projects":[]}"#))
@@ -276,6 +359,8 @@ final class ProjectServiceWireTests: XCTestCase {
         XCTAssertEqual(HTTPStub.lastRequest?.queryItems["includeArchived"], "1")
     }
 
+    /// Every route on this feature re-checks ownership from the DB, and `userId` is what it
+    /// checks against. Without it the list route throws into its 500 handler.
     func testTheCallerIdentityRidesOnEveryProjectRequest() async throws {
         let service = await makeService()
         HTTPStub.always(.json(#"{"success":true,"projects":[]}"#))
@@ -300,7 +385,9 @@ final class ProjectServiceWireTests: XCTestCase {
         XCTAssertEqual(sent.queryItems["id"], "p1")
     }
 
-    /// "Gone" and "not yours" are the same 404 with the server's word, reworded once here.
+    /// `WHERE id = ? AND user_id = ?` means "gone" and "not yours" are the same 404 by design.
+    /// The server's own word for it is the bare string "Project not found", which says nothing
+    /// about what to do next — so it is rewritten once, here, rather than at each screen.
     func testAMissingOrForeignMatterGetsOneHonestSentence() async {
         let service = await makeService()
         HTTPStub.always(.json(#"{"success":false,"error":"Project not found"}"#, status: 404))
@@ -309,30 +396,16 @@ final class ProjectServiceWireTests: XCTestCase {
             _ = try await service.project(id: "p-someone-elses")
             XCTFail("expected a 404")
         } catch let error as APIError {
-            XCTAssertEqual(error, .server(status: 404, message: ProjectService.projectGoneMessage))
+            XCTAssertEqual(
+                error, .server(status: 404, message: ProjectService.projectGoneMessage))
         } catch {
             XCTFail("wrong error: \(error)")
         }
     }
 
-    /// A 404 with no envelope is a server without the route: a failure to load, not a deleted
-    /// matter, so it keeps its own wording.
-    func testABare404IsNotReadAsAMissingMatter() async {
-        let service = await makeService()
-        HTTPStub.always(.text("Cannot GET /project", status: 404))
-
-        do {
-            _ = try await service.project(id: "p1")
-            XCTFail("expected a 404")
-        } catch let error as APIError {
-            XCTAssertNotEqual(error, .server(status: 404, message: ProjectService.projectGoneMessage))
-            if case .server(404, _) = error {} else { XCTFail("not a 404: \(error)") }
-        } catch {
-            XCTFail("wrong error: \(error)")
-        }
-    }
-
-    /// A blank id never reaches the network.
+    /// An id that is blank never reaches the network: the route answers `Missing id or userId`
+    /// as a **500**, which `RetryPolicy` classifies as transient — so an empty id would cost
+    /// three attempts and ~1.8s of backoff before surfacing as "the server is unhappy".
     func testABlankIdIsRefusedWithoutASingleRequest() async {
         let service = await makeService()
 
@@ -340,21 +413,23 @@ final class ProjectServiceWireTests: XCTestCase {
             _ = try await service.project(id: "   ")
             XCTFail("expected a refusal")
         } catch let error as APIError {
-            XCTAssertEqual(error, .server(status: 404, message: ProjectService.projectGoneMessage))
+            XCTAssertEqual(
+                error, .server(status: 404, message: ProjectService.projectGoneMessage))
             XCTAssertTrue(HTTPStub.seen.isEmpty, "nothing should have gone on the wire")
         } catch {
             XCTFail("wrong error: \(error)")
         }
     }
 
-    /// Filtering in the service rather than the view keeps a count and its rows in step.
+    /// Filtering in the service rather than the view is what keeps a section header's count and
+    /// the number of rows beneath it from disagreeing.
     func testUnrenderableRowsAreDroppedBeforeTheScreenEverSeesThem() async throws {
         let service = await makeService()
         HTTPStub.always(.json("""
             {"success":true,"project":{"id":"p1","name":"M"},
              "updates":[{"id":"u1","title":"Filed"},{"id":"u2","title":null,"body":"  "}],
              "courtHistory":[{"id":"i1","section":"orders","title":"Order dated 12.08.2026"},
-                             {"id":"i2","section":"orders","title":null,"subtitle":null,"data":null}]}
+                             {"id":"i2","section":"orders","title":null,"subtitle":null}]}
             """))
 
         let detail = try await service.project(id: "p1")
@@ -363,7 +438,8 @@ final class ProjectServiceWireTests: XCTestCase {
         XCTAssertEqual(detail.courtHistory.count, 1)
     }
 
-    /// A 200 whose body has no project is not a success.
+    /// A 200 whose body has no project is not a success. It reaches the same sentence as a 404
+    /// rather than a decoding error about a matter that was deleted.
     func testASuccessfulResponseWithNoProjectIsStillAFailure() async {
         let service = await makeService()
         HTTPStub.always(.json(#"{"success":true,"updates":[],"courtHistory":[]}"#))
@@ -372,44 +448,303 @@ final class ProjectServiceWireTests: XCTestCase {
             _ = try await service.project(id: "p1")
             XCTFail("expected a refusal")
         } catch let error as APIError {
-            XCTAssertEqual(error, .server(status: 404, message: ProjectService.projectGoneMessage))
+            XCTAssertEqual(
+                error, .server(status: 404, message: ProjectService.projectGoneMessage))
         } catch {
             XCTFail("wrong error: \(error)")
         }
     }
 
-    /// The banner is asked for by id and version, with the session's bearer, and comes back as
-    /// the picture's own bytes.
-    func testTheBannerIsFetchedAsBytesWithTheBearer() async throws {
+    /// The whole feature is a viewer. Nothing on either screen may reach a write route while the
+    /// shape of a project is still moving on the web — see `ProjectService`. This pins that the
+    /// only verbs in play are reads.
+    func testTheFeatureNeverIssuesAWrite() async throws {
         let service = await makeService()
-        let png = Data([0x89, 0x50, 0x4E, 0x47])
-        HTTPStub.always(HTTPStub.Reply(status: 200, body: png, headers: ["Content-Type": "image/png"]))
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/projects")
+                ? .json(#"{"success":true,"projects":[{"id":"p1","name":"M"}]}"#)
+                : .json("""
+                    {"success":true,"project":{"id":"p1","name":"M"},
+                     "updates":[],"courtHistory":[]}
+                    """)
+        }
 
-        let data = try await service.bannerImage(projectID: "p1", version: "2026-10-01T00:00:00.000Z")
+        _ = try await service.projects(includeArchived: true)
+        _ = try await service.project(id: "p1")
 
-        XCTAssertEqual(data, png)
-        let sent = try XCTUnwrap(HTTPStub.lastRequest)
-        XCTAssertEqual(sent.path, "/api/project-banner")
-        XCTAssertEqual(sent.queryItems["id"], "p1")
-        XCTAssertEqual(sent.queryItems["v"], "2026-10-01T00:00:00.000Z")
-        XCTAssertEqual(sent.header("Authorization"), "Bearer tok-abc")
-    }
-
-    func testAMatterWithoutABannerPictureFails() async {
-        let service = await makeService()
-        HTTPStub.always(.json(#"{"success":false,"error":"No banner"}"#, status: 404))
-        do {
-            _ = try await service.bannerImage(projectID: "p1", version: "")
-            XCTFail("expected a failure")
-        } catch {}
-        XCTAssertNil(HTTPStub.lastRequest?.queryItems["v"])
+        XCTAssertEqual(HTTPStub.seen.count, 2)
+        for request in HTTPStub.seen {
+            XCTAssertEqual(request.httpMethod, "GET", "\(request.path) must be a read")
+            XCTAssertNil(request.httpBody)
+        }
     }
 }
 
+// MARK: - The list screen
+
+final class ProjectListViewModelTests: XCTestCase {
+
+    /// The list is re-ordered by the Sort menu, as on the web; "Name A–Z" ignores the server's
+    /// order entirely.
+    func testTheNameSortIgnoresTheServersOrder() async {
+        await withList { fake, model in
+            fake.list = [project("b", name: "B"), project("a", name: "A"), project("c", name: "C")]
+            await model.load()
+            model.sort = .name
+            XCTAssertEqual(model.visible.map(\.id), ["a", "b", "c"])
+        }
+    }
+
+    /// Archived matters are always fetched — a tracked case is listed only while no matter links
+    /// it, and an archived matter still links its case. The Status menu is a local filter.
+    func testArchivedMattersAreAlwaysFetchedAndFilteredLocally() async {
+        await withList { fake, model in
+            fake.list = [project("a", status: "active"), project("z", status: "archived")]
+            await model.load()
+            XCTAssertEqual(fake.archivedRequests, [true])
+            XCTAssertEqual(model.visible.map(\.id), ["a"])
+
+            model.statusFilter = .archived
+            XCTAssertEqual(model.visible.map(\.id), ["z"])
+            XCTAssertEqual(fake.archivedRequests, [true])
+        }
+    }
+
+    /// "The server says you have nothing" is not "we could not ask". Collapsing them is how the
+    /// web tells a litigator their day is clear when the request merely failed.
+    func testAFailedLoadIsNeverPresentedAsAnEmptyList() async {
+        await withList { fake, model in
+            fake.listError = APIError.transport("The network connection was lost.")
+            await model.load()
+
+            XCTAssertTrue(model.presentation.showsFailureState)
+            XCTAssertFalse(model.presentation.showsEmptyState)
+        }
+    }
+
+    /// A dropped connection must not blank a list someone is reading.
+    func testAFailedRefreshKeepsTheRowsAlreadyOnScreen() async {
+        await withList { fake, model in
+            fake.list = [project()]
+            await model.load()
+
+            fake.listError = APIError.transport("The network connection was lost.")
+            await model.load()
+
+            XCTAssertEqual(model.visible.count, 1)
+            XCTAssertTrue(model.presentation.showsStaleBanner)
+            XCTAssertFalse(model.presentation.showsFailureState)
+        }
+    }
+
+    /// `presentation.isEmpty` is measured against the **filtered** list, which is what routes a
+    /// fruitless search into the empty closure rather than into an empty content view.
+    func testASearchThatMatchesNothingRoutesToTheEmptyState() async {
+        await withList { fake, model in
+            fake.list = [project()]
+            await model.load()
+            model.query = "zzzz"
+
+            XCTAssertTrue(model.presentation.showsEmptyState)
+            XCTAssertTrue(model.showsNoSearchResults)
+        }
+    }
+
+    /// A fruitless search says what to try, in the web's words, and names the status scope.
+    func testAFruitlessSearchSaysWhatToTryAndOffersEveryStatus() async {
+        await withList { fake, model in
+            fake.list = [project()]
+            await model.load()
+            model.query = "zzzz"
+            XCTAssertEqual(model.emptyTitle, "No active matter matches “zzzz”")
+            XCTAssertEqual(model.emptyDetail, ProjectListViewModel.Copy.filteringDetail)
+            XCTAssertTrue(model.offersShowAllStatuses)
+
+            model.showAllStatuses()
+            XCTAssertEqual(model.emptyTitle, "No matter matches “zzzz”")
+            XCTAssertFalse(model.offersShowAllStatuses)
+        }
+    }
+
+    /// An account with no matters at all is a different sentence from a fruitless search.
+    func testATrulyEmptyAccountIsToldWhatAMatterHolds() async {
+        await withList { _, model in
+            await model.load()
+            XCTAssertFalse(model.showsNoSearchResults)
+            XCTAssertEqual(model.emptyTitle, ProjectListViewModel.Copy.firstMatterTitle)
+            XCTAssertEqual(model.emptyDetail, ProjectListViewModel.Copy.openedOnTheWeb)
+        }
+    }
+
+    /// A tribunal matter is very often remembered by its forum rather than its name, and the
+    /// forum name is free text that appears nowhere else.
+    func testTheFilterReachesTheForumTheClientAndTheReference() async {
+        await withList { fake, model in
+            fake.list = [
+                project("a", name: "Rao — service matter", client: "K. Rao",
+                        caseType: nil, caseNumber: nil, caseYear: nil,
+                        forumName: "NCLT New Delhi Bench-III", forumType: "tribunal"),
+                project("b", name: "Suvarnapatnam v. Ashwatth"),
+            ]
+            await model.load()
+
+            model.query = "bench-iii"
+            XCTAssertEqual(model.visible.map(\.id), ["a"])
+            model.query = "k. rao"
+            XCTAssertEqual(model.visible.map(\.id), ["a"])
+            model.query = "ARB.P. 112/2025"
+            XCTAssertEqual(model.visible.map(\.id), ["b"])
+        }
+    }
+
+    /// `.idle` is separate from `.loading` because a view's `.task` runs after its first render.
+    /// Keying the empty state on "not currently loading" flashes it on every cold open.
+    func testNothingIsClaimedBeforeTheFirstLoadAnswers() async {
+        await withList { _, model in
+            XCTAssertTrue(model.presentation.showsLoadingPlaceholder)
+            XCTAssertFalse(model.presentation.showsEmptyState)
+        }
+    }
+}
+
+// MARK: - The detail screen
+
+final class ProjectDetailViewModelTests: XCTestCase {
+
+    /// The decision this screen exists to get right: the matter's own timeline and the court's
+    /// record stay **separate**. The server merges them into one response so a client *can*
+    /// interleave, and the web does — but a note someone typed and a registry order are
+    /// different kinds of fact, and merged they end up sharing one spine and one weight.
+    func testTheTwoRecordsAreNeverMergedIntoOneChronology() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail(
+                updates: [update("u1", title: "Order received", eventDate: "2026-08-13")],
+                courtHistory: [courtRow("i1", title: "Order dated 12.08.2026",
+                                        date: "2026-08-12")])
+            await model.load()
+
+            XCTAssertEqual(model.updates.map(\.id), ["u1"])
+            XCTAssertEqual(model.courtHistory.map(\.id), ["i1"])
+            // Interleaving by date would have put the court row between the two. Nothing on this
+            // model offers a combined list at all — that is the point.
+            XCTAssertEqual(model.updates.count + model.courtHistory.count, 2)
+        }
+    }
+
+    /// A link can point at a case with no items yet, or at one the sync has since deleted.
+    /// Showing nothing at all invites the reader to conclude the link failed.
+    func testALinkWithNoRowsBehindItSaysSoRatherThanShowingNothing() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail(
+                project: project(linkedCaseID: "case-99"), courtHistory: [])
+            await model.load()
+
+            XCTAssertTrue(model.isLinkedToCase)
+            XCTAssertNotNil(model.courtRecordCaveat)
+        }
+    }
+
+    /// An unlinked matter is a purely manual one — an arbitration, an advisory brief. There is
+    /// no court record to caveat, so the section is absent rather than apologetic.
+    func testAnUnlinkedMatterGetsNoCourtRecordSectionAtAll() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail(project: project(linkedCaseID: nil), courtHistory: [])
+            await model.load()
+
+            XCTAssertFalse(model.isLinkedToCase)
+            XCTAssertNil(model.courtRecordCaveat)
+        }
+    }
+
+    /// A blank link is not a link. `POST /project` writes `b.linkedCaseId ?? null`, and a form
+    /// submitted with an empty select stores an empty string.
+    func testABlankLinkedCaseIdIsNotTreatedAsALink() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail(project: project(linkedCaseID: "  "), courtHistory: [])
+            await model.load()
+            XCTAssertFalse(model.isLinkedToCase)
+        }
+    }
+
+    /// The facts panel states only what the matter states. A row reading "Stage: —" is a claim
+    /// that the field was checked and found blank, which is not what a null means.
+    func testTheFactsPanelSkipsEverythingTheMatterDoesNotState() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail(
+                project: project(client: nil, caseType: nil, caseNumber: nil, caseYear: nil,
+                                 forumName: nil, forumType: nil, nextHearing: nil))
+            await model.load()
+
+            XCTAssertTrue(model.facts.isEmpty)
+        }
+    }
+
+    /// The next hearing is the one fact this screen is opened to check, so it carries emphasis
+    /// while the rest do not.
+    func testTheNextHearingIsTheOneEmphasisedFact() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail()
+            await model.load()
+
+            // Read top-down: who it is for, what it is, where it is heard, when it is next on.
+            XCTAssertEqual(
+                model.facts.map(\.label), ["Client", "Case", "Forum", "Next hearing"])
+            XCTAssertEqual(model.facts.filter(\.isEmphasised).map(\.label), ["Next hearing"])
+        }
+    }
+
+    /// "Archived" is the reason a matter is not on the default list, so it has to be visible
+    /// from inside the matter. "Active" is the default and says nothing, so it is not shown.
+    func testOnlyTheArchivedStatusIsWorthARow() async {
+        await withDetail { fake, model in
+            fake.detail = projectDetail(project: project(status: "archived"))
+            await model.load()
+            XCTAssertTrue(model.facts.contains { $0.label == "Status" && $0.value == "Archived" })
+
+            fake.detail = projectDetail(project: project(status: "active"))
+            await model.load()
+            XCTAssertFalse(model.facts.contains { $0.label == "Status" })
+        }
+    }
+
+    /// A 404 must not read as an empty matter. The wording comes up from the service through
+    /// `LoadFailure`, so the screen shows one honest sentence rather than a blank panel.
+    func testAMissingMatterFailsRatherThanRenderingEmpty() async {
+        await withDetail { fake, model in
+            fake.detailError = APIError.server(
+                status: 404, message: ProjectService.projectGoneMessage)
+            await model.load()
+
+            XCTAssertTrue(model.presentation.showsFailureState)
+            XCTAssertEqual(model.state.failure?.message, ProjectService.projectGoneMessage)
+            XCTAssertEqual(model.title, "Matter")
+        }
+    }
+
+    func testTheTitleFallsBackWhileTheMatterIsStillLoading() async {
+        await withDetail { fake, model in
+            XCTAssertEqual(model.title, "Matter")
+            fake.detail = projectDetail(project: project(name: "   "))
+            await model.load()
+            XCTAssertEqual(model.title, "Untitled matter")
+        }
+    }
+
+    func testTheDetailRouteIsAskedForTheIdItWasGiven() async {
+        await withDetail(projectID: "p-42") { fake, model in
+            fake.detail = projectDetail()
+            await model.load()
+            XCTAssertEqual(fake.detailRequests, ["p-42"])
+        }
+    }
+}
+
+// MARK: - Wiring
+
 final class ProjectSessionWiringTests: XCTestCase {
 
-    /// The service hangs off `Session`, on the same client as everything else — a second
-    /// `APIClient` would carry no credentials.
+    /// The service has to hang off `Session`, and off the **same** client as everything else —
+    /// a second `APIClient` would carry no credentials and 500 on every request.
     func testTheSessionExposesTheProjectServiceOnTheSharedClient() async {
         await withProjectSession { session in
             XCTAssertTrue(

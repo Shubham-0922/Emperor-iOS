@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// "Plan & usage": the account's plan, its standing, this month's allowances — and, where the
-/// build allows it, the way to the plans page.
+/// build allows it, the way to the plans page. The plan row opens `BillingView`.
 ///
 /// The app takes no money. "View plans" opens the web app's plans page in the browser, where the
 /// plan is bought on the same account; coming back reads the account and the allowances again,
@@ -13,17 +13,20 @@ struct PlanUsageSection: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var model: AccountUsageViewModel?
-    @State private var includesOpen = false
 
     var body: some View {
         Section {
-            // Each row named, so the accessibility audit can say which one it means.
-            ValueRow("Plan", value: planLabel)
-                .accessibilityIdentifier("plan-name")
-
-            if let standing = model?.standing {
-                planStandingRow(standing)
+            // Each row named, so the accessibility audit can say which one it means. The plan
+            // opens Billing: its standing, the payments and invoices, and a coupon.
+            NavigationLink {
+                BillingView()
+            } label: {
+                LabeledContent("Plan") {
+                    Text(planLabel).foregroundStyle(theme.textPrimary)
+                }
             }
+            .accessibilityIdentifier("plan-name")
+            .accessibilityHint("Opens billing: payments, invoices and coupons")
 
             if let standing = session.standing {
                 standingRow(standing)
@@ -58,10 +61,6 @@ struct PlanUsageSection: View {
                 }
             }
 
-            if let model, model.usage != nil {
-                includesRows(model)
-            }
-
             if session.webPlans.isOffered {
                 ViewPlansButton(style: .row)
             }
@@ -81,10 +80,7 @@ struct PlanUsageSection: View {
         }
         .listRowBackground(theme.surface)
         .task {
-            if model == nil {
-                model = AccountUsageViewModel(
-                    service: session.usage, billing: session.billingAccount)
-            }
+            if model == nil { model = AccountUsageViewModel(service: session.usage) }
             await model?.load()
         }
         // Back from the plans page in the browser: the allowances may be a new plan's.
@@ -99,84 +95,6 @@ struct PlanUsageSection: View {
         let sessionLabel = session.currentUser?.planLabel
         return model?.planName(sessionLabel: sessionLabel)
             ?? PlanLabel.pill(session: sessionLabel, tierLabel: nil)
-    }
-
-    private func pillTone(_ tone: PlanStanding.Tone) -> StatusPill.Tone {
-        switch tone {
-        case .neutral: return .neutral
-        case .success: return .success
-        case .warning: return .warning
-        case .danger: return .danger
-        }
-    }
-
-    /// "Active" / "Expires in 5 days" and how the plan was come by, as the billing page words them.
-    private func planStandingRow(_ standing: PlanStanding) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            StatusPill(text: standing.text, tone: pillTone(standing.tone))
-            if let line = model?.sourceLine {
-                Text(line)
-                    .font(.brand(.footnote))
-                    .foregroundStyle(theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, Spacing.xxs)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("plan-standing")
-    }
-
-    /// "What your plan includes": product copy only — no prices, no overage, no upgrade.
-    @ViewBuilder
-    private func includesRows(_ model: AccountUsageViewModel) -> some View {
-        let rows = model.includedRows
-        let features = model.productFeatures
-        if !rows.isEmpty || !features.isEmpty {
-            Button {
-                includesOpen.toggle()
-            } label: {
-                HStack {
-                    Text("What your plan includes")
-                        .font(.brand(.body, weight: .medium))
-                        .foregroundStyle(theme.textPrimary)
-                        .dynamicLineLimit(2)
-                    Spacer(minLength: Spacing.sm)
-                    Image(systemName: includesOpen ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(theme.textTertiary)
-                        .accessibilityHidden(true)
-                }
-                .frame(minHeight: Layout.touchTarget)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(includesOpen ? "Expanded" : "Collapsed")
-            .accessibilityIdentifier("plan-includes")
-
-            if includesOpen {
-                ForEach(rows, id: \.title) { row in
-                    ValueRow(row.title, value: row.value)
-                }
-                ForEach(features) { feature in
-                    AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: Spacing.sm) {
-                        Label {
-                            Text(feature.label)
-                                .font(.brand(.subheadline))
-                                .foregroundStyle(theme.textPrimary)
-                        } icon: {
-                            Image(systemName: "checkmark.circle")
-                                .foregroundStyle(theme.success)
-                        }
-                        Spacer(minLength: Spacing.sm)
-                        switch feature.status {
-                        case .included: EmptyView()
-                        case .comingSoon: StatusPill(text: "Coming soon", tone: .neutral)
-                        case .inDevelopment: StatusPill(text: "In development", tone: .neutral)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
-        }
     }
 
     private func standingRow(_ standing: Session.Standing) -> some View {

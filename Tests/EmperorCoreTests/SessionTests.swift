@@ -15,7 +15,7 @@ final class SessionTests: XCTestCase {
 
     /// The whole point of persisting the token: reopening the app must not ask for a password.
     func testRestoreSignsInFromStoredCredentials() async {
-        let user = User(id: 42, email: "adv@example.test", name: "R. Iyer")
+        let user = User(id: 42, email: "adv@chambers.in", name: "R. Iyer")
         let store = InMemoryCredentialStore([
             "auth.token": "tok-abc",
             "auth.user": Self.encoded(user),
@@ -78,8 +78,8 @@ final class SessionTests: XCTestCase {
         }
     }
 
-    /// Signing out is purely local, so the one thing it must get right is leaving nothing
-    /// behind on the device.
+    /// Signing out is purely local — there is no revocation endpoint — so the one thing it
+    /// must get right is leaving nothing behind on the device.
     func testSignOutClearsStoredCredentials() async {
         let store = InMemoryCredentialStore([
             "auth.token": "tok-abc",

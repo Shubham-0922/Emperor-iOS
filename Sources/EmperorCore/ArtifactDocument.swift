@@ -33,13 +33,7 @@ enum ArtifactDocument {
     /// what keeps an exported PDF identical whatever this rule does on screen.
     private static let tabletBreakpointPx = 820
 
-    /// - Parameter editable: marks the document's wrapper `contenteditable`, for editing a saved
-    ///   draft in place (`EditableDocumentWebView`). Only the wrapper: its `innerHTML` is what a
-    ///   save reads back, so the page's own shell never reaches the server.
-    static func html(
-        wrapping fragment: String, pointSize: Double = basePointSize, editable: Bool = false
-    ) -> String {
-        let wrapperAttributes: String = editable ? #" contenteditable="true""# : ""
+    static func html(wrapping fragment: String, pointSize: Double = basePointSize) -> String {
         // A floor rather than trust: this comes from a system metric, and type below about
         // eleven points is not a document anyone reads on a phone.
         let size = max(11, pointSize)
@@ -94,12 +88,11 @@ enum ArtifactDocument {
           .ex-loe-notes p { margin: 0 0 0.3em; text-align: left; }
           /* Wide tables of contents must scroll rather than force the page sideways. */
           .scroll { overflow-x: auto; }
-          .scroll[contenteditable] { min-height: 70vh; outline: none; }
           @media (min-width: \(tabletBreakpointPx)px) {
             body { font-size: \(wide)px; padding: 48px; }
           }
         </style>
-        </head><body><div class="scroll"\(wrapperAttributes)>\(fragment)</div></body></html>
+        </head><body><div class="scroll">\(fragment)</div></body></html>
         """
     }
 }

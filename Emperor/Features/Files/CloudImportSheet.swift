@@ -1,252 +1,253 @@
 import SwiftUI
 
-/// My Files → Add → From Google Drive: the drive's recent files, picked and copied into a folder.
+/// My Files → Import from a drive: the web's import modal (`src/pages/MyFilesPage.jsx`).
 ///
-/// Everything it decides is `CloudImportModel`'s; this lays it out. When nothing can be listed —
-/// no drive set up on the server, or this one not connected — it says so, with the way to
-/// Connected services where connecting would help.
+/// Pick the drive (when two are connected), the folder, and the files; Import brings them in one
+/// at a time, and each row then says how it went. Every decision is `CloudImportViewModel`'s.
 struct CloudImportSheet: View {
-    @Environment(Session.self) private var session
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
 
-    /// The folder on screen when the sheet opened; `nil` for the top level.
-    let destination: String?
-    /// Every folder the files could go into.
-    let folders: [FolderSummary]
-    /// Called once an import has run. The presenter closes the sheet, through the binding that
-    /// opened it.
-    let onFinished: (CloudImportSummary) -> Void
+    @State private var model: CloudImportViewModel
+    /// Told once a run has brought at least one file in, so My Files reads its library again.
+    private let onImported: () async -> Void
 
-    @State private var model: CloudImportModel?
-    @State private var isShowingServices = false
+    init(
+        service: any CloudDriveProviding, destinations: [String], initialDestination: String,
+        onImported: @escaping () async -> Void
+    ) {
+        _model = State(initialValue: CloudImportViewModel(
+            service: service, destinations: destinations, initialDestination: initialDestination))
+        self.onImported = onImported
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            RecordSheetHeader(
-                title: model?.title ?? "Import",
-                subtitle: CloudCopy.listCap,
-                onClose: { dismiss() })
+        NavigationStack {
             content
+                .background(theme.groupedBackground)
+                .navigationTitle(model.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { toolbar }
         }
-        .background(theme.canvas)
-        .safeAreaInset(edge: .bottom) {
-            if let model, !model.files.isEmpty, model.blocker == nil {
-                importBar(model)
+        .interactiveDismissDisabled(model.isImporting)
+        .task { await model.load() }
+        .onChange(of: model.summary) { _, summary in
+            if let summary { VoiceOver.announce(summary) }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button(model.hasRun ? "Done" : "Cancel") { dismiss() }
+                .disabled(model.isImporting)
+        }
+        if !model.hasRun, model.unavailable == nil {
+            ToolbarItem(placement: .confirmationAction) {
+                Button(model.importButtonTitle) {
+                    Task {
+                        if await model.importSelected() > 0 {
+                            await onImported()
+                        }
+                    }
+                }
+                .disabled(!model.canImport)
+                .accessibilityIdentifier("cloud-import-run")
             }
         }
-        .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(model?.isImporting ?? false)
-        .task {
-            guard model == nil else { return }
-            let created = CloudImportModel(service: session.cloud, destination: destination)
-            model = created
-            await created.load()
-        }
-        .sheet(isPresented: $isShowingServices, onDismiss: reload) {
-            CloudServicesSheet()
-        }
     }
-
-    private func reload() {
-        guard let model else { return }
-        Task { await model.load() }
-    }
-
-    // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
-        if let model {
-            if let blocker = model.blocker {
-                blocked(blocker)
-            } else if let failure = model.state.failure {
-                LoadFailureView(failure: failure, retry: { await model.list() })
-            } else if !model.state.hasLoaded {
-                loading
-            } else if model.files.isEmpty {
-                EmptyStateView(
-                    "No importable files", systemImage: "tray", message: CloudCopy.emptyDrive,
-                    tone: .neutral)
-            } else {
-                fileList(model)
-            }
+        if let unavailable = model.unavailable {
+            EmptyStateView(
+                "Nothing to import from", systemImage: "externaldrive.badge.xmark",
+                message: unavailable.message)
         } else {
-            loading
-        }
-    }
-
-    private var loading: some View {
-        ProgressView("Listing files…")
-            .font(.brand(.subheadline))
-            .tint(theme.textSecondary)
-            .foregroundStyle(theme.textSecondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func blocked(_ message: String) -> some View {
-        let canConnect: Bool = message != CloudCopy.soon
-        return EmptyStateView(
-            canConnect ? "Connect a drive first" : "Not available yet",
-            systemImage: "icloud.slash", message: message, tone: .neutral
-        ) {
-            if canConnect {
-                Button("Open Connected services") {
-                    isShowingServices = true
+            List {
+                if model.drives.count > 1 {
+                    drivePicker
                 }
-                .buttonStyle(.primaryAction)
-                .accessibilityIdentifier("cloud-open-account")
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("cloud-import-blocked")
-    }
-
-    private func fileList(_ model: CloudImportModel) -> some View {
-        List {
-            Section {
-                if model.showsProviderPicker {
-                    providerPicker(model)
+                destinationSection
+                if let summary = model.summary {
+                    Section {
+                        Text(summary)
+                            .font(.brand(.subheadline))
+                            .foregroundStyle(theme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .listRowBackground(theme.surface)
                 }
-                destinationPicker(model)
-                RecordSearchField(text: queryBinding(model), prompt: "Filter by name")
-                    .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
+                filesSection
             }
-            .listRowBackground(theme.surface)
+            .font(.brand(.body))
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+        }
+    }
 
-            Section {
-                ForEach(model.visibleFiles) { file in
-                    fileRow(file, model: model)
+    private var drivePicker: some View {
+        Section {
+            Picker("Drive", selection: Binding(
+                get: { model.drive ?? model.drives.first ?? .google },
+                set: { chosen in Task { await model.choose(chosen) } }
+            )) {
+                ForEach(model.drives) { drive in
+                    Text(drive.label).tag(drive)
                 }
-            } header: {
-                SectionHeader(title: "Files", detail: selectionDetail(model))
             }
-            .listRowBackground(theme.surface)
+            .pickerStyle(.segmented)
+            .disabled(model.isImporting || model.hasRun)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .disabled(model.isImporting)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
     }
 
-    private func selectionDetail(_ model: CloudImportModel) -> String? {
-        let count: Int = model.selection.count
-        return count == 0 ? nil : "\(count) chosen"
-    }
-
-    private func providerPicker(_ model: CloudImportModel) -> some View {
-        let options: [(value: CloudProvider, title: String)] = model.connectedProviders.map {
-            (value: $0, title: $0.label)
-        }
-        let selection = Binding<CloudProvider>(
-            get: { model.provider },
-            set: { chosen in Task { await model.choose(chosen) } })
-        return RecordSegmentedControl(label: "Drive", options: options, selection: selection)
-            .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
-            .accessibilityIdentifier("cloud-import-provider")
-    }
-
-    private func destinationPicker(_ model: CloudImportModel) -> some View {
-        let selection = Binding<String>(
-            get: { model.destination ?? "" },
-            set: { model.destination = $0.isEmpty ? nil : $0 })
-        return Picker(selection: selection) {
-            Text("Files root (top level)").tag("")
-            ForEach(folders) { folder in
-                Text(folder.breadcrumb).tag(folder.path)
+    private var destinationSection: some View {
+        Section {
+            Picker("Save into", selection: Binding(
+                get: { model.destination },
+                set: { model.destination = $0 }
+            )) {
+                ForEach(model.destinations, id: \.self) { path in
+                    Text(CloudImportViewModel.label(forFolder: path)).tag(path)
+                }
             }
-        } label: {
-            Text("Save into")
-                .font(.brand(.body))
-                .foregroundStyle(theme.textPrimary)
+            .pickerStyle(.menu)
+            .disabled(model.isImporting || model.hasRun)
+            .accessibilityIdentifier("cloud-import-folder")
         }
-        .pickerStyle(.menu)
-        .tint(theme.accentText)
-        .accessibilityIdentifier("cloud-import-destination")
+        .listRowBackground(theme.surface)
     }
 
-    private func queryBinding(_ model: CloudImportModel) -> Binding<String> {
-        Binding(get: { model.query }, set: { model.query = $0 })
+    private var filesSection: some View {
+        Section {
+            filesRows
+        } header: {
+            SectionHeader(
+                title: "Files",
+                detail: model.selected.isEmpty ? nil : "\(model.selected.count) chosen")
+        } footer: {
+            Text(CloudImportViewModel.Copy.listNote)
+                .font(.brand(.caption))
+                .foregroundStyle(theme.textSecondary)
+        }
+        .listRowBackground(theme.surface)
     }
 
-    private func fileRow(_ file: CloudFile, model: CloudImportModel) -> some View {
-        let isChosen: Bool = model.selection.contains(file.id)
-        return Button {
-            Haptics.selection()
-            model.toggle(file)
-        } label: {
-            HStack(spacing: Spacing.md) {
-                IconTile(systemImage: "doc", hue: .indigo, size: .small)
-                VStack(alignment: .leading, spacing: 2) {
+    @ViewBuilder
+    private var filesRows: some View {
+        switch model.state {
+        case .idle, .loading:
+            HStack(spacing: Spacing.sm) {
+                ProgressView()
+                Text("Listing files…")
+                    .foregroundStyle(theme.textSecondary)
+            }
+        case .failed(let failure):
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text(failure.message)
+                    .font(.brand(.subheadline))
+                    .foregroundStyle(theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if failure.isRetryable {
+                    Button("Try again") {
+                        Task { await model.load() }
+                    }
+                    .font(.brand(.subheadline, weight: .semibold))
+                }
+            }
+            .padding(.vertical, Spacing.xxs)
+        case .loaded:
+            if model.files.isEmpty {
+                Text(CloudImportViewModel.Copy.empty)
+                    .font(.brand(.subheadline))
+                    .foregroundStyle(theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(model.files) { file in
+                    CloudFileRow(
+                        file: file,
+                        detail: model.detail(for: file),
+                        isSelected: model.isSelected(file),
+                        outcome: model.outcome(of: file),
+                        isLocked: model.isImporting || model.hasRun,
+                        toggle: { model.toggle(file) })
+                }
+            }
+        }
+    }
+}
+
+/// One drive file: a tick, its name, its size and date — and, once a run has started, how it went.
+private struct CloudFileRow: View {
+    @Environment(\.theme) private var theme
+
+    let file: CloudDriveFile
+    let detail: String?
+    let isSelected: Bool
+    let outcome: CloudImportOutcome?
+    let isLocked: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? theme.accentText : theme.textTertiary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: Spacing.xxs) {
                     Text(file.name)
-                        .font(.brand(.body, weight: .medium))
+                        .font(.brand(.body))
                         .foregroundStyle(theme.textPrimary)
                         .dynamicLineLimit(2)
-                    if let detail = file.detailLine {
+                    if let detail {
                         Text(detail)
                             .font(.brand(.footnote))
                             .monospacedDigit()
                             .foregroundStyle(theme.textTertiary)
                     }
+                    if let outcome {
+                        Text(outcome.line(for: file))
+                            .font(.brand(.footnote, weight: .medium))
+                            .foregroundStyle(outcome.isProblem ? theme.danger : theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: isChosen ? "checkmark.circle.fill" : "circle")
-                    .font(.brand(.title3))
-                    .foregroundStyle(isChosen ? theme.accentText : theme.textTertiary)
-                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(isChosen ? [.isSelected] : [])
-        .accessibilityIdentifier("cloud-file-\(file.id)")
-    }
-
-    private func importBar(_ model: CloudImportModel) -> some View {
-        Button {
-            Task {
-                let summary = await model.run()
-                onFinished(summary)
-            }
-        } label: {
-            HStack(spacing: Spacing.sm) {
-                if model.isImporting {
-                    ProgressView()
-                        .tint(theme.onAccent)
-                }
-                Text(model.importTitle)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.primaryAction)
-        .disabled(!model.canImport)
-        .accessibilityIdentifier("cloud-import-run")
-        .padding(.horizontal, Spacing.gutter)
-        .padding(.vertical, Spacing.sm)
-        .background(theme.groupedBackground)
+        .disabled(isLocked)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 }
 
-/// Connected services on their own, for the import sheet's "Open Connected services".
-struct CloudServicesSheet: View {
-    @Environment(\.theme) private var theme
-    @Environment(\.dismiss) private var dismiss
+/// What the "Save to …" action leaves on My Files: a line when a document arrived in the drive,
+/// and an alert, in the server's words, when it did not.
+struct CloudSaveOutcomes: ViewModifier {
+    let cloud: CloudFileActionsViewModel?
 
-    var body: some View {
-        NavigationStack {
-            List {
-                CloudConnectionsSection()
-            }
-            .font(.brand(.body))
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(theme.groupedBackground)
-            .navigationTitle("Connected services")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if let cloud, let notice = cloud.notice {
+                    ActionNoticeToast(notice: notice) { cloud.notice = nil }
+                        .padding(.top, Spacing.sm)
                 }
             }
-        }
+            .alert(
+                cloud?.failure?.title ?? "Couldn't save",
+                isPresented: Binding(
+                    get: { cloud?.failure != nil },
+                    set: { if !$0 { cloud?.failure = nil } }
+                )
+            ) {
+                Button("OK") { cloud?.failure = nil }
+            } message: {
+                Text(cloud?.failure?.message ?? "")
+            }
     }
 }

@@ -3,11 +3,8 @@ import SwiftUI
 /// The Matters tab: the next sitting, what is upcoming, and every matter.
 ///
 /// The first two are the cause list (`MattersOverview`), each hearing led by its item number in
-/// the serif and opening its sheet — the web's Cause list column. The third is the web's Matters
-/// column: the user's matters (`MattersListViewModel`, each opening its workspace), then the
-/// tracked cases no matter holds (`CaseListViewModel`, with its own sort and filters, each pushing
-/// its case page). One search field narrows both; New matter makes a matter, and a row's context
-/// menu edits, archives or deletes it. `+` adds a matter through the court lookup, and
+/// the serif and opening its sheet; the third is the docket (`CaseListViewModel`), with its search,
+/// sort and filters, each matter pushing its page. `+` adds a matter through the court lookup, and
 /// the Calendar button in the bar switches to the Calendar tab. Pull to refresh checks
 /// the cause lists again, and says so when it is done.
 ///
@@ -21,19 +18,19 @@ struct MattersView: View {
 
     enum Segment: Hashable { case next, upcoming, all }
 
-    @State private var path: [MattersRoute] = []
+    @State private var path: [CaseRoute] = []
     @State private var causeList: CauseListViewModel?
     @State private var cases: CaseListViewModel?
-    @State private var matters: MattersListViewModel?
     @State private var segment: Segment = .next
     @State private var openHearing: CauseListing?
     @State private var isAddingMatter = false
     @State private var isArranging = false
+    @State private var isShowingTeams = false
+    @State private var isCreatingMatter = false
+    @State private var openMatter: MatterRoute?
     @State private var toast: String?
-    @State private var matterSheet: MatterListSheet?
-    /// A matter made in the New matter sheet, opened once the sheet has gone.
-    @State private var createdMatter: String?
-    @State private var matterFailure: String?
+    /// The docket row whose "Stop tracking" is being confirmed.
+    @State private var removalCandidate: LegalCase?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -88,33 +85,15 @@ struct MattersView: View {
             .navigationTitle("Matters")
             .navigationBarTitleDisplayMode(.large)
             .toolbar { toolbar }
-            .navigationDestination(for: MattersRoute.self) { route in
-                switch route {
-                case .legalCase(let caseRoute):
-                    CaseDetailView(caseID: caseRoute.caseID)
-                        .toolbar(.hidden, for: .tabBar)
-                case .matter(let matterRoute):
-                    MatterWorkspaceView(
-                        route: matterRoute,
-                        fileCount: matters?.projects.first(where: { $0.id == matterRoute.projectID })?.fileCount,
-                        onOpenCase: { path.append(.legalCase(CaseRoute(caseID: $0))) },
-                        onChanged: { message in
-                            if let message { toast = message }
-                            reloadMatters()
-                        })
-                        .toolbar(.hidden, for: .tabBar)
-                case .matterChat(let chat):
-                    // A matter's conversation: every turn carries the matter, and it is not
-                    // listed in History.
-                    ChatThreadView(chatID: chat.chatID, projectID: chat.projectID)
-                        .toolbar(.hidden, for: .tabBar)
-                }
+            .navigationDestination(for: CaseRoute.self) { route in
+                CaseDetailView(caseID: route.caseID, onRemoved: { stoppedTracking(route.caseID) })
+                    .toolbar(.hidden, for: .tabBar)
             }
             .sheet(item: $openHearing) { listing in
                 HearingSheet(
                     listing: listing,
                     allListings: causeList?.listings ?? [],
-                    onOpenMatter: { path = [.legalCase(CaseRoute(caseID: $0))] },
+                    onOpenMatter: { path = [CaseRoute(caseID: $0)] },
                     onAsk: { navigator.ask($0) })
             }
             .sheet(isPresented: $isAddingMatter) {
@@ -124,36 +103,42 @@ struct MattersView: View {
                 }
                 .pageSizedSheet()
             }
-            .sheet(item: $matterSheet, onDismiss: { openCreatedMatter() }) { which in
-                matterSheetView(which)
-            }
-            .alert("That did not go through", isPresented: Binding(
-                get: { matterFailure != nil }, set: { if !$0 { matterFailure = nil } })) {
-                Button("OK", role: .cancel) { matterFailure = nil }
-            } message: {
-                Text(matterFailure ?? "")
-            }
             .sheet(isPresented: $isArranging) {
                 if let cases {
                     CaseArrangementSheet(model: cases)
                         .pageSizedSheet()
                 }
             }
+            .sheet(isPresented: $isShowingTeams) {
+                TeamsSheet()
+            }
+            .sheet(isPresented: $isCreatingMatter) {
+                NewMatterSheet { projectID, message in
+                    toast = message
+                    openMatter = MatterRoute(projectID: projectID)
+                    let cases = self.cases
+                    Task { await cases?.load() }
+                }
+                .pageSizedSheet()
+            }
+            .navigationDestination(item: $openMatter) { route in
+                ProjectDetailView(projectID: route.projectID)
+                    .toolbar(.hidden, for: .tabBar)
+            }
         }
         .recordToast($toast)
+        .modifier(DocketRemovalPrompts(
+            cases: cases, candidate: $removalCandidate,
+            onRemoved: { toast = "Stopped tracking the case" }))
         .task { await loadOnce() }
         // A matter or a docket reload asked for from elsewhere. Both, because either can be
         // first: a tab never shown before is created by the switch the request causes.
         .onAppear {
             openRequestedCase()
-            openRequestedMatter()
             openRequestedDocketRefresh()
         }
         .onChange(of: navigator.pendingCase) { _, _ in
             openRequestedCase()
-        }
-        .onChange(of: navigator.pendingMatter) { _, _ in
-            openRequestedMatter()
         }
         .onChange(of: navigator.docketRefreshRequest) { _, _ in openRequestedDocketRefresh() }
     }
@@ -179,7 +164,21 @@ struct MattersView: View {
             .accessibilityLabel("Calendar")
             .accessibilityHint("Your hearings day by day, and your diary")
         }
+        // The web's "Team" button, beside its Matters title: who shares the tracked cases.
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isShowingTeams = true
+            } label: {
+                Image(systemName: "person.2")
+            }
+            .accessibilityLabel("Teams")
+            .accessibilityHint("Make a team, or add someone to one")
+        }
         ToolbarItemGroup(placement: .primaryAction) {
+            // The next sitting's list, downloaded as the web's cause list downloads a day.
+            if segment == .next, let day = overview?.nextSitting {
+                CauseListDownloadMenu(day: day.key, listings: day.listings)
+            }
             if segment == .all, let cases {
                 Button {
                     isArranging = true
@@ -191,6 +190,16 @@ struct MattersView: View {
                 .accessibilityLabel(CaseListViewModel.Copy.arrange)
                 .accessibilityValue(cases.filterSummary)
             }
+            // The web's New matter: a matter of its own — name, banner, folder colour — before
+            // any court case. Its own button, beside the court lookup rather than inside a menu
+            // with it, so each is one tap and one control.
+            Button {
+                isCreatingMatter = true
+            } label: {
+                Image(systemName: "folder.badge.plus")
+            }
+            .accessibilityLabel(ProjectListViewModel.Copy.newMatter)
+            .accessibilityHint("Starts a matter with its own name, banner and folder colour")
             Button {
                 isAddingMatter = true
             } label: {
@@ -281,30 +290,9 @@ struct MattersView: View {
     @ViewBuilder
     private var allMattersList: some View {
         if let cases {
-            let hasMatters = !(matters?.projects.isEmpty ?? true)
+            @Bindable var bindable = cases
             VStack(alignment: .leading, spacing: Spacing.md) {
-                // One query for both lists: the matters and the tracked cases under them.
-                RecordSearchField(
-                    text: Binding(
-                        get: { cases.query },
-                        set: { query in
-                            cases.query = query
-                            matters?.query = query
-                        }),
-                    prompt: CaseListViewModel.Copy.searchPrompt)
-
-                if let matters {
-                    MattersSectionList(
-                        model: matters,
-                        onOpen: { project in path.append(.matter(MatterRoute(projectID: project.id))) },
-                        onNew: { matterSheet = .new },
-                        onAction: { project, action in rowAction(project, action) })
-                }
-
-                if hasMatters {
-                    RecordSectionLabel(title: "Tracked cases")
-                        .padding(.top, -Spacing.md)
-                }
+                RecordSearchField(text: $bindable.query, prompt: CaseListViewModel.Copy.searchPrompt)
 
                 if !cases.filterChips.isEmpty {
                     FilterChipBar(
@@ -315,12 +303,7 @@ struct MattersView: View {
 
                 if cases.cases.isEmpty, cases.state.isLoading {
                     loading
-                } else if cases.docketCases.isEmpty, hasMatters {
-                    Text(cases.cases.isEmpty ? "No tracked cases yet. Add a matter to follow a case from the court." : "Every case you track is filed under one of your matters.")
-                        .font(.brand(.footnote))
-                        .foregroundStyle(theme.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if cases.docketCases.isEmpty {
+                } else if cases.cases.isEmpty {
                     EmptyStateContent(
                         title: CaseListViewModel.Copy.noMattersTitle,
                         systemImage: "briefcase",
@@ -332,12 +315,6 @@ struct MattersView: View {
                             Label("Add a matter", systemImage: "plus")
                         }
                         .buttonStyle(.primaryAction)
-                        Button {
-                            matterSheet = .new
-                        } label: {
-                            Label("New matter", systemImage: "folder.badge.plus")
-                        }
-                        .buttonStyle(.secondaryAction)
                     }
                 } else if let noMatches = cases.noMatches {
                     EmptyStateContent(
@@ -357,12 +334,22 @@ struct MattersView: View {
                                 ForEach(Array(group.cases.enumerated()), id: \.element.id) { index, legalCase in
                                     if index > 0 { RecordDivider() }
                                     Button {
-                                        path.append(.legalCase(CaseRoute(caseID: legalCase.id)))
+                                        path.append(CaseRoute(caseID: legalCase.id))
                                     } label: {
-                                        DocketRow(legalCase: legalCase)
+                                        MatterRow(legalCase: legalCase)
                                     }
                                     .buttonStyle(.recordRow)
                                     .accessibilityIdentifier("case-row-\(legalCase.id)")
+                                    // A long press offers what the case page's menu does.
+                                    .contextMenu {
+                                        if cases.canRemove {
+                                            Button(role: .destructive) {
+                                                removalCandidate = legalCase
+                                            } label: {
+                                                Label(CaseRemovalCopy.action, systemImage: "minus.circle")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -372,63 +359,6 @@ struct MattersView: View {
         } else {
             loading
         }
-    }
-
-    // MARK: - Writing matters
-
-    @ViewBuilder
-    private func matterSheetView(_ which: MatterListSheet) -> some View {
-        switch which {
-        case .new:
-            NewMatterSheet(existing: matters?.projects ?? []) { id, existed in
-                toast = NewMatterViewModel.createdMessage(existed: existed)
-                createdMatter = id
-                reloadMatters()
-            }
-        case .edit(let project):
-            MatterDetailsSheet(project: project) { message in
-                toast = message
-                reloadMatters()
-            }
-            .pageSizedSheet()
-        case .delete(let project):
-            DeleteMatterSheet(project: project) { message in
-                toast = message
-                reloadMatters()
-            }
-        }
-    }
-
-    private func rowAction(_ project: Project, _ action: MattersSectionList.RowAction) {
-        switch action {
-        case .edit: matterSheet = .edit(project)
-        case .delete: matterSheet = .delete(project)
-        case .archive:
-            let quick = MatterQuickActions(projectID: project.id, writes: session.projectWrites)
-            let archiving = !project.isArchived
-            Task {
-                if await quick.setArchived(archiving) {
-                    toast = archiving ? "Matter archived" : "Matter restored to active"
-                    reloadMatters()
-                } else if let error = quick.error {
-                    matterFailure = error
-                }
-            }
-        }
-    }
-
-    /// The matter just made, opened over All matters once its sheet has gone.
-    private func openCreatedMatter() {
-        guard let id = createdMatter else { return }
-        createdMatter = nil
-        segment = .all
-        path = [.matter(MatterRoute(projectID: id))]
-    }
-
-    private func reloadMatters() {
-        let matters = self.matters
-        let cases = self.cases
-        Task { await loadMatters(matters, cases: cases) }
     }
 
     // MARK: - States
@@ -471,25 +401,13 @@ struct MattersView: View {
         }
         if cases == nil {
             cases = CaseListViewModel(
-                service: session.cases, cache: session.cache, store: Self.docketPreferences)
-        }
-        if matters == nil {
-            matters = MattersListViewModel(service: session.projects)
+                service: session.cases, cache: session.cache, store: Self.docketPreferences,
+                remover: session.cases)
         }
         let causeList = self.causeList
         let cases = self.cases
-        let matters = self.matters
         await causeList?.load()
         await cases?.load()
-        await loadMatters(matters, cases: cases)
-    }
-
-    /// The matters, then the docket told which cases they hold — a case a matter links is shown
-    /// as that matter, not again as a tracked case.
-    private func loadMatters(_ matters: MattersListViewModel?, cases: CaseListViewModel?) async {
-        guard let matters else { return }
-        await matters.load()
-        cases?.hiddenCaseIDs = matters.linkedCaseIDs
     }
 
     /// Where the docket's sort, grouping and filters are remembered between launches.
@@ -512,34 +430,26 @@ struct MattersView: View {
     private func refresh() async {
         let causeList = self.causeList
         let cases = self.cases
-        let matters = self.matters
         await causeList?.load()
         await cases?.load()
-        await loadMatters(matters, cases: cases)
         if causeList?.state.failure == nil {
             toast = "Cause lists checked"
         }
     }
 
-    /// A case asked for from elsewhere. A case one of the user's matters links opens as that
-    /// matter, on its Court section — the web's `/cases/<id>`; any other opens its own page.
+    /// The case page stopped tracking a case: close it and read the docket again, rather than
+    /// dropping the row by hand.
+    private func stoppedTracking(_ caseID: String) {
+        path.removeAll { $0.caseID == caseID }
+        toast = "Stopped tracking the case"
+        let cases = self.cases
+        Task { await cases?.load() }
+    }
+
     private func openRequestedCase() {
         guard let stack = navigator.takePendingCaseStack() else { return }
         segment = .all
-        let projects = matters?.projects ?? []
-        if let last = stack.last,
-           let projectID = CaseToMatter.matterID(forCase: last.caseID, in: projects) {
-            path = [.matter(MatterRoute(projectID: projectID, section: CaseToMatter.section, request: last.request))]
-            return
-        }
-        path = stack.map { MattersRoute.legalCase($0) }
-    }
-
-    /// A matter asked for from elsewhere: All matters, with its workspace on top.
-    private func openRequestedMatter() {
-        guard let route = navigator.takePendingMatter() else { return }
-        segment = .all
-        path = [.matter(route)]
+        path = stack
     }
 
     /// A matter pinned from Home's court lookup: the docket behind this screen is kept across
@@ -548,6 +458,44 @@ struct MattersView: View {
         guard navigator.takeDocketRefreshRequest() else { return }
         let cases = self.cases
         Task { await cases?.load() }
+    }
+}
+
+/// "Stop tracking" from a docket row: the confirmation, then the removal and the docket read
+/// again (`CaseListViewModel.removeCase`), and the reason when it was refused.
+private struct DocketRemovalPrompts: ViewModifier {
+    let cases: CaseListViewModel?
+    @Binding var candidate: LegalCase?
+    let onRemoved: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                CaseRemovalCopy.confirmTitle,
+                isPresented: Binding(
+                    get: { candidate != nil },
+                    set: { if !$0 { candidate = nil } }),
+                titleVisibility: .visible,
+                presenting: candidate
+            ) { legalCase in
+                Button(CaseRemovalCopy.action, role: .destructive) {
+                    let cases = cases
+                    Task {
+                        if await cases?.removeCase(id: legalCase.id) == true { onRemoved() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { legalCase in
+                Text("\(legalCase.displayTitle)\n\n\(CaseRemovalCopy.confirmMessage)")
+            }
+            .alert(CaseRemovalCopy.failedTitle, isPresented: Binding(
+                get: { cases?.removeError != nil },
+                set: { if !$0 { cases?.removeError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(cases?.removeError ?? "")
+            }
     }
 }
 
@@ -610,8 +558,8 @@ private struct UpcomingRow: View {
     }
 }
 
-/// A tracked case in the docket: its title, its reference and court, and its next hearing.
-private struct DocketRow: View {
+/// A matter in the docket: its title, its reference and court, and its next hearing.
+private struct MatterRow: View {
     @Environment(\.theme) private var theme
     let legalCase: LegalCase
 
@@ -631,27 +579,4 @@ private struct DocketRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityValue(legalCase.isCourtSynced ? "From court" : "")
     }
-}
-
-/// A sheet over All matters.
-enum MatterListSheet: Identifiable {
-    case new
-    case edit(Project)
-    case delete(Project)
-
-    var id: String {
-        switch self {
-        case .new: return "new"
-        case .edit(let p): return "edit-\(p.id)"
-        case .delete(let p): return "delete-\(p.id)"
-        }
-    }
-}
-
-/// What the Matters tab's stack can hold: a tracked case's page, a matter's workspace, or one of
-/// a matter's conversations.
-enum MattersRoute: Hashable {
-    case legalCase(CaseRoute)
-    case matter(MatterRoute)
-    case matterChat(MatterChatRoute)
 }

@@ -59,7 +59,7 @@ final class FilingWireTests: XCTestCase {
 
     func testAPageRangeReadsWithAnEnDash() throws {
         let data = Data(Self.row.replacingOccurrences(of: #""page_from":null,"page_to":null"#, with: #""page_from":3,"page_to":7"#).utf8)
-        let a = try JSONDecoder().decode(FilingAnnexure.self, from: data)
+        let a = try JSONDecoder().decode(AssemblyAnnexure.self, from: data)
         XCTAssertEqual(a.pageRangeLabel, "pp. 3–7")
         XCTAssertEqual(a.caption, "Order.pdf · pp. 3–7")
     }
@@ -250,63 +250,5 @@ final class FilingWireTests: XCTestCase {
         XCTAssertEqual(Set(body.keys), ["userId", "chatId", "folderName", "fileName"])
         XCTAssertEqual(body["chatId"] as? String, "c1")
         XCTAssertEqual(body["folderName"] as? String, ".")
-    }
-
-    func testATypedCopyOrWhyThereIsNone() async throws {
-        HTTPStub.always(.json(#"{"success":true,"html":"<p>copy</p>","mark":"P-2"}"#))
-        let copy = try await service().typedCopy(chatID: "c1", mark: "P-2")
-        let query = try XCTUnwrap(HTTPStub.lastRequest).queryItems
-        XCTAssertEqual(query["chatId"], "c1")
-        XCTAssertEqual(query["mark"], "P-2")
-        XCTAssertEqual(copy, FilingTypedCopy(html: "<p>copy</p>", skipped: false, reason: nil))
-
-        HTTPStub.always(.json(#"{"success":true,"skipped":true,"reason":"P-1 is attached as its original"}"#))
-        let skipped = try await service().typedCopy(chatID: "c1", mark: "P-1")
-        XCTAssertEqual(skipped, FilingTypedCopy(html: nil, skipped: true, reason: "P-1 is attached as its original"))
-    }
-
-    func testAnOriginalCarriesItsTypeAndAnUnshowableOneSaysSo() async throws {
-        HTTPStub.always(HTTPStub.Reply(
-            status: 200, body: Data("%PDF-1.4".utf8), headers: ["Content-Type": "application/pdf"]))
-        let original = try await service().original(chatID: "c1", mark: "P-1")
-        XCTAssertEqual(try XCTUnwrap(HTTPStub.lastRequest).path, "/api/filing/annexures/original")
-        XCTAssertEqual(original.mime, "application/pdf")
-        XCTAssertTrue(original.isPDF)
-
-        HTTPStub.always(HTTPStub.Reply(
-            status: 200, body: Data([0x89, 0x50]), headers: ["Content-Type": "image/png; charset=binary"]))
-        let image = try await service().original(chatID: "c1", mark: "P-2")
-        XCTAssertEqual(image.mime, "image/png")
-        XCTAssertTrue(image.isImage)
-
-        HTTPStub.always(.json(#"{"success":false,"error":"preview not available for .heic"}"#, status: 415))
-        do {
-            _ = try await service().original(chatID: "c1", mark: "P-9")
-            XCTFail("expected unpreviewable")
-        } catch let error as FilingPreviewError {
-            XCTAssertEqual(error, .unpreviewable)
-        }
-    }
-
-    func testOriginalPagesAreReadWhateverTheStatus() async throws {
-        HTTPStub.always(.json(#"{"success":true,"pages":[{"base64":"QQ==","mime":"image/jpeg"}]}"#))
-        let pages = try await service().originalPages(chatID: "c1", mark: "P-1")
-        XCTAssertEqual(pages.pages.count, 1)
-
-        HTTPStub.always(.json(#"{"success":true,"duplicate_of":"P-1","pages":[]}"#))
-        let repeated = try await service().originalPages(chatID: "c1", mark: "P-3")
-        XCTAssertEqual(repeated.duplicateOf, "P-1")
-
-        HTTPStub.always(.json(#"{"success":false,"error":"original-page rendering not available for .heic"}"#, status: 415))
-        let refused = try await service().originalPages(chatID: "c1", mark: "P-9")
-        XCTAssertFalse(refused.success)
-        XCTAssertEqual(refused.error, "original-page rendering not available for .heic")
-    }
-
-    func testTypedCopiesAreOnePieceOfHTML() async throws {
-        HTTPStub.always(.json(#"{"success":true,"html":"<h3>P-2</h3>","marks":["P-2"]}"#))
-        let html = try await service().typedCopies(chatID: "c1")
-        XCTAssertEqual(try XCTUnwrap(HTTPStub.lastRequest).path, "/api/filing/annexures/typed-copies")
-        XCTAssertEqual(html, "<h3>P-2</h3>")
     }
 }

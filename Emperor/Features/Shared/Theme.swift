@@ -907,6 +907,7 @@ struct ChipLabel: View {
 
 extension ButtonStyle where Self == PrimaryButtonStyle {
     static var primaryAction: PrimaryButtonStyle { PrimaryButtonStyle() }
+    static var compactPrimaryAction: PrimaryButtonStyle { PrimaryButtonStyle(compact: true) }
 }
 
 extension ButtonStyle where Self == SecondaryButtonStyle {

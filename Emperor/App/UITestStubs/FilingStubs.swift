@@ -1,8 +1,7 @@
 #if DEBUG
 import Foundation
 
-/// The UI tests' canned answers for filing assembly (`/filing/*`). Owned by package 13-F1, then
-/// 13-F2.
+/// The UI tests' canned answers for filing assembly (`/filing/*`).
 ///
 /// Stateful for the life of the launch, as the server is: an annexure added, renamed, reordered
 /// or removed shows on the next read, and an assembled bundle joins the list. Two drafts —
@@ -11,7 +10,7 @@ import Foundation
 /// a case type of "Fail" answers as the server does when a source file is missing: a 200 with
 /// `success: false`. `-UITestEmpty` leaves no drafts.
 ///
-/// The conversation `c1` has annexures of its own (13-F2): P-1 an original PDF, P-2 a typed copy
+/// The conversation `c1` has annexures of its own: P-1 an original PDF, P-2 a typed copy
 /// awaiting its check, and P-9 a photograph whose kind cannot be previewed. Adding one of its
 /// files twice answers with the annexure it already is; assembling it needs the draft's HTML.
 /// Under `-UITestFilingChat`, `/messages` answers with an exchange whose answer carries a drafted

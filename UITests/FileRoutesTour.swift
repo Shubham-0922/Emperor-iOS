@@ -1,7 +1,7 @@
 import XCTest
 
-/// Photographs a draft being edited and a Word document shown as its extracted text, in the dark
-/// theme and the light one.
+/// Photographs a Word document shown as its extracted text, and Home's maintenance notice, in the
+/// dark theme and the light one.
 final class FileRoutesTour: XCTestCase {
 
     override func setUp() {
@@ -16,14 +16,6 @@ final class FileRoutesTour: XCTestCase {
         let theme = light ? "light" : "dark"
         var step = 0
 
-        let drafts = XCUIApplication.launchedSignedIn(["-UITestDraftEdit"], light: light)
-        if drafts.openStubDraft(), drafts.editStubDraft(typing: " amended") {
-            tourSnap(drafts, theme: theme, step: &step, "draft-editing")
-        } else {
-            tourSnap(drafts, theme: theme, step: &step, "draft-editing-not-reached")
-        }
-        drafts.terminate()
-
         let files = XCUIApplication.launchedSignedIn(["-UITestOfficeFails"], light: light)
         if files.openBoardResolution(),
            files.fileRouteElement("file-text-banner").waitForExistence(timeout: 15) {
@@ -31,5 +23,11 @@ final class FileRoutesTour: XCTestCase {
         } else {
             tourSnap(files, theme: theme, step: &step, "extracted-text-not-reached")
         }
+        files.terminate()
+
+        let home = XCUIApplication.launchedSignedIn(["-UITestMaintenance"], light: light)
+        _ = home.descendants(matching: .any).matching(identifier: "maintenance-banner").firstMatch
+            .waitForExistence(timeout: 15)
+        tourSnap(home, theme: theme, step: &step, "maintenance")
     }
 }

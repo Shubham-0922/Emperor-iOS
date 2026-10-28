@@ -35,9 +35,15 @@ struct DraftedItem: Codable, Equatable, Identifiable, Sendable {
     /// The conversation it came out of. `""` rather than null when the chat is gone, because
     /// the server COALESCEs it — so emptiness is the signal, not nil.
     var chatTitle: String?
-    /// The matter whose conversation made it, or nil for an ordinary conversation's draft. A
-    /// matter's drafts are listed in the matter, not in the Library.
-    var projectID: String? = nil
+    /// The matter whose conversation made it, when one did (`canvas_documents` → `chats.project_id`,
+    /// docs/projects.md). Such a draft belongs to the matter's own Drafts section; the web's
+    /// Library hid these rows and then stopped listing drafts altogether. Kept out of this
+    /// list the same way — see `DraftHistoryViewModel`.
+    var projectID: String?
+
+    var belongsToMatter: Bool {
+        !(projectID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -76,21 +82,6 @@ struct DraftedItem: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-extension DraftedItem {
-    /// Every key as before; `project_id` read as text or a number, and blank as none.
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        chatID = try c.decodeIfPresent(String.self, forKey: .chatID)
-        title = try c.decodeIfPresent(String.self, forKey: .title)
-        type = try c.decodeIfPresent(String.self, forKey: .type)
-        createdAtRaw = try c.decodeIfPresent(String.self, forKey: .createdAtRaw)
-        chatTitle = try c.decodeIfPresent(String.self, forKey: .chatTitle)
-        let project = c.wireString(.projectID)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        projectID = project.isEmpty ? nil : project
-    }
-}
-
 struct DraftListResponse: Codable, Sendable {
     var success: Bool?
     var error: String?
@@ -108,14 +99,17 @@ struct DraftContentResponse: Codable, Sendable {
 
 protocol DraftHistoryProviding: Sendable {
     func drafts(_ kind: DraftKind) async throws -> [DraftedItem]
-    /// One matter's drafts: those made in its conversations.
-    func drafts(_ kind: DraftKind, projectID: String) async throws -> [DraftedItem]
+    /// One matter's drafts, or every draft when `projectID` is nil.
+    func drafts(_ kind: DraftKind, projectID: String?) async throws -> [DraftedItem]
     func content(id: String) async throws -> String
 }
 
 extension DraftHistoryProviding {
-    /// Stand-ins that hold no matter drafts.
-    func drafts(_ kind: DraftKind, projectID: String) async throws -> [DraftedItem] { [] }
+    /// For stand-ins that list one set whatever the matter: the caller keeps only the rows whose
+    /// `project_id` is the matter's, so nothing from elsewhere can show inside it.
+    func drafts(_ kind: DraftKind, projectID: String?) async throws -> [DraftedItem] {
+        try await drafts(kind)
+    }
 }
 
 struct DraftHistoryService: DraftHistoryProviding {
@@ -124,21 +118,14 @@ struct DraftHistoryService: DraftHistoryProviding {
     /// - Important: there is **no pagination** — no limit, no offset, no cursor. Every row this
     ///   user has ever produced comes back in one response, newest first. Fetch on appear and
     ///   on pull-to-refresh; never poll it.
-    ///
-    /// A matter's drafts are left out, as the web's Library leaves them out: they belong to the
-    /// matter and are listed there (`drafts(_:projectID:)`).
     func drafts(_ kind: DraftKind) async throws -> [DraftedItem] {
-        try await list(kind, query: [:]).filter { $0.projectID == nil }
+        try await drafts(kind, projectID: nil)
     }
 
-    /// One matter's drafts, `?projectId=` on the same route. Only rows that say they are this
-    /// matter's are kept, so a server that ignored the parameter could not show the whole
-    /// Library inside a matter.
-    func drafts(_ kind: DraftKind, projectID: String) async throws -> [DraftedItem] {
-        try await list(kind, query: ["projectId": projectID]).filter { $0.projectID == projectID }
-    }
-
-    private func list(_ kind: DraftKind, query: [String: String]) async throws -> [DraftedItem] {
+    /// With `projectId`, the route lists the drafts made in that matter's conversations.
+    func drafts(_ kind: DraftKind, projectID: String?) async throws -> [DraftedItem] {
+        let project = projectID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let query = project.isEmpty ? [:] : ["projectId": project]
         let response = try await withRetry {
             // `userId` is added by `makeRequest` for GETs. Omitting it is a **500**, not a 400,
             // because the route throws rather than validating.
@@ -158,8 +145,10 @@ struct DraftHistoryService: DraftHistoryProviding {
     ///   distinguished from "no such document", and the caller must not render a blank page as
     ///   though the draft were genuinely empty.
     ///
-    /// - Note: the app only ever passes ids drawn from the signed-in user's own list. Nothing
-    ///   on this path is an authorisation boundary — never accept an id from any other source.
+    /// - Note: this route carries **no owner predicate** — the query is
+    ///   `SELECT content FROM canvas_documents WHERE id = ?` with no user or team check. Any
+    ///   caller who knows an id can read it. The app only ever passes ids from the user's own
+    ///   list, but nothing here should be mistaken for an authorisation boundary.
     func content(id: String) async throws -> String {
         let response = try await withRetry {
             let request = try await client.makeRequest(

@@ -19,12 +19,12 @@ final class FilingChatScopeTests: XCTestCase {
             ChatAttachment(name: "Root.pdf"),
         ])
 
-    private static func fake() -> FakeFiling {
-        let fake = FakeFiling()
+    private static func fake() -> FakeFilingAssembly {
+        let fake = FakeFilingAssembly()
         fake.rows = [
-            FilingAnnexure(id: 11, chatID: "c1", mark: "P-1", title: "Board resolution",
+            AssemblyAnnexure(id: 11, chatID: "c1", mark: "P-1", title: "Board resolution",
                            sourceFilePath: "/storage/1/Bakshi/Plaint.pdf"),
-            FilingAnnexure(id: 12, chatID: "c1", mark: "P-2", title: "Notice",
+            AssemblyAnnexure(id: 12, chatID: "c1", mark: "P-2", title: "Notice",
                            sourceFilePath: "/storage/1/Notice.pdf", treatment: "typed",
                            verifyStatus: "pending"),
         ]
@@ -243,88 +243,20 @@ final class FilingChatScopeTests: XCTestCase {
         }
     }
 
-    // MARK: - Cards and the viewer
-
-    func testCardsSayTheFormAndARepeatedFile() async {
-        let fake = Self.fake()
-        fake.rows.append(FilingAnnexure(id: 13, chatID: "c1", mark: "P-3", title: "Order", duplicateOf: "P-1"))
-        await viewing(fake) { fake in
-            let cards = FilingAnnexureCardsModel(service: fake, chatID: "c1")
-            await cards.load()
-            XCTAssertTrue(cards.hasLoaded)
-            XCTAssertEqual(cards.rows.map(\.cardForm), ["original", "typed copy", "original"])
-            XCTAssertEqual(cards.rows.map(\.duplicateNote), [nil, nil, "same file as P-1"])
-            XCTAssertEqual(cards.rows[1].viewerTitle, "Annexure P-2 — Notice")
-            XCTAssertEqual(fake.annexureReads.first?.draftID, nil)
-
-            fake.errors["annexures"] = APIError.transport("offline")
-            await cards.load()
-            XCTAssertTrue(cards.rows.isEmpty, "an unreadable register shows no list")
-        }
-    }
-
-    func testTheViewerShowsATypedCopyOrWhyThereIsNone() async {
-        let fake = Self.fake()
-        await viewing(fake) { fake in
-            let typed = fake.rows[1]
-            let model = FilingAnnexureViewerModel(service: fake, chatID: "c1", annexure: typed)
-            await model.load()
-            XCTAssertEqual(model.content, .typed("<p>typed</p>"))
-
-            fake.typedCopyAnswer = FilingTypedCopy(html: nil, skipped: true, reason: "")
-            await model.load()
-            XCTAssertEqual(model.content, .message(FilingAnnexureViewerModel.couldNotLoad))
-
-            fake.errors["typedCopy"] = APIError.server(status: 400, message: "no OCR text for P-2")
-            await model.load()
-            XCTAssertEqual(model.content, .message("no OCR text for P-2"))
-        }
-    }
-
-    func testTheViewerShowsAnOriginalByItsKind() async {
-        let fake = Self.fake()
-        fake.originalAnswers = [
-            "P-1": FilingOriginal(data: Data("%PDF-1.4".utf8), mime: "application/pdf"),
-        ]
-        await viewing(fake) { fake in
-            let original = fake.rows[0]
-            let model = FilingAnnexureViewerModel(service: fake, chatID: "c1", annexure: original)
-            await model.load()
-            XCTAssertEqual(model.content, .pdf(Data("%PDF-1.4".utf8)))
-
-            fake.originalAnswers["P-1"] = FilingOriginal(data: Data([1]), mime: "image/webp")
-            await model.load()
-            XCTAssertEqual(model.content, .image(Data([1])))
-
-            fake.errors["original"] = FilingPreviewError.unpreviewable
-            await model.load()
-            XCTAssertEqual(model.content, .unpreviewable)
-
-            fake.errors["original"] = APIError.transport("offline")
-            await model.load()
-            XCTAssertEqual(model.content, .message(FilingAnnexureViewerModel.couldNotLoad))
-        }
-    }
-
     // MARK: - Harness
 
     private func chatModel(
-        _ fake: FakeFiling, context: FilingChatContext = FilingChatScopeTests.context,
-        _ body: @MainActor (FakeFiling, FilingAssemblyViewModel) async -> Void
+        _ fake: FakeFilingAssembly, context: FilingChatContext = FilingChatScopeTests.context,
+        _ body: @MainActor (FakeFilingAssembly, FilingAssemblyViewModel) async -> Void
     ) async {
         await scopedModel(fake, scope: .chat(context), body)
     }
 }
 
 @MainActor
-private func viewing(_ fake: FakeFiling, _ body: @MainActor (FakeFiling) async -> Void) async {
-    await body(fake)
-}
-
-@MainActor
 private func scopedModel(
-    _ fake: FakeFiling, scope: FilingScope,
-    _ body: @MainActor (FakeFiling, FilingAssemblyViewModel) async -> Void
+    _ fake: FakeFilingAssembly, scope: FilingScope,
+    _ body: @MainActor (FakeFilingAssembly, FilingAssemblyViewModel) async -> Void
 ) async {
     let start = Date(timeIntervalSince1970: 1_800_000_000)
     let model = FilingAssemblyViewModel(service: fake, files: FakeFiles(), scope: scope, now: { start })

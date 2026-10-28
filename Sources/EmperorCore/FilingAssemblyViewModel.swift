@@ -44,7 +44,7 @@ final class FilingAssemblyViewModel {
     private(set) var draft: FilingDraft?
 
     private(set) var annexState: LoadState = .idle
-    private(set) var annexures: [FilingAnnexure] = []
+    private(set) var annexures: [AssemblyAnnexure] = []
     private(set) var isMutating = false
     private(set) var isAdding = false
 
@@ -172,7 +172,7 @@ final class FilingAssemblyViewModel {
     }
 
     /// The question asked before an annexure is removed.
-    nonisolated static func removePrompt(for annexure: FilingAnnexure) -> String {
+    nonisolated static func removePrompt(for annexure: AssemblyAnnexure) -> String {
         "Remove annexure \(annexure.mark) — “\(annexure.title)”? Its mark will not be reused."
     }
 
@@ -287,7 +287,7 @@ final class FilingAssemblyViewModel {
         }
     }
 
-    func rename(_ annexure: FilingAnnexure, to newTitle: String) async {
+    func rename(_ annexure: AssemblyAnnexure, to newTitle: String) async {
         let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, title != annexure.title else { return }
         await mutate("Rename failed", optimistic: { list in
@@ -299,7 +299,7 @@ final class FilingAssemblyViewModel {
 
     /// Original pages or a typed copy. A typed copy keeps a verification already given;
     /// otherwise it waits for one.
-    func setTreatment(_ annexure: FilingAnnexure, _ treatment: FilingTreatment) async {
+    func setTreatment(_ annexure: AssemblyAnnexure, _ treatment: FilingTreatment) async {
         guard treatment.rawValue != annexure.treatment else { return }
         let verify: FilingVerify = treatment == .typed
             ? (annexure.isVerified ? .verified : .pending) : .notApplicable
@@ -319,7 +319,7 @@ final class FilingAssemblyViewModel {
     }
 
     /// The human gate on a typed copy: checked against the original, or reopened.
-    func toggleVerify(_ annexure: FilingAnnexure) async {
+    func toggleVerify(_ annexure: AssemblyAnnexure) async {
         let verify: FilingVerify = annexure.isVerified ? .pending : .verified
         let ok = await mutate("Could not update verification", optimistic: { list in
             list = list.map {
@@ -336,14 +336,14 @@ final class FilingAssemblyViewModel {
         }
     }
 
-    func moveUp(_ annexure: FilingAnnexure) async {
+    func moveUp(_ annexure: AssemblyAnnexure) async {
         guard let i = annexures.firstIndex(where: { $0.id == annexure.id }), i > 0 else { return }
         var next = annexures
         next.swapAt(i, i - 1)
         await reorder(next)
     }
 
-    func moveDown(_ annexure: FilingAnnexure) async {
+    func moveDown(_ annexure: AssemblyAnnexure) async {
         guard let i = annexures.firstIndex(where: { $0.id == annexure.id }),
               i < annexures.count - 1 else { return }
         var next = annexures
@@ -362,7 +362,7 @@ final class FilingAssemblyViewModel {
         await reorder(next)
     }
 
-    func delete(_ annexure: FilingAnnexure) async {
+    func delete(_ annexure: AssemblyAnnexure) async {
         await mutate("Delete failed", optimistic: { list in
             list.removeAll { $0.id == annexure.id }
         }) { service in
@@ -370,7 +370,7 @@ final class FilingAssemblyViewModel {
         }
     }
 
-    private func reorder(_ next: [FilingAnnexure]) async {
+    private func reorder(_ next: [AssemblyAnnexure]) async {
         guard canReorder, let current = draft, next.map(\.id) != annexures.map(\.id) else { return }
         let ids = next.map(\.id)
         await mutate("Reorder failed", optimistic: { list in list = next }) { service in
@@ -382,7 +382,7 @@ final class FilingAssemblyViewModel {
     @discardableResult
     private func mutate(
         _ fallback: String,
-        optimistic: (inout [FilingAnnexure]) -> Void,
+        optimistic: (inout [AssemblyAnnexure]) -> Void,
         _ call: (any FilingProviding) async throws -> Void
     ) async -> Bool {
         guard draft != nil, !isMutating else { return false }

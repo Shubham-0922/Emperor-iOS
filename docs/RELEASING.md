@@ -5,17 +5,21 @@ you choose the sideload route and want to re-sign the app yourself.
 
 ## A note on Actions minutes
 
-This repository is **public**, so GitHub's macOS runners are free and unmetered and every job
-runs on every push. That was not always true, and the reason is worth keeping:
+This repository is **private**, so the three macOS jobs — CI's simulator tests and unsigned
+`.ipa`, and `testflight.yml` — do not run on a push. They run when asked for (Actions → the
+workflow → Run workflow) or on a tag. The public copy runs them on every push,
+because public repositories get macOS runners free; this one does not:
 
 > On a **private** repo, macOS bills at **10×**, and *every job rounds up to a whole minute* — a
 > 40-second job costs ten. With several macOS jobs per run, a single push cost ~40 billable
 > minutes against a 2,000-minute month. A duplicate build job that proved nothing the test job
 > did not consumed **460 minutes** before it was spotted.
 
-If this repo is ever made private again, gate the three macOS jobs behind
-`if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')` on the
-same day. The Linux jobs bill at 1× and catch most of what breaks.
+Each macOS job carries
+`if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')`. When a
+merge from the public repository adds or rewires a macOS job, give it the same gate before
+pushing — a job gated only through its `needs` loses the gate the day that dependency changes.
+The Linux jobs bill at 1× and catch most of what breaks.
 
 ## The three outputs
 
@@ -23,7 +27,7 @@ same day. The Linux jobs bill at 1× and catch most of what breaks.
 |---|---|---|---|
 | Simulator tests (`simulator-tests` job) | none | no — Mac simulator only | n/a |
 | **Unsigned `.ipa`** (`unsigned-ipa` job) | none | yes, after you re-sign it | **7 days** |
-| **TestFlight** (`testflight` job) | $99/yr | yes, normally | 90 days |
+| **TestFlight** (`testflight.yml`) | $99/yr | yes, normally | 90 days |
 
 The first two need nothing from you. The third needs the secrets below.
 
@@ -31,7 +35,8 @@ The first two need nothing from you. The third needs the secrets below.
 
 ## Route A — sideload, free, 7 days
 
-The `unsigned-ipa` job runs on every push and attaches `Emperor-unsigned.ipa` to the run.
+The `unsigned-ipa` job runs on a manual run or a tag and attaches `Emperor-unsigned.ipa` to
+the run.
 
 > ### Read this before sending it to anyone
 >

@@ -47,7 +47,7 @@ extension XCUIApplication {
 
     /// Opens a case tool from More: the More tab, the card scrolled to, then tapped — again, up
     /// to three taps in all, while no sheet has come up (a tap can be swallowed by a sheet still
-    /// leaving). `tool` is the `WorkspaceTool` raw value, as in the card's identifier
+    /// leaving). `tool` is the card's key in `MoreTabView`, as in its identifier
     /// `case-tool-<tool>`. Every tool screen carries "Done" in its bar and More does not, so a
     /// "Done" in a bar is the sheet having opened — the card itself may still read as hittable
     /// behind an iPad's form sheet, and a tap there would dismiss it.

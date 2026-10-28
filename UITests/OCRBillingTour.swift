@@ -1,7 +1,7 @@
 import XCTest
 
-/// Photographs the OCR history with its page breakdown and notes, and the plan sheet closed and
-/// with its inclusions open, in the dark theme and the light one.
+/// Photographs the OCR history with its page breakdown and notes, and the plan sheet with its
+/// meters, in the dark theme and the light one.
 final class OCRBillingTour: XCTestCase {
 
     override func setUp() {
@@ -44,14 +44,7 @@ final class OCRBillingTour: XCTestCase {
         guard pill.waitForExistence(timeout: 10) else { return }
         pill.tap()
         guard plan.navigationBars["Plan"].waitForExistence(timeout: 10) else { return }
-        _ = plan.descendants(matching: .any)["plan-standing"].firstMatch.waitForExistence(timeout: 10)
+        _ = plan.descendants(matching: .any)["usage-meter-questions"].firstMatch.waitForExistence(timeout: 10)
         tourSnap(plan, theme: theme, step: &step, "plan-sheet")
-        let includes = plan.buttons["plan-includes"].firstMatch
-        if includes.waitForExistence(timeout: 5) {
-            plan.reveal(includes)
-            includes.tap()
-            _ = plan.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch.waitForExistence(timeout: 5)
-            tourSnap(plan, theme: theme, step: &step, "plan-includes-open")
-        }
     }
 }

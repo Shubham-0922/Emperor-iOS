@@ -84,7 +84,7 @@ final class BundleResourceTests: XCTestCase {
             "0.1.0")
     }
 
-    /// A debug build must reach the development host, which is the only one stood up today.
+    /// A debug build must reach the development host, because production does not resolve yet.
     /// The opposite direction — a release build reaching development — is pinned in the core by
     /// `APIEnvironmentTests` and is the one that matters for safety.
     func testADebugBuildTalksToDevelopment() {

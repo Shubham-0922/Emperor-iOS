@@ -1,23 +1,7 @@
 import XCTest
 
-/// The plan sheet with "What your plan includes" open, and the OCR history with its notes.
+/// The OCR history with its page breakdown and notes.
 extension AccessibilityAuditTests {
-
-    func testThePlanSheetWithItsInclusionsPassesTheAudit() {
-        let app = launch("-UITestPlanDetail")
-        guard signIn(app) else { return }
-        let pill = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Plan,")).firstMatch
-        guard reached(pill, "Home's plan pill") else { return }
-        pill.tap()
-        let bar = app.navigationBars["Plan"]
-        guard reached(bar, "the plan sheet") else { return }
-        let includes = app.buttons["plan-includes"].firstMatch
-        guard reached(includes, "the inclusions row") else { return }
-        app.reveal(includes)
-        includes.tap()
-        _ = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "Email support", "Email support")).firstMatch.waitForExistence(timeout: 5)
-        audit("plan-includes", in: app, sheet: bar)
-    }
 
     func testTheOCRHistoryWithNotesPassesTheAudit() {
         let app = launch("-UITestOCRNotes")

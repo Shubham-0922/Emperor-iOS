@@ -6,7 +6,7 @@ import UIKit
 /// (and `-UITestCitedSourceMissing`, where the cited file is not found): one stored exchange whose
 /// answer cites a page of the reader's lease, `/resolve-file` finding it, `/view-file` serving a
 /// three-page PDF with the quoted words on page 2, and `/page-words` saying the PDF's own text is
-/// all there is. Owned by package 07-P7. Answers nothing under `-UITestEmpty`.
+/// all there is. Answers nothing under `-UITestEmpty`.
 enum CitationStubs {
 
     static let fileName = "Lease_Agreement.pdf"

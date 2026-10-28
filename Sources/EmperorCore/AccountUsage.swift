@@ -100,15 +100,6 @@ struct AccountUsage: Equatable, Sendable {
         }
     }
 
-    /// A line of the product copy: a core feature, or a roadmap row.
-    struct ProductFeature: Equatable, Sendable, Identifiable {
-        enum Status: Equatable, Sendable { case included, comingSoon, inDevelopment }
-        var key: String
-        var label: String
-        var status: Status
-        var id: String { key }
-    }
-
     /// The account's raw catalogue label. Not what the top bar shows — see `PlanLabel`.
     var planLabel: String?
     /// Whether limits are enforced on this account. Staff and demo accounts are not metered, and
@@ -121,12 +112,6 @@ struct AccountUsage: Equatable, Sendable {
     var meters: [Meter]
     /// The tier's own name — "Junior Associate", or "Earlier plan" for a retired plan.
     var planTierLabel: String? = nil
-    var supportLabel: String? = nil
-    /// The plan's storage in bytes (`storageBytes`); `nil` when not sent, negative when unlimited.
-    var storageBytes: Double? = nil
-    var filingReady: Bool? = nil
-    var cloudSync: Bool? = nil
-    var productFeatures: [ProductFeature] = []
 
     /// Storage the way the web's `fmtBytes` says it: binary units, India's digit grouping,
     /// "2.4 GB", "850 MB". A plan's "50 GB" is 50 GiB, so a decimal reading showed a full
@@ -160,20 +145,11 @@ struct AccountUsage: Equatable, Sendable {
 struct EntitlementsResponse: Decodable, Sendable {
     var success: Bool?
     var signedIn: Bool?
-    var feeTier: String?
     var planLabel: String?
     var expired: Bool?
     var metered: Bool?
     var limits: Limits?
     var usage: Usage?
-    var features: Features?
-    var storageBytes: Double?
-    var support: String?
-    /// Decoded and never shown: nothing is charged for going over, and a quoted price is
-    /// sales copy.
-    var overageRates: JSONValue?
-    var coreFeatures: [CoreFeature]?
-    var roadmap: [RoadmapItem]?
 
     struct Limits: Decodable, Sendable {
         var label: String?
@@ -183,7 +159,6 @@ struct EntitlementsResponse: Decodable, Sendable {
         var scannedPages: Double?
         var chatQueries: Double?
         var deepThinkingQueries: Double?
-        var support: String?
     }
 
     struct Usage: Decodable, Sendable {
@@ -195,24 +170,6 @@ struct EntitlementsResponse: Decodable, Sendable {
         var matters: Double?
         var storageUsedBytes: Double?
         var storageAllowanceBytes: Double?
-    }
-
-    struct Features: Decodable, Sendable {
-        var filingReady: Bool?
-        var cloudSync: Bool?
-    }
-
-    struct CoreFeature: Decodable, Sendable {
-        var key: String
-        var label: String
-        var comingSoon: Bool?
-    }
-
-    struct RoadmapItem: Decodable, Sendable {
-        var key: String
-        var label: String
-        var status: String?
-        var detail: String?
     }
 
     /// Converts to the screen's model, row for row as the web's `rowsFor` draws it. Count
@@ -249,28 +206,13 @@ struct EntitlementsResponse: Decodable, Sendable {
             }
             meters.append(.init(kind: .storage, used: usage.storageUsedBytes ?? 0, limit: storageLimit))
         }
-
-        var features: [AccountUsage.ProductFeature] = []
-        for item in coreFeatures ?? [] {
-            features.append(.init(key: item.key, label: item.label,
-                                  status: item.comingSoon == true ? .comingSoon : .included))
-        }
-        for item in roadmap ?? [] {
-            features.append(.init(key: item.key, label: item.label,
-                                  status: item.status == "available" ? .included : .inDevelopment))
-        }
         return AccountUsage(
             planLabel: planLabel,
             isMetered: metered,
             hasExpired: expired ?? false,
             renewsOn: WireDate.parse(usage?.resetsAt),
             meters: meters,
-            planTierLabel: limits?.label,
-            supportLabel: support,
-            storageBytes: storageBytes,
-            filingReady: self.features?.filingReady,
-            cloudSync: self.features?.cloudSync,
-            productFeatures: features)
+            planTierLabel: limits?.label)
     }
 }
 
@@ -295,35 +237,22 @@ struct UsageService: UsageProviding {
 @MainActor
 final class AccountUsageViewModel {
     private(set) var usage: AccountUsage?
-    private(set) var planStatus: BillingPlanStatus?
     private(set) var state: LoadState = .idle
 
     private let service: any UsageProviding
-    private let billing: (any BillingAccountProviding)?
-    private let now: @Sendable () -> Date
 
-    init(service: any UsageProviding, billing: (any BillingAccountProviding)? = nil,
-         now: @escaping @Sendable () -> Date = { Date() }) {
+    init(service: any UsageProviding) {
         self.service = service
-        self.billing = billing
-        self.now = now
     }
 
-    /// Reads the allowances and, alongside, the plan's standing. A failed standing read is not
-    /// an error: the allowances still show.
     func load() async {
         state = .loading
-        async let status: BillingPlanStatus? = { [billing] in
-            guard let billing else { return nil }
-            return try? await billing.planStatus()
-        }()
         do {
             usage = try await service.usage()
             state = .loaded
         } catch {
             state = .failed(LoadFailure(error))
         }
-        planStatus = await status
     }
 
     /// The line under the plan's name.
@@ -337,34 +266,9 @@ final class AccountUsageViewModel {
     /// The meters worth a row — exactly the web's list.
     var visibleMeters: [AccountUsage.Meter] { usage?.meters ?? [] }
 
-    /// The plan's name as a customer knows it: the billing page's label, else what the account
-    /// carries, never an internal tier.
+    /// The plan's name as a customer knows it: what the account carries, else the tier's own
+    /// name — never an internal tier (`PlanLabel`).
     func planName(sessionLabel: String?) -> String {
-        PlanLabel.customerFacing(planStatus?.displayLabel)
-            ?? PlanLabel.customerFacing(planStatus?.marketingPlanLabel)
-            ?? PlanLabel.pill(session: sessionLabel, tierLabel: usage?.planTierLabel)
+        PlanLabel.pill(session: sessionLabel, tierLabel: usage?.planTierLabel)
     }
-
-    var standing: PlanStanding? {
-        planStatus.map { PlanStanding.of($0, now: now()) }
-    }
-
-    var sourceLine: String? {
-        planStatus.flatMap { PlanStanding.sourceLine($0, now: now()) }
-    }
-
-    /// Support, storage and the two features the plan may or may not include.
-    var includedRows: [(title: String, value: String)] {
-        guard let usage else { return [] }
-        var rows: [(String, String)] = []
-        if let support = usage.supportLabel, !support.isEmpty { rows.append(("Support", support)) }
-        if let bytes = usage.storageBytes {
-            rows.append(("Storage", bytes < 0 ? "Unlimited" : AccountUsage.bytes(bytes)))
-        }
-        if let on = usage.filingReady { rows.append(("Filing Ready", on ? "Included" : "Not on your plan")) }
-        if let on = usage.cloudSync { rows.append(("Cloud Sync", on ? "Included" : "Not on your plan")) }
-        return rows
-    }
-
-    var productFeatures: [AccountUsage.ProductFeature] { usage?.productFeatures ?? [] }
 }

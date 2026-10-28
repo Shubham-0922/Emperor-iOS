@@ -52,15 +52,6 @@ final class CaseListViewModel {
 
     private(set) var cases: [LegalCase] = []
     private(set) var state: LoadState = .idle
-
-    /// Cases a matter already holds — the Matters list shows them as that matter, so the docket
-    /// leaves them out of its groups, its search and its counts. `cases` still has them.
-    var hiddenCaseIDs: Set<String> = []
-
-    /// The docket as drawn: every case but the hidden ones.
-    var docketCases: [LegalCase] {
-        hiddenCaseIDs.isEmpty ? cases : cases.filter { !hiddenCaseIDs.contains($0.id) }
-    }
     private(set) var cachedAt: Date?
 
     /// The search. Deliberately not remembered: a search left over from yesterday would quietly
@@ -88,12 +79,14 @@ final class CaseListViewModel {
         service: any CaseProviding,
         cache: ResponseCache? = nil,
         store: any PreferenceStore = InMemoryPreferenceStore(),
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        remover: (any CaseRemoving)? = nil
     ) {
         self.service = service
         self.cache = cache
         self.store = store
         self.now = now
+        self.remover = remover
         sort = CaseSort.stored(in: store)
         grouping = CaseGrouping.stored(in: store)
         filters = CaseFilters.stored(in: store)
@@ -103,12 +96,43 @@ final class CaseListViewModel {
         ListPresentation(state: state, isEmpty: cases.isEmpty, cachedAt: cachedAt)
     }
 
+    // MARK: - Stop tracking
+
+    private let remover: (any CaseRemoving)?
+    /// The case being removed from the docket, while it is.
+    private(set) var removingID: String?
+    /// Why the last removal failed.
+    var removeError: String?
+
+    /// Offered on a live docket only — a kept copy cannot say whether a case is still there.
+    var canRemove: Bool { remover != nil && cachedAt == nil && removingID == nil }
+
+    /// Removes a case and reads the docket again. The row is not dropped by hand: the server's
+    /// list is what says it went.
+    ///
+    /// - Returns: whether it was removed.
+    @discardableResult
+    func removeCase(id: String) async -> Bool {
+        guard let remover, removingID == nil else { return false }
+        removingID = id
+        removeError = nil
+        defer { removingID = nil }
+        do {
+            try await remover.removeCase(id: id)
+        } catch {
+            removeError = DisplayText.message(for: error)
+            return false
+        }
+        await load()
+        return true
+    }
+
     /// There are cases, and the search and filters hide all of them.
     ///
     /// `presentation` reads the whole docket, not what is visible, so this case reaches the
     /// screen's content rather than its empty state — which is what keeps the search bar, the
     /// filter chips and their Clear in front of the person who needs them.
-    var showsNoSearchResults: Bool { !docketCases.isEmpty && visible.isEmpty }
+    var showsNoSearchResults: Bool { !cases.isEmpty && visible.isEmpty }
 
     var noMatches: NoMatches? {
         guard showsNoSearchResults else { return nil }
@@ -137,7 +161,7 @@ final class CaseListViewModel {
     var visible: [LegalCase] {
         let today = todayKey
         let terms = searchTerms
-        let kept = docketCases.filter {
+        let kept = cases.filter {
             filters.matches($0, today: today) && Self.matches($0, terms: terms)
         }
         return CaseOrdering.sorted(kept, by: sort, today: today)
@@ -195,14 +219,14 @@ final class CaseListViewModel {
     /// The court headings worth offering as filters: those the docket has cases under, plus any
     /// already chosen — so a filter whose cases have since gone can still be turned off.
     var courtTierOptions: [CourtTier] {
-        let offered = Set(docketCases.map(CourtTier.of)).union(filters.courts)
+        let offered = Set(cases.map(CourtTier.of)).union(filters.courts)
         return CourtTier.allCases.filter(offered.contains)
     }
 
     /// How many cases on the whole docket one choice would keep, shown beside it.
     func count(for chip: CaseFilterChip) -> Int {
         let today = todayKey
-        return docketCases.filter { legalCase in
+        return cases.filter { legalCase in
             switch chip {
             case .court(let tier): return CourtTier.of(legalCase) == tier
             case .hearing(let hearing): return HearingFilter.of(legalCase, today: today) == hearing

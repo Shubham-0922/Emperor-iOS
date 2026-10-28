@@ -79,87 +79,12 @@ final class ExtractedTextTests: XCTestCase {
         }
     }
 
-    // MARK: - A folder as one archive
-
-    private static let tree: [FileNode] = [
-        folder("Bakshi", [
-            .file(readyFile("Bakshi/Plaint.pdf")),
-            folder("Bakshi/Orders", [.file(readyFile("Bakshi/Orders/Interim_Order.pdf"))]),
-        ]),
-        folder("Bakshi_Old", [.file(readyFile("Bakshi_Old/Note.pdf"))]),
-        folder("Empty", []),
-        .file(readyFile("Loose.pdf")),
-    ]
-
-    func testZipEntriesCoverEveryDepthAndNoNeighbour() {
-        XCTAssertEqual(MyFilesViewModel.zipEntries(under: "Bakshi", in: Self.tree), [
-            ZipEntry(folderName: "Bakshi", fileName: "Plaint.pdf"),
-            ZipEntry(folderName: "Bakshi/Orders", fileName: "Interim_Order.pdf"),
-        ])
-        XCTAssertEqual(
-            MyFilesViewModel.zipEntries(under: "", in: Self.tree).last,
-            ZipEntry(folderName: ".", fileName: "Loose.pdf"))
-        XCTAssertTrue(MyFilesViewModel.zipEntries(under: "Empty", in: Self.tree).isEmpty)
-    }
-
-    func testAFolderIsSharedAsItsZip() async {
-        await myFiles(Self.tree) { routes, model in
-            await model.load()
-            let bakshi = FolderSummary(
-                name: "Bakshi", path: "Bakshi", created: nil, documentCount: 2,
-                subfolderCount: 1, childFolderCount: 1)
-            await model.prepareZip(bakshi)
-            XCTAssertEqual(routes.zipped.first?.count, 2)
-            XCTAssertEqual(model.sharing?.fileName, "Bakshi.zip")
-            XCTAssertEqual(model.sharing?.data, routes.zipData)
-
-            let empty = FolderSummary(
-                name: "Empty", path: "Empty", created: nil, documentCount: 0,
-                subfolderCount: 0, childFolderCount: 0)
-            await model.prepareZip(empty)
-            XCTAssertEqual(model.actionNotice, MyFilesViewModel.emptyZipNotice)
-            XCTAssertEqual(routes.zipped.count, 1)
-        }
-    }
-
-    func testAZipFailureIsSaid() async {
-        await myFiles(Self.tree) { routes, model in
-            routes.zipError = APIError.server(status: 404, message: "None of the requested files were found")
-            await model.load()
-            let bakshi = FolderSummary(
-                name: "Bakshi", path: "Bakshi", created: nil, documentCount: 2,
-                subfolderCount: 1, childFolderCount: 1)
-            await model.prepareZip(bakshi)
-            XCTAssertNil(model.sharing)
-            XCTAssertEqual(model.actionError, "None of the requested files were found")
-        }
-    }
-
-    func testTooManyDocumentsAreNotZipped() async {
-        let many = (0...MyFilesViewModel.zipLimit).map { FileNode.file(readyFile("Big/f\($0).pdf")) }
-        await myFiles([folder("Big", many)]) { routes, model in
-            await model.load()
-            let big = FolderSummary(
-                name: "Big", path: "Big", created: nil, documentCount: many.count,
-                subfolderCount: 0, childFolderCount: 0)
-            await model.prepareZip(big)
-            XCTAssertTrue(routes.zipped.isEmpty)
-            XCTAssertEqual(model.actionError, MyFilesViewModel.tooManyToZip)
-        }
-    }
-
     // MARK: - Helpers
 
     private func viewer(
         textFails: Bool, _ body: @MainActor (FakeFileRoutes, SourceDocumentViewModel) async -> Void
     ) async {
         await extractedViewer(textFails: textFails, body)
-    }
-
-    private func myFiles(
-        _ tree: [FileNode], _ body: @MainActor (FakeFileRoutes, MyFilesViewModel) async -> Void
-    ) async {
-        await zipFiles(tree, body)
     }
 }
 
@@ -190,16 +115,5 @@ private func extractedViewer(
         service: FakeFiles(),
         officePreview: RefusingPreviews(),
         fileText: routes)
-    await body(routes, model)
-}
-
-@MainActor
-private func zipFiles(
-    _ tree: [FileNode], _ body: @MainActor (FakeFileRoutes, MyFilesViewModel) async -> Void
-) async {
-    let files = FakeFiles()
-    files.tree = tree
-    let routes = FakeFileRoutes()
-    let model = MyFilesViewModel(service: files, manager: InertFileManager(), fileRoutes: routes)
     await body(routes, model)
 }
