@@ -43,12 +43,9 @@ struct CalendarService: CalendarProviding {
     /// job exists.
     static let remindersAreInert = true
 
-    /// **The ICS subscription URL is not offered in-app either.**
-    ///
-    /// `GET /calendar/my.ics` is keyed only on `?userId=` (`sync-server.js:10234`), making the
-    /// URL a permanent, unrevocable bearer credential for a user's entire calendar. Handing it
-    /// to a share sheet invites it into an email. It stays out until it has a rotatable token.
-    static let icsFeedIsUnsafeToShare = true
+    // The ICS subscription link is `CalendarFeedService`. It was withheld until it could be
+    // issued as a rotatable, revocable token, which `/calendar/feed-url` now does — so it is
+    // offered from Calendar with a reset, and never through a share sheet.
 
     let client: APIClient
 

@@ -1,132 +1,142 @@
 import SwiftUI
 
-/// Everything that is not one of the three primary destinations.
+/// Everything that is not one of the five tabs, as the **Tools** sections of You.
 ///
-/// The web app's mobile navigation is a bottom bar of **Home · Cases · Chat · More**, where
-/// "More" opens the full sidebar (`src/shell/MobileNav.jsx`). This is that sidebar.
+/// This was the More tab — the web's sidebar on a phone (`src/shell/MobileNav.jsx`). The
+/// redesign has five tabs, and none of these is one, so they live under You — reached from
+/// Home's profile button — with every row kept: the role's workspace, every tool, the file
+/// tools, OCR, Translate, the Corporate Calendar and Library. My Files and History are rows
+/// under the new More tab, and Settings is You itself.
 ///
-/// Labels are the web's, not the ones this app used to use. It said "Diary", "Digitise" and
-/// "Auctions" where the platform says **Calendar**, **Translate** and **Liquidations**; someone
-/// who uses both should not have to learn two vocabularies for one product.
+/// Labels are the web's — **Translate**, **eAuctions** — not the names this app once used, so
+/// someone who uses both learns one vocabulary.
 ///
-/// Order follows `src/shell/Sidebar.jsx`, minus what is already a tab and minus what this client
-/// deliberately does not carry:
-///
-/// - **Upgrade / `/buy`** — a pricing surface would attach StoreKit obligations to an app that
-///   takes no money. It must stay absent.
-/// - **Filing Assembly** — a 293-page bundle where a wrong folio gets the matter rejected at the
-///   registry should not be assembled on a phone (`GAPS.md` Tier 3).
-/// - **My Files** — `FileLibraryView` is a picker: it requires `alreadyAttached` and `onAttach`
-///   and its confirmation action is "Attach". Giving it a browse mode is real work, not a row,
-///   so it stays reachable from the composer until that is done.
-///
-/// - Important: every destination here **presents rather than pushes**. All five own a
-///   `NavigationStack` — they were built as self-contained modals and every other call site
-///   already presents them that way. Pushing one into this list's stack would nest two stacks
-///   and give it two navigation bars and a back button that unwinds the wrong one.
-struct MoreView: View {
-    @Environment(\.theme) private var theme
-    @State private var destination: Destination?
+/// - Important: every destination here **presents rather than pushes**. Every one owns a
+///   `NavigationStack` — they were built as self-contained modals — and pushing one into You's
+///   stack would nest two stacks, with two navigation bars and a back button that unwinds the
+///   wrong one. So each carries its own "Done" at `.cancellationAction`, and You owns the one
+///   sheet they are presented in.
+enum ToolDestination: String, Identifiable {
+    case deck, corporateCalendar, library, fetchOrders, projects, tools, analysis, limitationRadar, mcaRegistry, fileTools, ocr, translate, eAuctions
 
-    /// The rows, in the platform's own order.
-    private enum Destination: String, Identifiable {
-        case calendar, library, projects, tools, fileTools, translate, liquidations, settings
+    var id: String { rawValue }
 
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .calendar: return "Calendar"
-            case .library: return "Library"
-            case .projects: return "Projects"
-            case .tools: return "All tools"
-            case .fileTools: return "File tools"
-            case .translate: return "Translate"
-            case .liquidations: return "Liquidations"
-            case .settings: return "Settings"
-            }
-        }
-
-        /// Chosen to read as the web's `lucide` icon for the same row.
-        var symbol: String {
-            switch self {
-            case .calendar: return "calendar"
-            case .library: return "books.vertical"
-            // The web's row is `folder-kanban`. A person, because that is the distinction that
-            // matters against the Cases tab: a project is a matter one user keeps by hand, not
-            // one the scrapers keep for a team.
-            case .projects: return "folder.badge.person.crop"
-            case .tools: return "wrench.and.screwdriver"
-            case .fileTools: return "scissors"
-            case .translate: return "character.bubble"
-            case .liquidations: return "hammer"
-            case .settings: return "gearshape"
-            }
+    var title: String {
+        switch self {
+        // Named for the role rather than fixed, because that is what it is.
+        case .deck: return "Your workspace"
+        case .corporateCalendar: return "Corporate Calendar"
+        case .library: return "Library"
+        // Read any court case — orders, hearings, parties — without adding it.
+        case .fetchOrders: return "Fetch Orders"
+        // The tab is Matters; these are the workspaces behind them (the web's Matters page).
+        case .projects: return "Matter workspaces"
+        case .tools: return "All tools"
+        // The server-run Doc Index, List of Dates and Devil's Advocate, with their history.
+        case .analysis: return "Analysis tools"
+        // Is a suit in time, and by how much — date arithmetic against the Limitation Act.
+        case .limitationRadar: return "Limitation Radar"
+        // Decode a CIN offline; open the companies named in liquidation notices.
+        case .mcaRegistry: return "MCA Registry"
+        case .fileTools: return "File tools"
+        case .ocr: return "OCR"
+        case .translate: return "Translate"
+        case .eAuctions: return "eAuctions"
         }
     }
+
+    /// Chosen to read as the web's `lucide` icon for the same row.
+    func symbol(for role: PractitionerRole) -> String {
+        switch self {
+        case .deck: return role.systemImage
+        case .corporateCalendar: return "calendar.badge.checkmark"
+        case .library: return "books.vertical"
+        case .fetchOrders: return "doc.text.magnifyingglass"
+        case .projects: return "folder.badge.gearshape"
+        case .tools: return "wrench.and.screwdriver"
+        case .analysis: return "exclamationmark.shield"
+        case .limitationRadar: return "hourglass"
+        case .mcaRegistry: return "building.2"
+        case .fileTools: return "scissors"
+        case .ocr: return "doc.text.viewfinder"
+        case .translate: return "character.bubble"
+        case .eAuctions: return "hammer"
+        }
+    }
+
+    /// The screen, at the size of a page on iPad.
+    @MainActor @ViewBuilder
+    var screen: some View {
+        switch self {
+        case .deck: RoleHomeView()
+        case .corporateCalendar: ComplianceCalendarView()
+        case .library: LibraryView()
+        case .fetchOrders: CourtSearchView(purpose: .lookup, onSaved: {})
+        case .projects: ProjectListView()
+        case .tools: ToolsListView()
+        case .analysis: AnalysisHubView()
+        case .limitationRadar: LimitationRadarView()
+        case .mcaRegistry: McaRegistryView()
+        case .fileTools: PDFToolsView()
+        // One screen with an OCR | Translate switch at its head; each row opens it in its own mode.
+        case .ocr: OCRView(mode: .ocr)
+        case .translate: OCRView(mode: .translate)
+        case .eAuctions: AuctionListView()
+        }
+    }
+}
+
+/// The Tools rows of You: "Your practice" and "Tools", in the platform's own order.
+///
+/// eAuctions is hidden for now, at the product owner's request. Only the row is gone: its
+/// screen, view model, service and tests are all still here and still built. To bring it back,
+/// add `row(.eAuctions)` after `row(.translate)` — and add its row to the UI tests and the
+/// screenshot tour. Matter workspaces returned when the web's Matters page shipped (2026-10).
+struct ToolsSections: View {
+    @Environment(\.theme) private var theme
+    @Environment(\.practice) private var practice
+    @Binding var destination: ToolDestination?
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    row(.calendar)
-                    row(.library)
-                    // Read-only while the feature is trialled on the web — no matter can be
-                    // created or edited from here. See `ProjectService`.
-                    row(.projects)
-                } header: {
-                    SectionHeader(title: "Your practice")
-                }
-
-                Section {
-                    row(.tools)
-                    row(.fileTools)
-                    row(.translate)
-                    row(.liquidations)
-                } header: {
-                    // The platform groups these under "Tools" in its rail. "All tools" is not a
-                    // row the web has — there, most of the registry is reachable only by typing
-                    // `/w/<id>`. A phone has no address bar, so without it twenty-four of the
-                    // twenty-nine would be unreachable rather than merely unadvertised.
-                    SectionHeader(title: "Tools")
-                }
-
-                Section {
-                    row(.settings)
-                }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(theme.canvas)
-            .navigationTitle("More")
-            .sheet(item: $destination) { chosen in
-                switch chosen {
-                case .calendar: CalendarView()
-                case .library: LibraryView()
-                case .projects: ProjectListView()
-                case .tools: ToolsListView()
-                case .fileTools: PDFToolsView()
-                case .translate: OCRView()
-                case .liquidations: AuctionListView()
-                case .settings: SettingsView()
-                }
-            }
+        Section {
+            row(.deck)
+            row(.corporateCalendar)
+            row(.library)
+            row(.fetchOrders)
+            row(.projects)
+        } header: {
+            SectionHeader(title: "Your practice")
         }
+        .listRowBackground(theme.surface)
+
+        Section {
+            row(.tools)
+            row(.analysis)
+            row(.limitationRadar)
+            row(.mcaRegistry)
+            row(.fileTools)
+            row(.ocr)
+            row(.translate)
+        } header: {
+            // "All tools" is not a row the web has — there, most of the registry is reachable only
+            // by typing `/w/<id>`. A phone has no address bar.
+            SectionHeader(title: "Tools")
+        }
+        .listRowBackground(theme.surface)
     }
 
-    private func row(_ item: Destination) -> some View {
+    /// A row: the tile, the label, and a chevron — drawn here because the row presents rather
+    /// than pushes, so iOS supplies none. Named by its title alone, as the UI tests find it.
+    private func row(_ item: ToolDestination) -> some View {
         Button {
             destination = item
         } label: {
-            HStack {
-                Label(item.title, systemImage: item.symbol)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.brand(.footnote, weight: .semibold))
-                    .foregroundStyle(theme.textTertiary)
+            HStack(spacing: Spacing.sm) {
+                IconRowLabel(title: item.title, systemImage: item.symbol(for: practice.role))
+                RowChevron()
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .accessibilityLabel(Text(item.title))
     }
 }

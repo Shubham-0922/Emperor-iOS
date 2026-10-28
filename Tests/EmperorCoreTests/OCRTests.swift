@@ -9,7 +9,7 @@ final class OCRTests: XCTestCase {
 
     // MARK: - Language
 
-    /// **Omitting `lang` silently translates to Hindi** (`sync-server.js:12118`). So the
+    /// **Omitting `lang` silently translates to Hindi** (`sync-server.js:15384`). So the
     /// digitise-only case needs an explicit value, and `Original` is it.
     func testDigitiseOnlyIsAnExplicitValueNotAnOmission() {
         XCTAssertEqual(OCRLanguage.original.rawValue, "Original")
@@ -17,15 +17,29 @@ final class OCRTests: XCTestCase {
         XCTAssertTrue(OCRLanguage.hindi.translates)
     }
 
-    /// The server skips translation for `none|original|english|en` — so "English" means "leave
-    /// it as it is", not "translate to English". Offering it as a target would mislead.
-    func testEnglishIsNotOfferedAsATargetBecauseItIsANoOp() {
-        XCTAssertFalse(OCRLanguage.translates("English"))
-        XCTAssertFalse(OCRLanguage.translates("en"))
+    /// The server skips translation for `none|original` and nothing else
+    /// (`sync-server.js:15471`, `:15572`). English used to be a silent no-op there — a Punjabi
+    /// order came back in Punjabi as a "completed" translation into English. It is a real target
+    /// now, and the web lists it first, so it is offered here too.
+    func testEnglishIsARealTargetNow() {
+        XCTAssertTrue(OCRLanguage.translates("English"))
+        XCTAssertTrue(OCRLanguage.english.translates)
         XCTAssertFalse(OCRLanguage.translates("none"))
-        XCTAssertFalse(
-            OCRLanguage.allCases.contains { $0.rawValue.lowercased() == "english" },
-            "an 'English' option would silently do nothing")
+        XCTAssertFalse(OCRLanguage.translates("ORIGINAL"))
+        XCTAssertEqual(
+            Array(OCRLanguage.allCases.prefix(3)), [.original, .english, .hindi],
+            "the web's order: English, Hindi, then alphabetical")
+    }
+
+    /// Translate offers the web's twenty-three languages and no "keep the original" — that is
+    /// OCR, a mode of its own — and starts on Hindi as the web does. A default that does not
+    /// translate would make Translate and OCR the same screen.
+    func testTranslateOffersRealLanguagesAndStartsOnHindi() {
+        XCTAssertEqual(OCRLanguage.translationTargets.count, 23)
+        XCTAssertFalse(OCRLanguage.translationTargets.contains(.original))
+        XCTAssertEqual(OCRLanguage.translationTargets.first, .english)
+        XCTAssertTrue(OCRLanguage.defaultTranslationTarget.translates)
+        XCTAssertEqual(OCRLanguage.defaultTranslationTarget, .hindi)
     }
 
     func testTheLanguageListIsNonTrivial() {
@@ -288,6 +302,13 @@ final class OCRTests: XCTestCase {
             session: HTTPStub.session())
         await client.setCredentials(Credentials(token: "t", userID: 42))
         return (OCRService(client: client), client)
+    }
+
+    /// Before each test, not only after. `tearDown` alone leaves the **first** test in the class
+    /// reading whatever the previous suite left in `HTTPStub.seen`. See `HTTPStub.reset`.
+    override func setUp() {
+        super.setUp()
+        HTTPStub.reset()
     }
 
     override func tearDown() {

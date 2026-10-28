@@ -1,293 +1,150 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// Split and merge, on the device.
+/// File tools — the platform's Document Utilities hub (`src/pages/tools/ToolsHub.jsx`).
 ///
-/// The platform has these at `/tools/split-pdf` and `/tools/merge-pdf`, and they are client-side
-/// there too — no route is involved on either product. That matters more here than it looks:
-/// these documents are privileged, and uploading a client's brief to cut three pages out of it
-/// would be the wrong trade regardless of convenience.
+/// A grid of cards, one per tool, each pushing that tool's own screen. The cards carry the
+/// web's one distinction worth carrying: whether the file stays on the phone. Five of the seven
+/// never touch the network, because these documents are privileged and uploading a client's brief
+/// to cut three pages out of it would be the wrong trade regardless of convenience. PDF to Word
+/// is the exception on both products — it is read on the server — and its card says so.
 ///
-/// Every output is shared rather than saved: the app has no file browser of its own, and the
-/// share sheet already reaches Files, Mail and every other place a bundle part needs to go.
+/// Presented from More, so it owns its `NavigationStack` and carries its own **Done**
+/// (see `MoreView`). The tools push inside that stack and come back with the system back button.
 struct PDFToolsView: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
-
-    @State private var mode: Mode = .split
-    @State private var chosen: [PickedPDF] = []
-    @State private var selection = ""
-    @State private var splitStyle: SplitStyle = .ranges
-    @State private var targetMB = 10
-    @State private var isPicking = false
-    @State private var outputs: [PDFTools.Output] = []
-    @State private var failure: String?
-
-    private enum Mode: String, CaseIterable, Identifiable {
-        case split = "Split", merge = "Merge"
-        var id: String { rawValue }
-    }
-
-    /// The four ways Android offers, kept the same so someone who uses both is not relearning.
-    private enum SplitStyle: String, CaseIterable, Identifiable {
-        case ranges = "Extract pages"
-        case groups = "Split into parts"
-        case every = "Every page"
-        case size = "By size"
-        var id: String { rawValue }
-    }
-
-    /// A chosen file and what is known about it. `pageCount` is `nil` while unreadable.
-    private struct PickedPDF: Identifiable {
-        let url: URL
-        let pageCount: Int?
-        var id: URL { url }
-        var name: String { url.deletingPathExtension().lastPathComponent }
-    }
-
-    private var firstCount: Int { chosen.first?.pageCount ?? 0 }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.xxl) {
+                    Text("Everyday document jobs. Split, merge, rearrange, compress and image to PDF run on this phone — those files never leave it. PDF to Word is read on Emperor's servers.")
+                        .font(.brand(.subheadline))
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                filesSection
-
-                if mode == .split, !chosen.isEmpty {
-                    splitOptions
+                    group("Documents", tools: DocumentTool.documentTools)
+                    group("Images", tools: DocumentTool.imageTools)
                 }
-
-                if !outputs.isEmpty {
-                    resultsSection
-                }
-
-                Section {
-                    Button(action: run) {
-                        Text(actionLabel)
-                            .font(.brand(.headline))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canRun)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                } footer: {
-                    // Said out loud, because "on this phone" is the reason to use it rather than
-                    // the web, and nothing else on screen would tell you.
-                    Text("Everything happens on this phone. No document is uploaded.")
-                        .font(.brand(.caption2))
-                }
+                // A readable width on an iPad, centred, rather than cards stretched edge to edge.
+                .frame(maxWidth: 760)
+                .padding(.horizontal, Spacing.lg)
+                .padding(.vertical, Spacing.md)
+                .frame(maxWidth: .infinity)
             }
-            .scrollContentBackground(.hidden)
             .background(theme.canvas)
             .navigationTitle("File tools")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
-            .fileImporter(
-                isPresented: $isPicking,
-                allowedContentTypes: [.pdf],
-                allowsMultipleSelection: mode == .merge
-            ) { outcome in
-                guard case .success(let urls) = outcome else { return }
-                let picked = urls.map { PickedPDF(url: $0, pageCount: PDFTools.pageCount(of: $0)) }
-                chosen = mode == .merge ? chosen + picked : Array(picked.prefix(1))
-                outputs = []
-            }
-            .alert("Could not do that", isPresented: Binding(
-                get: { failure != nil }, set: { if !$0 { failure = nil } }
-            )) {
-                Button("OK") { failure = nil }
-            } message: {
-                Text(failure ?? "")
+            .navigationDestination(for: DocumentTool.self) { tool in
+                destination(for: tool)
             }
         }
     }
 
-    // MARK: - Sections
-
-    @ViewBuilder
-    private var filesSection: some View {
-        Section {
-            ForEach(chosen) { file in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(file.name).font(.brand(.subheadline)).lineLimit(1)
-                        Text(file.pageCount.map { "\($0) page\($0 == 1 ? "" : "s")" }
-                             ?? "could not be opened")
-                            .font(.brand(.caption))
-                            .foregroundStyle(file.pageCount == nil ? theme.danger : theme.textSecondary)
-                    }
-                    Spacer()
-                }
-                .swipeActions {
-                    Button(role: .destructive) {
-                        chosen.removeAll { $0.id == file.id }
-                        outputs = []
-                    } label: {
-                        Label("Remove", systemImage: "minus.circle")
-                    }
-                }
-            }
-            .onMove { source, destination in
-                // Merge order is the registry's order, not alphabetical — an annexure bundle
-                // assembled in the wrong sequence is a bundle that gets returned.
-                chosen.move(fromOffsets: source, toOffset: destination)
-                outputs = []
-            }
-
-            Button {
-                isPicking = true
-            } label: {
-                Label(chosen.isEmpty ? "Choose a PDF" : "Add another", systemImage: "doc.badge.plus")
-            }
-        } header: {
-            SectionHeader(
-                title: mode == .merge ? "Documents, in order" : "Document",
-                detail: mode == .merge && chosen.count > 1 ? "Drag to reorder" : nil)
-        }
+    /// Two columns on a phone, four across an iPad's readable width; one at the accessibility text
+    /// sizes, where a half-width card would wrap its title a word to a line.
+    private var columnCount: Int {
+        if dynamicTypeSize.isAccessibilitySize { return 1 }
+        return sizeClass == .regular ? 4 : 2
     }
 
-    @ViewBuilder
-    private var splitOptions: some View {
-        Section {
-            Picker("How", selection: $splitStyle) {
-                ForEach(SplitStyle.allCases) { Text($0.rawValue).tag($0) }
-            }
-
-            switch splitStyle {
-            case .ranges, .groups:
-                TextField("1-3, 5, 8-10", text: $selection)
-                    .keyboardType(.numbersAndPunctuation)
-                    .autocorrectionDisabled()
-            case .every:
-                EmptyView()
-            case .size:
-                Stepper("About \(targetMB) MB per part", value: $targetMB, in: 1...100)
-            }
-        } header: {
-            SectionHeader(title: "Pages")
-        } footer: {
-            // A live description of what the current selection would actually produce, because
-            // "1-3, 2" is three pages and reads like four.
-            Text(splitFooter)
-                .font(.brand(.caption2))
+    /// The cards in rows, built at once rather than by a lazy grid: seven cards cost nothing to
+    /// lay out, and a lazy grid lets go of the card at the foot of the screen as the text grows —
+    /// which the accessibility audit read as text that does not scale at all.
+    private func group(_ title: String, tools: [DocumentTool]) -> some View {
+        let columns = columnCount
+        let rows = stride(from: 0, to: tools.count, by: columns).map {
+            Array(tools[$0..<min($0 + columns, tools.count)])
         }
-    }
-
-    private var resultsSection: some View {
-        Section {
-            ForEach(outputs) { output in
-                if let url = ShareableFile.url(for: output.data, named: output.name) {
-                    ShareLink(item: url) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(output.name).font(.brand(.subheadline)).lineLimit(1)
-                                Text(byteCount(output.data.count))
-                                    .font(.brand(.caption))
-                                    .foregroundStyle(theme.textSecondary)
+        return VStack(alignment: .leading, spacing: Spacing.sm + 2) {
+            SectionHeader(title: title)
+                .padding(.horizontal, Spacing.xs)
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .top, spacing: Spacing.md) {
+                        ForEach(row) { tool in
+                            NavigationLink(value: tool) {
+                                ToolCard(tool: tool)
                             }
-                            Spacer()
-                            Image(systemName: "square.and.arrow.up")
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("tool-\(tool.rawValue)")
+                        }
+                        // A short last row keeps its cards at the width of the rows above.
+                        ForEach(0..<(columns - row.count), id: \.self) { _ in
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
                         }
                     }
                 }
             }
-        } header: {
-            SectionHeader(
-                title: "Result",
-                detail: outputs.count > 1 ? "\(outputs.count) files" : nil)
         }
     }
 
-    // MARK: - Wording
+    @ViewBuilder
+    private func destination(for tool: DocumentTool) -> some View {
+        switch tool {
+        case .split: SplitPDFView()
+        case .merge: MergePDFView()
+        case .rearrange: RearrangePDFView()
+        case .compressPDF: CompressPDFView()
+        case .imageToPDF: ImageToPDFView()
+        case .compressImage: CompressImageView()
+        case .pdfToWord: OCRScreen(mode: .pdfToWord)
+        }
+    }
+}
 
-    private var actionLabel: String {
-        switch mode {
-        case .merge:
-            return chosen.count >= 2 ? "Merge \(chosen.count) documents" : "Merge"
-        case .split:
-            switch splitStyle {
-            case .ranges: return "Extract \(PageRanges.describe(selection, pageCount: firstCount))"
-            case .groups: return "Split into parts"
-            case .every: return firstCount > 0 ? "Split into \(firstCount) files" : "Split"
-            case .size: return "Split at about \(targetMB) MB"
+/// One tool: an icon, its name, a line saying what it does, and where the file goes.
+private struct ToolCard: View {
+    @Environment(\.theme) private var theme
+    let tool: DocumentTool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm + 2) {
+            HStack(alignment: .top) {
+                IconTile(systemImage: tool.symbol, hue: hue, size: .large)
+                Spacer(minLength: 6)
+                StatusPill(
+                    text: tool.isOnDevice ? "On this phone" : "Uploaded",
+                    tone: tool.isOnDevice ? .success : .info,
+                    systemImage: tool.isOnDevice ? "lock.fill" : "icloud.and.arrow.up")
             }
+            Text(tool.title)
+                .font(.brand(.headline))
+                .foregroundStyle(theme.textPrimary)
+                .padding(.top, Spacing.xxs)
+            Text(tool.summary)
+                .font(.brand(.caption))
+                .foregroundStyle(theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
+        .padding(Spacing.lg)
+        .frame(maxWidth: .infinity, minHeight: 168, alignment: .topLeading)
+        .panel()
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(tool.isOnDevice ? "Runs on this phone" : "The document is uploaded to be converted")
     }
 
-    private var splitFooter: String {
-        switch splitStyle {
-        case .ranges:
-            return "\(PageRanges.describe(selection, pageCount: firstCount)) into one document."
-        case .groups:
-            let count = PageRanges.parseGroups(selection, pageCount: firstCount).count
-            return count == 0
-                ? "Each part you name becomes its own file."
-                : "\(count) file\(count == 1 ? "" : "s"), one per part you named."
-        case .every:
-            return "One file per page. Names are zero-padded so they sort correctly."
-        case .size:
-            return "Consecutive pages, packed into parts. A page larger than the target becomes its own part rather than being dropped."
-        }
-    }
-
-    private var canRun: Bool {
-        guard chosen.allSatisfy({ $0.pageCount != nil }) else { return false }
-        switch mode {
-        case .merge: return chosen.count >= 2
-        case .split:
-            guard let first = chosen.first, (first.pageCount ?? 0) > 0 else { return false }
-            switch splitStyle {
-            case .ranges, .groups:
-                return !PageRanges.parse(selection, pageCount: firstCount).isEmpty
-            case .every, .size:
-                return true
-            }
-        }
-    }
-
-    private func byteCount(_ bytes: Int) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
-    }
-
-    // MARK: - Running
-
-    private func run() {
-        outputs = []
-        do {
-            switch mode {
-            case .merge:
-                outputs = [try PDFTools.merge(chosen.map(\.url), name: "Merged")]
-            case .split:
-                guard let file = chosen.first else { return }
-                switch splitStyle {
-                case .ranges:
-                    outputs = [try PDFTools.extract(
-                        from: file.url, selection: selection, baseName: file.name)]
-                case .groups:
-                    outputs = try PDFTools.split(
-                        file.url, selection: selection, baseName: file.name)
-                case .every:
-                    outputs = try PDFTools.splitEveryPage(file.url, baseName: file.name)
-                case .size:
-                    outputs = try PDFTools.splitBySize(
-                        file.url, targetBytes: targetMB * 1_000_000, baseName: file.name)
-                }
-            }
-        } catch {
-            failure = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    /// One of the web's muted hues per tool, so the grid reads as seven tools rather than one
+    /// tile seven times. Fixed here rather than hashed: these are the app's own cards, not
+    /// registry tools, and the seven should never collide.
+    private var hue: TileHue {
+        switch tool {
+        case .split: return .rose
+        case .merge: return .steel
+        case .rearrange: return .violet
+        case .compressPDF: return .teal
+        case .imageToPDF: return .gold
+        case .compressImage: return .aqua
+        case .pdfToWord: return .indigo
         }
     }
 }

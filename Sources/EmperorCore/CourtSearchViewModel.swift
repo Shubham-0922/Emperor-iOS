@@ -42,8 +42,12 @@ final class CourtSearchViewModel {
     private(set) var hasSearched = false
 
     private let service: CourtSearching
+    private let metadata: CourtMetadataProviding
     /// Called after a case is pinned, so the dashboard behind this screen refreshes.
     private let onSaved: (() -> Void)?
+    /// Fetch Orders: the cases looked up lately on this device, offered as a way back.
+    private let recent: RecentLookups?
+    private(set) var recentLookups: [RecentLookup] = []
 
     #if canImport(Darwin)
     @ObservationIgnored private var task: Task<Void, Never>?
@@ -51,9 +55,30 @@ final class CourtSearchViewModel {
     private var task: Task<Void, Never>?
     #endif
 
-    init(service: CourtSearching, onSaved: (() -> Void)? = nil) {
+    /// - Parameter metadata: required rather than defaulted. A default would mean a caller who
+    ///   forgot it got a form whose dropdowns are silently empty — which looks like a court with
+    ///   no benches rather than a wiring mistake.
+    init(
+        service: CourtSearching,
+        metadata: CourtMetadataProviding,
+        onSaved: (() -> Void)? = nil,
+        recent: RecentLookups? = nil
+    ) {
         self.service = service
+        self.metadata = metadata
         self.onSaved = onSaved
+        self.recent = recent
+        self.recentLookups = recent?.read() ?? []
+    }
+
+    /// Re-reads the recent list — after a record was read, which adds to it.
+    func refreshRecent() {
+        recentLookups = recent?.read() ?? []
+    }
+
+    func forgetRecent(_ entry: RecentLookup) {
+        recent?.forget(entry.key)
+        refreshRecent()
     }
 
     var canSearch: Bool { !isSearching && query.isComplete }
@@ -70,7 +95,7 @@ final class CourtSearchViewModel {
     }
 
     /// Whether a lookup here is the slow kind, so the wait can be explained rather than endured.
-    var expectsLongWait: Bool { query.forum.solvesCaptcha }
+    var expectsLongWait: Bool { query.forum.solvesCaptcha(in: query.mode) }
 
     // MARK: - Searching
 
@@ -78,6 +103,35 @@ final class CourtSearchViewModel {
         guard canSearch else { return }
         task?.cancel()
         task = Task { await runSearch() }
+    }
+
+    /// Abandons a search in progress.
+    ///
+    /// Worth having rather than making people wait it out. A High Court lookup opens up to eight
+    /// sessions with the court, each with its own captcha attempt, and legitimately runs for
+    /// most of a minute — so someone who spots a typo two seconds in would otherwise sit through
+    /// fifty-eight seconds of a result they already know is wrong. The web offers no way out of
+    /// this at all.
+    ///
+    /// The request itself is dropped rather than followed to completion: the transport is
+    /// cancelled with the task, and nothing has been written at the court's end by a search.
+    func cancelSearch() {
+        task?.cancel()
+        task = nil
+        isSearching = false
+    }
+
+    /// Changes mode, and clears the number with it.
+    ///
+    /// A diary number and a case number are different numbers for the same matter, so carrying
+    /// one across looks like the app filled the field in — and it would then be looked up as
+    /// something it is not. Everything else on the form still applies: the court, the bench and
+    /// the year are the same question in both modes.
+    func setMode(_ mode: CourtSearchMode) {
+        guard query.mode != mode else { return }
+        query.mode = mode
+        query.number = ""
+        dismissCaptcha()
     }
 
     func runSearch() async {
@@ -93,11 +147,257 @@ final class CourtSearchViewModel {
             hasSearched = true
         } catch is CancellationError {
             return
+        } catch is NeedsHumanCaptcha {
+            // Not an error and not an empty result: the search has not happened yet. Leaving
+            // `hasSearched` false keeps the empty state from claiming the court had no such case
+            // when nobody has asked it.
+            await loadCaptcha()
         } catch {
             results = []
             hasSearched = true
             errorMessage = DisplayText.message(for: error)
         }
+    }
+
+    // MARK: - Choosing a court, and the lists that follow
+
+    private(set) var court: Court?
+    private(set) var contract = CourtContract()
+    private(set) var benches: [CourtOption] = []
+    private(set) var caseTypes: [CourtOption] = []
+    private(set) var consumerStates: [CourtOption] = []
+    /// Which dependent list is being fetched, so the *control* can show it rather than the whole
+    /// form going blank. The web uses one shared flag and greys everything at once.
+    private(set) var loadingBenches = false
+    private(set) var loadingCaseTypes = false
+
+    /// A generation counter for the cascade.
+    ///
+    /// Every list here is a consequence of a selection above it, and the fetches are slow enough
+    /// to overlap: pick Delhi, then pick Madras before Delhi's benches arrive, and without this
+    /// Delhi's list lands last and sits under a form that says Madras. Each selection takes a
+    /// ticket, and a reply holding a stale one is dropped.
+    #if canImport(Darwin)
+    @ObservationIgnored private var cascade = 0
+    #else
+    private var cascade = 0
+    #endif
+
+    /// Picks a court and asks the server what it needs.
+    func selectCourt(_ court: Court) async {
+        cascade += 1
+        let ticket = cascade
+
+        self.court = court
+        query = CourtSearchQuery(forum: court.family, courtID: court.id)
+        query.courtName = court.name
+        // The High Court routes address a court by its eCourts state code, and that mapping is
+        // already carried for `courtId`. Read backwards here.
+        if court.family == .highCourt,
+           let code = CourtSearchQuery.stateCode(forHighCourtID: court.id) {
+            query.stateCode = code
+        }
+        benches = []
+        caseTypes = []
+        consumerStates = []
+        contract = CourtContract()
+        results = []
+        hasSearched = false
+        errorMessage = nil
+
+        guard court.isSearchable else { return }
+
+        // Four of the seven publish their catalogues, so there is nothing to wait for and no
+        // spinner to show. Consulted here rather than inside the provider so that a screen
+        // driven by a stand-in behaves the same as the real one.
+        if let published = CourtContract.published(for: court.family) {
+            adopt(published)
+            return
+        }
+
+        loadingBenches = true
+        defer { if ticket == cascade { loadingBenches = false } }
+        do {
+            let fetched = try await metadata.contract(for: court)
+            guard ticket == cascade else { return }
+            adopt(fetched)
+
+            // A generic eCourts High Court publishes neither list in its contract; both come
+            // from separate calls, the second of which needs a bench first.
+            if court.family == .highCourt, fetched.benches.isEmpty, !query.stateCode.isEmpty {
+                benches = try await metadata.highCourtBenches(stateCode: query.stateCode)
+                guard ticket == cascade else { return }
+            }
+            if contract.benchCascade {
+                consumerStates = try await metadata.consumerStates()
+                guard ticket == cascade else { return }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard ticket == cascade else { return }
+            errorMessage = DisplayText.message(for: error)
+        }
+    }
+
+    private func adopt(_ fetched: CourtContract) {
+        contract = fetched
+        benches = fetched.benches
+        caseTypes = fetched.caseTypes
+        query.requiresBench = fetched.needsBench
+        query.benchCascade = fetched.benchCascade
+        // Only the first mode this court supports; the others are not offered, so leaving the
+        // query in one of them would make the form unsendable with nothing on screen to change.
+        if query.forum.path(for: query.mode) == nil,
+           let first = query.forum.availableModes.first {
+            query.mode = first
+        }
+    }
+
+    /// Picks a bench, and fetches the case types that depend on it.
+    func selectBench(_ option: CourtOption) async {
+        cascade += 1
+        let ticket = cascade
+
+        query.bench = option.value
+        query.benchName = option.label
+        // The case type belonged to the previous bench. Keeping it would submit a type this
+        // bench may not have, and the server would answer "no such case" rather than saying so.
+        query.caseType = ""
+        query.caseTypeLabel = ""
+
+        guard contract.takesCaseType else { return }
+        // A dedicated portal already gave us every type it has; only the two that serve them
+        // per bench need asking again.
+        let needsFetch = query.forum == .highCourt || query.forum == .tribunal
+        guard needsFetch else { return }
+
+        caseTypes = []
+        loadingCaseTypes = true
+        defer { if ticket == cascade { loadingCaseTypes = false } }
+        do {
+            let fetched: [CourtOption]
+            if query.forum == .highCourt {
+                fetched = try await metadata.highCourtCaseTypes(
+                    stateCode: query.stateCode, courtCode: option.value)
+            } else {
+                fetched = try await metadata.tribunalCaseTypes(
+                    courtID: query.courtID, bench: option.value)
+            }
+            guard ticket == cascade else { return }
+            caseTypes = fetched
+        } catch is CancellationError {
+            return
+        } catch {
+            guard ticket == cascade else { return }
+            errorMessage = DisplayText.message(for: error)
+        }
+    }
+
+    /// DCDRC only: picks a state and fetches its district commissions.
+    func selectConsumerState(_ option: CourtOption) async {
+        cascade += 1
+        let ticket = cascade
+
+        query.consumerStateID = option.value
+        query.bench = ""
+        query.benchName = ""
+        benches = []
+        loadingBenches = true
+        defer { if ticket == cascade { loadingBenches = false } }
+        do {
+            let fetched = try await metadata.consumerDistricts(stateID: option.value)
+            guard ticket == cascade else { return }
+            benches = fetched
+        } catch is CancellationError {
+            return
+        } catch {
+            guard ticket == cascade else { return }
+            errorMessage = DisplayText.message(for: error)
+        }
+    }
+
+    func selectCaseType(_ option: CourtOption) {
+        query.caseType = option.value
+        query.caseTypeLabel = option.label
+    }
+
+    // MARK: - The Supreme Court captcha
+
+    /// The image the user is being asked to read, if any. Non-nil means the sheet is up.
+    private(set) var captcha: SupremeCourtCaptcha?
+    /// Set while a new image is being fetched, so the sheet can show a spinner in the frame
+    /// rather than briefly showing nothing and then an image.
+    private(set) var isLoadingCaptcha = false
+    private(set) var isSubmittingCaptcha = false
+    /// What the user has typed. Cleared whenever a new image arrives — an answer to the previous
+    /// image is worse than an empty box, because it looks like it might still be right.
+    var captchaAnswer = ""
+    /// Why the previous attempt did not go through. Shown inside the sheet.
+    var captchaError: String?
+
+    var isShowingCaptcha: Bool { captcha != nil || isLoadingCaptcha }
+
+    var canSubmitCaptcha: Bool {
+        !isSubmittingCaptcha && captcha != nil
+            && !captchaAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Fetches a fresh captcha.
+    ///
+    /// Always a *new* session. There is no refresh of an existing one: the server holds the
+    /// court's cookies against the session id, so a new image means new state on both sides.
+    func loadCaptcha() async {
+        isLoadingCaptcha = true
+        captchaAnswer = ""
+        defer { isLoadingCaptcha = false }
+        do {
+            captcha = try await service.startCaptchaSession()
+        } catch is CancellationError {
+            return
+        } catch {
+            // Reported on the form rather than inside the sheet, because with no image there is
+            // no sheet worth showing and a message inside one that closes is a message nobody
+            // reads. The web has this bug.
+            captcha = nil
+            errorMessage = DisplayText.message(for: error)
+        }
+    }
+
+    /// Sends the answer, and gets the next image if it was wrong.
+    ///
+    /// The session is spent by this call either way — the server deletes it before checking the
+    /// answer — so the failure path fetches a new one instead of letting the user try again
+    /// against a session that no longer exists.
+    func submitCaptcha() async {
+        guard canSubmitCaptcha, let session = captcha?.sessionID else { return }
+        isSubmittingCaptcha = true
+        captchaError = nil
+        defer { isSubmittingCaptcha = false }
+
+        do {
+            let outcome = try await service.submitCaptcha(
+                captchaAnswer, for: query, session: session)
+            switch outcome {
+            case .results(let found):
+                results = found
+                hasSearched = true
+                dismissCaptcha()
+            case .needsANewCaptcha(let message):
+                captchaError = message
+                await loadCaptcha()
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            captchaError = DisplayText.message(for: error)
+        }
+    }
+
+    func dismissCaptcha() {
+        captcha = nil
+        captchaAnswer = ""
+        captchaError = nil
     }
 
     /// What to say when a search came back with nothing.
@@ -106,7 +406,7 @@ final class CourtSearchViewModel {
     /// returned no rows — indistinguishable from "no such case" — so the wording has to admit
     /// both possibilities rather than assert the case does not exist.
     var emptyMessage: String {
-        query.forum.solvesCaptcha
+        query.forum.solvesCaptcha(in: query.mode)
             ? """
               No case came back for that number. The court's site sometimes returns nothing \
               even when the case exists — it is worth trying again before concluding it is not \
@@ -169,10 +469,29 @@ final class CourtSearchViewModel {
 
     func isSaved(_ result: CourtSearchResult) -> Bool { savedIDs.contains(result.id) }
 
-    func dismissNotice() { notice = nil }
+    /// A case pinned from its record (`CourtLookupViewModel.addToMatters`) rather than from
+    /// this row: the row must show it saved too, or it offers to add it again.
+    func markSaved(_ result: CourtSearchResult) { savedIDs.insert(result.id) }
 
     enum Copy {
         static let title = "Find a case"
+        /// The same search, opened to read a case rather than to add one (Fetch Orders).
+        static let lookupTitle = "Fetch Orders"
+        /// New matter's search: the web's heading over the same panel.
+        static let pickTitle = "Find the case in court records"
+        static let useThisCase = "Use this case"
+        static let readFirst = "Read it first"
+        static let fetchThisCase = "Fetch this case"
+        static let lookedUpRecently = "Looked up recently"
+        /// Fetch Orders' front door: what this is, in one line.
+        static let lookupLead = "Read any court case, in one place."
+        static let lookupBlurb = "Orders, hearing history, parties and advocates — straight from the court’s own records, without adding the case to your dashboard."
+        /// The three steps from "I have a case number" to "I have it in Matters".
+        static let lookupSteps: [(title: String, text: String, symbol: String)] = [
+            ("Search", "Pick the court, type the case number or diary number.", "magnifyingglass"),
+            ("Read", "Every order, hearing, party and advocate on one page. Nothing is saved.", "book"),
+            ("Keep it, if you want", "Add it to Matters for hourly tracking and alerts. Or just close the page.", "folder.badge.plus"),
+        ]
         static let searchButton = "Search the court"
         static let searching = "Asking the court…"
         /// Said out loud because ten seconds of silence reads as a hang.
@@ -182,5 +501,15 @@ final class CourtSearchViewModel {
             """
         static let saveButton = "Add to my cases"
         static let savedLabel = "On your dashboard"
+
+        /// Why the district courts are listed but cannot be chosen.
+        ///
+        /// Deliberately about what Emperor can do rather than about what the court's website is
+        /// like — the courts are not at fault, and blaming them would be both unfair and wrong.
+        /// It also stops short of promising a date, because there is not one.
+        static let notSearchable = """
+            Emperor cannot look cases up at the district and subordinate courts yet. You can \
+            still add these matters from the web app and track them here.
+            """
     }
 }

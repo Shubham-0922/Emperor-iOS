@@ -51,8 +51,8 @@ struct DraftHistoryView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.bottom, 8)
+            .padding(.horizontal, Spacing.lg)
+            .padding(.bottom, Spacing.sm)
 
             ListStateView(presentation: model.presentation, retry: { await model.load() }) {
                 list(model)
@@ -62,12 +62,12 @@ struct DraftHistoryView: View {
                 // `showsEmptyState` too — a branch on `showsNoSearchResults` above would
                 // never be reached.
                 if model.showsNoSearchResults {
-                    ContentUnavailableView.search(text: model.query)
+                    NoResultsView(query: model.query)
                 } else {
-                    ContentUnavailableView(
+                    EmptyStateView(
                         model.kind.title,
                         systemImage: model.kind.systemImage,
-                        description: Text(model.kind.emptyMessage))
+                        message: model.kind.emptyMessage)
                 }
             }
         }
@@ -84,7 +84,9 @@ struct DraftHistoryView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
-        .sheet(item: Binding(
+        // Full screen for the same reason the chat's artifact viewer is: a draft is a document
+        // to be read, and a form sheet on an iPad is a fraction of the screen.
+        .fullScreenCover(item: Binding(
             get: { model.opened },
             set: { if $0 == nil { model.close() } }
         )) { opened in
@@ -95,11 +97,14 @@ struct DraftHistoryView: View {
     private func list(_ model: DraftHistoryViewModel) -> some View {
         List {
             ForEach(model.groups) { group in
-                Section(group.title) {
+                Section {
                     ForEach(group.items) { item in
                         row(model, item)
                     }
+                } header: {
+                    SectionHeader(title: group.title, detail: "\(group.items.count)")
                 }
+                .listRowBackground(theme.surface)
             }
         }
         .listStyle(.insetGrouped)
@@ -111,18 +116,21 @@ struct DraftHistoryView: View {
         Button {
             model.open(item)
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: model.kind.systemImage)
-                    .foregroundStyle(theme.accent)
+            HStack(spacing: Spacing.md) {
+                // The tile a draft wears where the conversation produced it, too.
+                IconTile(
+                    systemImage: model.kind.systemImage,
+                    hue: model.kind == .document ? .indigo : .teal)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(item.displayTitle)
-                        .lineLimit(2)
+                        .font(.brand(.subheadline, weight: .medium))
+                        .dynamicLineLimit(2)
                         .foregroundStyle(theme.textPrimary)
                     Text(item.sourceLabel)
                         .font(.brand(.caption2))
                         .foregroundStyle(theme.textTertiary)
-                        .lineLimit(1)
+                        .dynamicLineLimit(1)
                 }
 
                 Spacer(minLength: 0)
@@ -149,7 +157,17 @@ struct DraftReaderView: View {
 
     var body: some View {
         NavigationStack {
-            MarkdownArtifactView(markdown: draft.content)
+            Group {
+                // Routed on what the body *is*, as the chat's own artifact viewer does. A draft
+                // is usually an inline-styled HTML fragment, and this screen used to hand every
+                // one of them to the Markdown renderer.
+                switch draft.format {
+                case .html:
+                    DocumentWebView(html: draft.content)
+                case .markdown:
+                    MarkdownArtifactView(markdown: draft.content)
+                }
+            }
                 .background(theme.canvas)
                 .navigationTitle(draft.item.displayTitle)
                 .navigationBarTitleDisplayMode(.inline)
@@ -158,9 +176,10 @@ struct DraftReaderView: View {
                         Button("Done") { dismiss() }
                     }
                     ToolbarItem(placement: .primaryAction) {
-                        ShareLink(item: draft.content) {
-                            Image(systemName: "square.and.arrow.up")
-                        }
+                        DocumentExportMenu(
+                            content: draft.content,
+                            isHTML: draft.format == .html,
+                            title: draft.item.displayTitle)
                     }
                 }
         }

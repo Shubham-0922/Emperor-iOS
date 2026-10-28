@@ -13,16 +13,12 @@ struct LoadFailureView: View {
     var retry: (() async -> Void)?
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: icon)
-        } description: {
-            Text(failure.message)
-        } actions: {
+        EmptyStateView(title, systemImage: icon, message: failure.message, tone: tone) {
             if failure.isRetryable, let retry {
                 Button("Try again") {
                     Task { await retry() }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.primaryAction)
             }
         }
     }
@@ -33,6 +29,9 @@ struct LoadFailureView: View {
         case .unauthenticated: return "Session expired"
         case .maintenance: return "Emperor is down for maintenance"
         case .server: return "Could not load"
+        // The refusal's own title — "Monthly questions used", "Account paused" — rather than
+        // "Could not load", which would read as a fault worth retrying.
+        case .refused: return failure.refusal.map(DisplayText.title(for:)) ?? "Not available"
         }
     }
 
@@ -42,6 +41,16 @@ struct LoadFailureView: View {
         case .unauthenticated: return "person.crop.circle.badge.exclamationmark"
         case .maintenance: return "wrench.and.screwdriver"
         case .server: return "exclamationmark.triangle"
+        case .refused: return "pause.circle"
+        }
+    }
+
+    /// Calm by default. Only the two that ask something of the reader — sign in again, or a
+    /// fault on our side — take the warning colour; an outage or a refusal is not an alarm.
+    private var tone: IconCircle.Tone {
+        switch failure.kind {
+        case .unauthenticated, .server: return .warning
+        case .offline, .maintenance, .refused: return .neutral
         }
     }
 }
@@ -59,13 +68,17 @@ struct StaleBanner: View {
     var retry: (() async -> Void)?
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: failure.kind == .offline ? "wifi.slash" : "exclamationmark.triangle")
+        // "Retry" under the caveat at the accessibility sizes, so the caveat keeps its words.
+        AdaptiveStack(spacing: Spacing.sm + 2) {
+            Image(systemName: failure.kind == .offline ? "wifi.slash" : "exclamationmark.triangle.fill")
+                .foregroundStyle(theme.warning)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(failure.kind == .offline
                      ? "Offline — showing what was last loaded."
                      : "Could not refresh. Showing what was last loaded.")
-                    .lineLimit(2)
+                    .foregroundStyle(theme.textPrimary)
+                    .dynamicLineLimit(2)
                 if let cachedAt {
                     Text("As of \(cachedAt, format: .relative(presentation: .named))")
                         .foregroundStyle(theme.textSecondary)
@@ -73,15 +86,27 @@ struct StaleBanner: View {
             }
             Spacer(minLength: 0)
             if failure.isRetryable, let retry {
-                Button("Retry") { Task { await retry() } }
-                    .font(.brand(.caption, weight: .semibold))
+                Button {
+                    Task { await retry() }
+                } label: {
+                    Text("Retry")
+                        .font(.brand(.caption, weight: .semibold))
+                        .foregroundStyle(theme.accentText)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
             }
         }
         .font(.brand(.caption))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Spacing.lg)
+        .padding(.vertical, Spacing.sm + 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.warning.opacity(0.12))
+        // `Palette.bannerWash`, on which `PaletteTests` holds the caveat and "Retry" to 4.5:1.
+        .background(Color(theme.palette.bannerWash))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.warning.opacity(0.25)).frame(height: 0.5)
+        }
     }
 }
 
@@ -93,12 +118,13 @@ struct CachedStamp: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "clock.arrow.circlepath")
+                .accessibilityHidden(true)
             Text("As of \(cachedAt, format: .relative(presentation: .named))")
             Spacer(minLength: 0)
         }
         .font(.brand(.caption))
         .foregroundStyle(theme.textSecondary)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, Spacing.lg)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.surfaceElevated)
@@ -119,6 +145,8 @@ struct ListStateView<Content: View, Empty: View>: View {
     var body: some View {
         if presentation.showsLoadingPlaceholder {
             ProgressView()
+                .tint(theme.textSecondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if presentation.showsFailureState, let failure = presentation.failure {
             LoadFailureView(failure: failure, retry: retry)
         } else if presentation.showsEmptyState {

@@ -13,6 +13,13 @@ final class ServiceWireTests: XCTestCase {
 
     private static let config = APIConfig(baseURL: URL(string: "https://example.test/api")!)
 
+    /// Before each test, not only after. `tearDown` alone leaves the **first** test in the class
+    /// reading whatever the previous suite left in `HTTPStub.seen`. See `HTTPStub.reset`.
+    override func setUp() {
+        super.setUp()
+        HTTPStub.reset()
+    }
+
     override func tearDown() {
         HTTPStub.reset()
         super.tearDown()
@@ -52,6 +59,43 @@ final class ServiceWireTests: XCTestCase {
         _ = try await files.fileData(name: "Notes.txt", folderName: "")
 
         XCTAssertEqual(HTTPStub.lastRequest?.queryItems["folderName"], ".")
+    }
+
+    // MARK: - /move-file spells the root the other way
+
+    /// **The root is `""` here, not `"."`** — the opposite of `/view-file` above and of
+    /// `delete-file`, which is why `FileManagementService` carries two separate root constants.
+    /// `move-file` checks `fromFolder`/`toFolder` against `null` rather than for truthiness, so
+    /// an empty string is a real folder to it and means the root; a `"."` would be taken as a
+    /// directory literally named `.` and the file would land somewhere nobody can reach.
+    ///
+    /// Pinned because a change to the shared `folder(_:root:)` helper would otherwise break this
+    /// route silently. My Files never moves a document *to* the root, but a loose document can
+    /// be moved out of it.
+    func testMovingToTheRootSendsEmptyStringsNotDots() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true}"#))
+        let files = FileManagementService(client: client)
+
+        try await files.move(name: "Order.pdf", from: "Partition_Suit", to: nil)
+
+        let body = try XCTUnwrap(HTTPStub.lastRequest?.bodyJSON)
+        XCTAssertEqual(HTTPStub.lastRequest?.path, "/api/move-file")
+        XCTAssertEqual(body["fromFolder"] as? String, "Partition_Suit")
+        XCTAssertEqual(body["toFolder"] as? String, "", "the root is the empty string on this route")
+        XCTAssertEqual(body["fileName"] as? String, "Order.pdf")
+    }
+
+    func testMovingOutOfTheRootAlsoSpellsItEmpty() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true}"#))
+        let files = FileManagementService(client: client)
+
+        try await files.move(name: "Order.pdf", from: nil, to: "Partition_Suit")
+
+        let body = try XCTUnwrap(HTTPStub.lastRequest?.bodyJSON)
+        XCTAssertEqual(body["fromFolder"] as? String, "")
+        XCTAssertEqual(body["toFolder"] as? String, "Partition_Suit")
     }
 
     func testANestedFileSendsItsRealFolder() async throws {
@@ -192,6 +236,97 @@ final class ServiceWireTests: XCTestCase {
         XCTAssertEqual(finished, .failed("ERROR: could not read this document"))
     }
 
+    // MARK: - Stopping a run
+
+    func testStopPostsTheChatAndTheCaller() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":true,"stopped":true,"savedBy":"run"}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "chat-9")
+
+        let sent = try XCTUnwrap(HTTPStub.lastRequest)
+        XCTAssertEqual(sent.path, "/api/chat/stop")
+        XCTAssertEqual(sent.httpMethod, "POST")
+        XCTAssertEqual(sent.header("Authorization"), "Bearer tok-abc")
+        XCTAssertEqual(sent.bodyJSON["chatId"] as? String, "chat-9")
+        XCTAssertEqual(sent.bodyJSON["userId"] as? String, "42")
+        XCTAssertEqual(sent.bodyJSON.count, 2)
+        XCTAssertEqual(reply.stopped, true)
+        XCTAssertEqual(reply.savedByKind, .run)
+    }
+
+    func testStopOfAChatThatIsNotRunningIsNotAnError() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":false}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "chat-9")
+
+        XCTAssertTrue(reply.success)
+        XCTAssertEqual(reply.running, false)
+        XCTAssertNil(reply.savedByKind)
+    }
+
+    func testStopSavedByTheRequestItself() async throws {
+        let client = await makeClient()
+        HTTPStub.always(.json(#"{"success":true,"running":true,"stopped":true,"savedBy":"stop"}"#))
+
+        let reply = try await ChatService(client: client).stopRun(chatID: "c")
+
+        XCTAssertEqual(reply.savedByKind, .stop)
+    }
+
+    /// An image upload is converted to a PDF stored under a new name. Polling the original name
+    /// is answered "Reading document content..." forever, so the poll must use `storedName`.
+    func testConvertedUploadPollsTheStoredName() async throws {
+        let client = await makeClient()
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/upload-status")
+                ? .json(#"{"status":"ready"}"#)
+                : .json(#"{"success":true,"storedName":"scan (1).pdf","convertedFrom":"png"}"#)
+        }
+        let uploads = UploadService(client: client)
+
+        var stored: String?
+        var finished: IngestState?
+        for try await event in uploads.upload(
+            data: Data("x".utf8), fileName: "scan.png", folderName: "Scans") {
+            if case .stored(let name) = event { stored = name }
+            if case .finished(let state) = event { finished = state }
+        }
+
+        XCTAssertEqual(stored, "scan (1).pdf")
+        XCTAssertEqual(finished, .ready)
+        let poll = try XCTUnwrap(HTTPStub.seen.last { $0.path.hasSuffix("/upload-status") })
+        XCTAssertEqual(poll.queryItems["fileName"], "scan__1_.pdf")
+    }
+
+    func testUnconvertedUploadPollsTheOriginalNameAndYieldsNoStoredEvent() async throws {
+        let client = await makeClient()
+        HTTPStub.respond { request in
+            request.path.hasSuffix("/upload-status")
+                ? .json(#"{"status":"ready"}"#)
+                : .json(#"{"success":true}"#)
+        }
+        var sawStored = false
+        for try await event in UploadService(client: client).upload(
+            data: Data("x".utf8), fileName: "Order.pdf", folderName: "Scans") {
+            if case .stored = event { sawStored = true }
+        }
+        XCTAssertFalse(sawStored)
+        let poll = try XCTUnwrap(HTTPStub.seen.last { $0.path.hasSuffix("/upload-status") })
+        XCTAssertEqual(poll.queryItems["fileName"], "Order.pdf")
+    }
+
+    func testReplyParsingIsLenient() {
+        XCTAssertEqual(
+            UploadReply.storedName(from: Data(#"{"storedName":"a.pdf","convertedFrom":"jpg"}"#.utf8)),
+            "a.pdf")
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"success":true}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"storedName":""}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data(#"{"storedName":5}"#.utf8)))
+        XCTAssertNil(UploadReply.storedName(from: Data("not json".utf8)))
+    }
+
     // MARK: - Auth
 
     func testLoginPostsCredentialsWithoutRequiringAToken() async throws {
@@ -233,20 +368,53 @@ final class ServiceWireTests: XCTestCase {
         HTTPStub.always(.json(#"{"success":true,"token":"t","user":{"id":8}}"#))
         let auth = AuthService(client: client)
 
-        _ = try await auth.register(name: "R. Iyer", email: "r@x.in", password: "pw")
+        _ = try await auth.register(name: "R. Iyer", email: "r@x.in", password: "pw", phone: nil)
 
         XCTAssertEqual(HTTPStub.lastRequest?.bodyJSON["name"] as? String, "R. Iyer")
+        // No number given: the key is absent, never null — the platform stores NULL for absent.
+        XCTAssertNil(HTTPStub.lastRequest?.bodyJSON["phone"])
     }
 
-    /// Signing out is local — there is no logout route — so it must not hit the network, and
-    /// must leave the client unable to make an authenticated request.
-    func testSignOutIsPurelyLocal() async throws {
+    /// A mobile number goes in the international form the platform stores.
+    func testRegisterSendsTheMobileNumberInternationally() async throws {
+        let client = await makeClient(authenticated: false)
+        HTTPStub.always(.json(#"{"success":true,"verificationRequired":true,"email":"r@x.in"}"#))
+        let auth = AuthService(client: client)
+
+        _ = try await auth.register(
+            name: "R. Iyer", email: "r@x.in", password: "longenough", phone: "+919876543210")
+
+        XCTAssertEqual(HTTPStub.lastRequest?.bodyJSON["phone"] as? String, "+919876543210")
+    }
+
+    /// The ID token and nothing else — never an email or a user id, which would let the client
+    /// say who it is.
+    func testSocialSignInSendsOnlyTheToken() async throws {
+        let client = await makeClient(authenticated: false)
+        HTTPStub.always(.json(#"{"success":true,"token":"t","user":{"id":5}}"#))
+        let auth = AuthService(client: client)
+
+        _ = try await auth.signInWithGoogle(idToken: "g.jwt")
+        XCTAssertEqual(HTTPStub.lastRequest?.url?.path, "/api/auth/google")
+        XCTAssertEqual(HTTPStub.lastRequest?.bodyJSON.keys.sorted(), ["idToken"])
+
+        _ = try await auth.signInWithApple(idToken: "a.jwt", name: "John Doe")
+        XCTAssertEqual(HTTPStub.lastRequest?.url?.path, "/api/auth/apple")
+        XCTAssertEqual(HTTPStub.lastRequest?.bodyJSON["name"] as? String, "John Doe")
+        XCTAssertNil(HTTPStub.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    /// Signing out tells the server once — `POST /logout`, while the request can still carry
+    /// the token — and leaves the client unable to make an authenticated request.
+    func testSignOutTellsTheServerThenForgetsTheCredential() async throws {
         let client = await makeClient()
         let auth = AuthService(client: client)
+        HTTPStub.always(.json(#"{"success":true}"#))
 
         await auth.signOut()
 
-        XCTAssertTrue(HTTPStub.seen.isEmpty, "there is no logout endpoint to call")
+        XCTAssertEqual(HTTPStub.seen.map { $0.url?.path ?? "" }, ["/api/logout"])
+        XCTAssertNotNil(HTTPStub.lastRequest?.value(forHTTPHeaderField: "Authorization"))
         let credentials = await client.currentCredentials()
         XCTAssertNil(credentials)
     }

@@ -72,11 +72,30 @@ character.
 
 **`POST /chat` is destructive to history.** The server replaces the chat's stored messages
 with exactly what the request contained, plus the new answer. Anything omitted from the
-`messages` array is **deleted server-side**. Always send the full conversation.
+`messages` array is **deleted server-side**. Always send the full conversation — every
+message with every key it was stored with. A field this client does not model (the web's work
+log, `serverRun`) is deleted unless it goes back; `ChatMessage.extra` keeps them.
 
-**Do not call `POST /sync` after a chat turn.** `/chat` already persists the turn twice, and
-`/sync` silently drops any chat whose message count is lower than the server's — so a stale
-local copy is discarded without an error.
+**`POST /sync` after a chat turn is for the work log and an edited draft only, and only when
+it is provably safe.** `/chat` already persists the turn, and `/sync` either silently ignores a
+chat whose message count is lower than the server's or deletes and re-inserts every message of it. The web
+calls it at the end of every turn to store the turn's work log — safe for the web because at
+that instant its array is exactly what the server holds. This client does the same only when
+`WorkLogSync` allows: the turn ended cleanly, the history loaded whole, `/stream-status`
+reports nothing running, and a fresh `GET /messages` matches the transcript message for
+message, ending in this client's own question (by id) and the server's finished answer. What it
+posts is those stored bytes with the log added to the last message — never a re-encoding — and
+its next turn waits for it. A save that does not happen is silent; the answer is stored either
+way. An edited draft is written back under the same discipline (`DraftEditSync`): a fresh read
+must match message for message, and the stored bytes go back with the one turn's `content`
+replaced.
+
+**The server files a Drafts row from every assistant message on every write**, `/chat` and
+`/sync` alike, and recognises a draft it already holds only by a hash of its cleaned body. An
+edited body, synced on its own, is therefore filed as a second row beside the original. Saving
+the edit over the original row by id first — with the body exactly as the server will derive it
+(`DraftEdit.storedDraft`, held to `setMessages` by `scripts/generate-draft-edit-fixtures.mjs`)
+— is what makes the sync that follows land on that row instead.
 
 **A 200 on the final upload chunk means "bytes received", not "file ready".** Assembly,
 OCR and indexing all run after the response has closed, so a failure there produces no HTTP
@@ -106,8 +125,8 @@ text.
 
 **`model` is a fallthrough, not a whitelist.** `BaseProvider.resolveModel` forwards an
 unrecognised alias to OpenRouter verbatim, so a typo is not rejected — it is sent upstream.
-Hence `ChatModel` as an enum. `preferred_model` from the login response is only a seed for
-the picker; the per-request value wins unconditionally.
+Hence `ChatModel` as an enum. `preferred_model` from the login response only seeds the
+composer's Quick | Thinking switch; the per-request value wins unconditionally.
 
 **Artifact wrappers are a claim, not a fact.** The platform records a live incident
 (`src/lib/canvasShape.js:1-9`) where a pleading arrived as 81 HTML paragraphs inside
@@ -131,6 +150,298 @@ private working in front of a client.
 pass reads, but the scanned-document refusal check looks at `messages[last].attachments`
 (`sync-server.js:7334`) — sending only the top-level array bypasses that check silently.
 
+**`searchMode: "web"` asks for a search; it does not switch one on or off.** The server also
+searches whenever the question contains one of its keywords, and skips the search on any turn
+that carries attachments, asked for or not. So "Always search the web" promises only that this
+client asked. The web's research Sources (jurisdictions, repositories) reach no request at all.
+
+**`/draft-feedback` answers in `ok`, not `success`.** `200 {ok: true, id}` when stored;
+`400 {ok: false, error: "Pick a rating or write a comment"}` when there is neither. A long
+comment or draft is trimmed (5,000 characters, 500 KB), never refused.
+**Connecting a drive never comes back to the app.** `GET /cloud/connect` returns the drive's
+consent page; the drive redirects to the server, which keeps the token and then lands on the
+**web** app's Settings page. The only way to learn the outcome is to read `/cloud/connections`
+again once the browser is closed. The `/cloud/*` refusals are sentences for the person (409 for
+a drive that is not connected or granted too little, 404 for a missing document) and name the
+web's Settings, so this client points them at You → Connected services (`CloudDriveWording`).
+**`POST /download-files` leaves out what it cannot find and still answers 200.** A zip of three
+documents may hold two; only when none is found does it answer 404. Its entries are flat, so a
+second document of the same name is stored under its folder's path. This client reads the
+archive's end record to count what arrived (`FileDownloadWording.zipEntryCount`) and says when
+it is short. The route takes its credential from the `Authorization` header alone.
+
+**`GET /download-searchable` answers errors in plain text**, not JSON (400 for a missing
+parameter, 404 for a missing file or one that is not a PDF), and a PDF that is already its own
+searchable version — or has no scanned pages — comes back as stored, renamed
+`<name>_searchable.pdf`. The searchable copy differs from the plain download only for a PDF with
+scanned pages that has not yet been made searchable in place.
+
+**A folder upload's structure travels in `folderName`.** Each file is sent with the folder it
+lands in, slashes and all (`Clients/Wadhwa/Orders`), and the folders are made on arrival.
+Operating-system files (`.DS_Store`, `._Award.pdf`, anything under `__MACOSX/`) are refused with
+a 415, so `FolderUploadPlan` drops them before the count is shown, by the platform's own rules
+(`UploadJunk`, held to `junkNames.js` by golden data).
+
+### Accounts, plans and refusals
+
+**Creating an account does not sign anyone in.** `/register` emails a confirmation link and
+returns no token; `/login` then refuses the address (403 `EMAIL_UNVERIFIED`) until it is
+confirmed. A one-time code from `/auth/otp/request` → `/auth/otp/verify` both signs in and
+confirms the address, so it is the quickest way past that — and the only way in for an account
+created through Google, which has no password (`/login` answers 409 `SSO_ACCOUNT`). The server
+sends at most three codes to one address in fifteen minutes and answers 200 past that, so
+`SignInFlow` paces requests rather than promise a code that is not coming.
+
+**Refusals carry a machine-readable `code`; the sentence is for a browser.** The platform meters
+plans and refuses new work outside one: `PLAN_REQUIRED`, `QUERY_LIMIT`, `FEATURE_NOT_IN_PLAN`,
+`DOCUMENT_LIMIT` (402), `STORAGE_LIMIT` (413), `MATTER_LIMIT`, `SCAN_LIMIT`, `ACCOUNT_SUSPENDED`
+(403), `RATE_LIMIT` (429). `Refusal` recognises them and `DisplayText` words them: a refusal
+says what happened, never "Upgrade your plan…", and `RefusalTests` fails the build if one says
+upgrade, buy or pricing. A refused question goes back to the composer; a refused background
+upload is stopped and its reason kept, because asking again gets the same answer.
+
+**Plans are bought on the web.** This app takes no money. Where a plan is the answer — the
+plan refusals, the no-plan banner, Plan & usage in Settings — a separate **View plans** button
+opens the web app's `/buy` page in Safari, on the same host the app talks to, so the plan lands
+on the signed-in account. Returning to the app reads the account at once
+(`Session.noteOpenedPlans`). It is never offered for a paused account or the hourly ceiling,
+which no plan changes. App Review restricts links to purchases made outside the app (guidelines
+3.1.1 and 3.1.3) and what is allowed differs by storefront: `EMPEROR_WEB_PLANS: "NO"` in
+`project.yml` removes every button, and Billing's coupon box and priced plans with them. Check
+the current guidelines before each submission. See `WebPlans`.
+
+**The role is the account's.** `users.practice_role` holds the web's id for it, so switching
+role in Settings switches the web too, and the other way round (`Practice`). The device keeps a
+copy for drawing the toolkit offline; a switch made here that has not reached the account yet
+is sent again rather than overwritten. A role this app does not carry — one the web adds after
+this build — is left alone on the account. Needs the platform's `practice_role` change deployed;
+until then the role stays on the device and nothing breaks.
+
+**The coupon routes answer codes of their own**, outside `Refusal`: 400 `COUPON_INVALID` (the
+coupon's own reason — "That code has expired." — shown as written), 400 `NEEDS_PAYMENT`, 409
+`PLAN_DOWNGRADE` and 409 `COUPON_SPENT`. The `NEEDS_PAYMENT` and `PLAN_DOWNGRADE` sentences send
+the reader to a payment step, so `CouponRefusal` words them. A bad code is previewed as 200
+`valid:false`. Billing amounts are paise integers, and an invoice's `gstPaise` is null or 0 when
+no GST was charged.
+
+**A wrong one-time code is a 401 that says nothing about the session.** `APIError.classify`
+reads the `code` before the 401 rule, so `OTP_INVALID` is a refusal and never a sign-out.
+
+**`GET /auth/session` is the `/me` this API lacked.** It returns the account as it stands —
+plan, `needsPlan`, `suspended` — and a freshly signed token. The app reads it at launch and on
+return (at most every half hour), which is what keeps an account in daily use signed in.
+
+**No cookie jar.** The platform sets an httpOnly auth cookie on every sign-in for browser
+requests that cannot carry a header. This client authenticates every request with the bearer
+token, so it refuses cookies outright (`APIClient.refuseCookies`) rather than keep a second
+credential on the phone. Signing out calls `POST /logout` while the token still works.
+
+**Sign-up asks what the web asks** — full name, email, password and its confirmation, all
+required, with the web's placeholders — plus an optional Indian mobile number, sent as
+`+91XXXXXXXXXX`. `IndianMobile` ports the platform's `src/lib/phone.js` and is checked against
+it case by case (`scripts/generate-phone-fixtures.mjs`); the server stores the number only once
+its `users.phone` change is deployed.
+
+**Sign in with Apple and Continue with Google are built and switched off.** They need, in order:
+a Google Cloud OAuth client of the **iOS** type; the platform routes `POST /auth/google` and
+`POST /auth/apple`, each taking `{ idToken }` (Apple also `name`) and answering as `/login`
+does; and the Sign in with Apple capability on the app id. Then set `EMPEROR_GOOGLE_CLIENT_ID`
+and `EMPEROR_SOCIAL_SIGN_IN: "YES"` in `project.yml`. Google is never offered without Apple —
+App Review guideline 4.8 — and `SocialSignInConfig` enforces that. Google's flow is OAuth with
+PKCE in the system browser sheet, because Google refuses sign-in in an embedded web view.
+
+**The chat's busy refusal is recognised by its `[busy]` token**, never by the sentence after it,
+which the platform has reworded once already.
+
+**Numbered citations.** The system prompt now asks for `[1]`-style citations and a References
+section in every answer. They are a different thing from the `<@file:MARK:7>` annexure tokens
+above, and `AnswerCitations` keeps the two apart.
+
+### Notifications
+
+Settings → Notifications schedules, on the device, a morning briefing and an evening-before
+reminder for each day the person's matters are listed — never for an empty day — and announces
+new items in the Updates feed from background refresh. Permission is asked for only from the
+switch. The "Email briefing" switch is the platform's own daily email, account-wide and shared
+with the web. Tapping a hearing opens the Calendar on that hearing's day; tapping an update
+opens Updates over Home — and if another sheet is open at the time, as soon as it closes; the
+person's own sheet is never taken away. The app-icon badge is the unread count, set on every
+refresh, on return to the app, and the moment Updates marks something read. There is no remote
+push: the server has no APNs sender, so a reminder for a listing added on the web reaches the
+device at its next refresh.
+
+### Today: widget, Siri and links
+
+- **Widget** (`EmperorWidget/`): Home Screen small/medium/large, Lock Screen rectangular and
+  inline. It reads only a snapshot the app writes to the app group (`TodaySnapshot`: the next
+  seven days of listings, when they were fetched, and whether anyone is signed in — no token)
+  whenever the cause list is saved; cleared on sign-out. Days are IST, and the timeline turns at
+  each Indian midnight. Matter rows are `.privacySensitive()`, so a locked device shows counts
+  only.
+- **The app group is found at run time** (`AppGroup`): `EmperorAppGroup` (`EMPEROR_APP_GROUP`),
+  then `group.` + the installed bundle id — a sideloading tool may rename it. With none, the app
+  is unaffected and the widget says to open the app.
+- **Links**: `emperor://calendar[?day=YYYY-MM-DD]` and `emperor://updates`. They only navigate
+  (`EmperorLink`), through the same path as a notification tap. `emperor://share/<id>` opens a
+  shared conversation (see "Shared conversations").
+- **Siri and Shortcuts** (App Intents): What's Listed Today / Tomorrow, from the cached cause
+  list (its age said past six hours; requires the device unlocked), and Open My Calendar.
+- **Signing**: the widget is a second bundle (`com.emperorailabs.emperor.widget`) and needs its
+  own App ID and the App Groups capability.
+
+### App lock and privacy cover
+
+Settings → Security turns on "Require Face ID" (Touch ID / Optic ID / passcode, whichever the
+device has — `LAPolicy.deviceOwnerAuthentication`), with a "Lock after" choice (Immediately to
+After 1 hour; default 1 minute). Turning it on asks first; a device without a passcode cannot
+turn it on. The app locks at a cold start with a stored session and on a return after the
+background has lasted at least the timeout, measured on `ContinuousClock` so a changed date
+cannot shorten it. Whenever the scene is not active a brand cover hides the app — lock or no
+lock — so the app switcher never shows a matter. The cover is its own `UIWindow` above alerts,
+because a view-level cover sits under sheets. The setting is the device's and survives sign-out;
+the login screen is never locked. Decisions are `AppLock` (core, tested); drawing is
+`AppLockShield`. Widgets, Spotlight results and notification text live outside the app and are
+not behind the lock — each has its own privacy rule (above, and below).
+
+### Offline reading
+
+Conversations, documents (a Word file as the server's PDF of it) and matters that open are kept
+on the device per account. They are read back only when the system reports no connection or a
+request cannot reach the server — never in place of an answer the server gave
+(`OfflineReading`). A saved conversation is read-only: `POST /chat` and `/sync` rewrite stored
+history, so nothing is sent until a fresh, whole history has loaded
+(`ChatViewModel.savedCopyAt`). Documents are capped at 300 MB — least recently opened first,
+"Save for offline" last. Copies live in Application Support, excluded from backup, sealed
+whenever the device is locked; the response cache stays readable after first unlock because
+background refresh reads the cause list. Signing out wipes all of it (`ResponseCache.clear`).
+Settings → Storage shows and clears it.
+
+### Profile, documents shared in, and Spotlight
+
+- **`/update-profile` clears what it is not sent.** It writes `avatar`, `title` and
+  `organization` from the request, so a missing key clears that field; only `name` keeps its
+  value when omitted, and `phone` changes only when its key is present. `ProfileEditor` sends
+  all four fields on every save and never sends `phone`. The photo uses the web's format:
+  centre-cropped to 256 px, JPEG, as a `data:image/jpeg;base64,` URL, capped at 150 KB. The
+  reply is adopted into `Session` (`adoptProfile`), keeping the plan, starting model and role.
+- **Documents shared into the app** arrive through "Open in…" and the share sheet via
+  `CFBundleDocumentTypes`, with `LSSupportsOpeningDocumentsInPlace` off, so iOS hands over a
+  copy. There is no share extension — that would need an app group a sideloading tool may not
+  grant. `IncomingDocumentStore` keeps each file until it is saved or let go; one that arrives
+  signed out waits for the next sign-in, and signing out lets all of them go. "Save to My Files"
+  uploads through `LibraryUploadFlow`, duplicate check included.
+- **Spotlight.** Cases and documents are indexed into the app's own protected index, replaced in
+  full on every docket and My Files load. It is emptied on sign-out, when the Settings switch is
+  off, and at launch if either applies.
+
+### Matters and calendars
+
+- **A matter's workspace has the web's sections** — Overview, Ask Emperor, Files, Drafts,
+  Chronology, Court, Tasks, Fees, People. Its conversations are opened from Ask Emperor: every
+  turn names the matter (`ChatViewModel.projectID`), a new conversation starts with the matter's
+  ready documents attached, and the document picker offers only the matter's own files. They
+  stay out of the general conversation list, and the matter's drafts (documents and tables) out
+  of the general drafts list. **Build from documents** asks the server to propose dated events
+  from the matter's documents; each is shown with where it was read, undated ones and ones
+  already on the record start unticked, and only what the user ticks is saved — one at a time,
+  as `source: ai` with its page. The banner is a preset gradient or an uploaded photo (shrunk to
+  1,600 pixels wide and kept under 2 MB before it is sent), and a matter is deleted only once its
+  name has been typed.
+
+- **The matter list works like the web's Matters page.** It always fetches archived matters too
+  and lists every tracked case that no matter links yet beside them, so its Status menu (Active
+  by default, then On hold, Disposed, Archived, All statuses), its practice-area menu (only the
+  areas the matters actually have) and its search filter one list locally. The search also
+  matches a case number written another way ("WP(C) 4412 of 2025"). Sort is Recent activity (a
+  chronology date still to come does not count), Next hearing (upcoming, then past, then
+  undated) or Name A–Z. Opening a tracked case makes its matter (`/project-from-case`). New matter
+  takes a name, a banner, a folder colour and the court case (found, not filed yet, or later);
+  Edit details sends every filled field and sends a field the user emptied as `null`. The
+  rules are `MatterListing`, `NewMatterViewModel` and `MatterEditDraft`.
+- **Teams share tracked cases.** Every member of a team sees the cases it tracks under Matters.
+  The Teams sheet (the Matters tab's people button) makes a team and adds someone who already
+  has an account by their email address; there is no route to list or remove members, so each
+  team shows its member count instead.
+- **The day's cause list downloads as PDF, Word or CSV**, with the web's columns and file names
+  (`cause-list-<day>.<ext>`), from the Calendar and from the Matters tab's next sitting. The
+  courts, rows and CSV are held to the web's own export by a generated fixture
+  (`CauseListExport`).
+
+- **`court_type` is `'district'` by default** — the `cases` column's default, and what
+  `/save-case` writes when no type is sent. `CourtTier` lets a court code or name that says
+  otherwise outrank a stored `district`, and reads the code and name whenever the type is
+  missing. The docket's headings run Supreme Court → High Courts → NCLAT → NCLT → Tribunals →
+  District Courts → Consumer Commissions → Other courts; NCLAT sits above NCLT deliberately,
+  unlike the web's `COURT_ORDER`.
+- **`DELETE /case` removes a case for its whole team**, and only for the team's owner or an
+  admin (403 otherwise). A matter made from the case is kept. Read the docket again afterwards.
+- **`/compliance-calendar` returns a bare array**, and `next_due_date` can be prose — read the
+  day from `dateKey`.
+- **`/calendar/feed-url` returns a path that already starts with `/api`**, so it is resolved
+  against the host, not the API base. A reset happened only if the answer says `rotated: true`.
+- **`/cause-list` text fields can arrive as numbers** — the server copies some straight out of
+  stored JSON. `CauseListing` decodes either.
+- **A court row's `data` is text on `/case` and an object on `/project`.** `courtHistory` arrives
+  already parsed; a strict string decode failed the whole matter. `CaseItem` keeps either.
+
+### Analysis tools
+
+Doc Index, List of Dates and Devil's Advocate run on the server as background jobs (You →
+Tools → Analysis tools; `AnalysisService`, `AnalysisRunViewModel`). The client sends up to ten
+documents already in My Files — by `{name, folderName}`, never an upload, and never a document
+at the top of My Files or inside a matter, which the tools do not read — with an optional note
+trimmed to 2,000 characters. `POST /analysis/start` answers at once with a job id, and the
+client polls `/analysis/job` every two seconds, showing the server's own stage line, until the
+job is done or failed, giving up after 25 minutes as the web does. **A job lives in the server's
+memory**: one that finished over an hour ago, or that was running when the server restarted,
+answers 404, and the only thing to do is run it again. Results are validated and repaired
+server-side, so `AnalysisResult` decodes exactly what that repair guarantees and treats anything
+else as a contract break rather than drawing half a page. Every finished run is saved
+automatically — at most 50 per tool — and listed by `/analysis/history`, per tool or for all
+tools; deleting a run that is already gone counts as done. The web's Highlighter page is not
+offered: it is a sample with no route behind it.
+
+### Limitation Radar
+
+Is a suit in time, and by how much? (You → Tools → Limitation Radar, and "Check limitation" on
+a matter's Tasks; `LimitationRadarService`, `LimitationRadarViewModel`.) The answer is date
+arithmetic against the Schedule to the Limitation Act, 1963, computed by the platform — no model
+is involved, so the same dates give the same answer twice. The client sends the suit type and
+bare `YYYY-MM-DD` days (a picker shown in India's zone, so the day picked is the day sent),
+checks the two required dates first in the web's words, and shows the platform's own sentence
+when it refuses a timeline. The verdict has three colours, not two: amber means "in time only if
+the Section 12A mediation exclusion applies". The suit types and the result card's wording are
+held to the platform's `audit.js`, run under Node by `scripts/generate-limitation-fixtures.mjs`.
+
+### MCA Registry
+
+Decode any Corporate Identity Number on the phone, and open the companies named in IBBI
+liquidation auction notices (You → Tools → MCA Registry; `McaRegistryViewModel`). The decoder
+needs no network. Companies are gathered from one page of at most 200 notices exactly as the web
+gathers them — by CIN in capitals, else by name, keeping the longest spelling and the latest
+issue date — and the screen says when more notices match than that page holds. A company's page
+re-reads its notices by the CIN as stored, and each opens the eAuctions notice screen. Registered
+office, directors, charges and filing history are MCA master data, which this product has no
+licensed source for; the screen names each gap rather than filling it. There is no "watch this
+company" control — auction watchlists stay held back (below).
+
+### Annexures and the filing-ready package
+
+When a draft cites a document as an annexure (the model's `<@file.pdf:P-1>` token), the platform
+records it in a per-conversation filing registry; this client only reads that registry
+(`FilingAnnexureService`). Under the last finished draft in a conversation, `AnnexuresCard`
+shows the List of Annexures — rows in the registry's order, then by mark, P-2 before P-10 —
+and each row opens the original document or its true typed copy, fetched only when opened. The
+card is drawn only when the list has something in it. The draft's download menu then offers a
+**filing-ready package** as Word or PDF (`FilingPackage`): the draft, a List of Annexures
+table, and each annexure in list order on a fresh page. The PDF merges each original's own pages
+after its heading; Word, which cannot hold a PDF, carries each page as a picture the platform
+renders. An original that cannot be read stops the package with a sentence naming it, rather
+than delivering a filing that silently lacks an annexure; a file kind that cannot be attached,
+a duplicate citation, and a typed copy whose document has not been read yet are named on their
+own page instead. Filing Ready is outside the Free plan, and that refusal arrives as a
+`Refusal`, worded by this client.
+
 ### A caution on reading the platform
 
 `/var/www/emperor-ai/AGENTS.md` was corrected on 2026-08-25 and now carries a `file:line`
@@ -147,26 +458,48 @@ The live chat surface is `src/tools/ToolWorkspace.jsx` rendering through
 
 Everything in this client was read from source rather than from those docs.
 
-## Known issue: the backend does not enforce authentication
+## iPad
+
+At regular width only History's conversation list (`ChatListView`, a sheet from Ask) shows the
+list beside what it opens (`ListBesideDetail`); Matters is a single stack on every device, and
+the tabs are a row of buttons across the top. Both layouts read one navigation path — the phone pushes it, the split
+shows its last element (`ListDetailPath`) — so `AppNavigator` requests work unchanged. Sheets
+that are whole screens get `.pageSizedSheet()` (iOS 18+); single-list screens get
+`.readableColumn()`. A matter whose load is cancelled part-way (the column rebuilt while its
+tab was off screen) goes back to idle and loads on its next appearance.
+
+## Accessibility
+
+Contrast is tested, not eyeballed: `PaletteTests` measures every text colour on every surface
+and every wash text is drawn on (`Palette.Wash`), in both themes. Text in the accent is
+`accentText`, never `accent`, which is a fill. Layouts survive the accessibility text sizes
+through `AdaptiveStack` (a row that becomes a column) and `.dynamicLineLimit(n)`; outcomes that
+land away from VoiceOver's focus are said with `VoiceOver.announce`.
+`UITests/AccessibilityAuditTests.swift` runs Xcode's accessibility audit over the main screens on
+iPhone and iPad, in both themes, and photographs the main tabs at the largest text size
+(`a11y-xxxl-*` in the screenshot-tour artifact). A failure names the screen, the issue and the
+element; the few waivers, each with its reason, are listed in that file. **For now it runs as
+its own CI step that reports without failing the job** (`continue-on-error`): a handful of
+findings tied to no element, seen only while a scrolled list sits under iOS 26's bar fade, are
+still being identified. It becomes blocking again the first time it passes on both devices.
+
+## Server-side hardening is still in progress
 
 Send both the bearer token **and** `userId` on every request — `APIClient` does this
-automatically.
+automatically. The client sends both so that it keeps working unchanged once the server derives
+the caller from the token alone.
 
-The token exists but is not checked: there is no auth middleware (`requireAuth` is imported
-and never called, per the comment at `sync-server.js:12560`), and roughly 40 data routes
-identify the caller from a client-supplied `?userId=` query parameter. Combined with
-`Access-Control-Allow-Origin: *` and a Cloudflare tunnel carrying no Access policy,
-`https://dev.emperorailabs.com/api/user-files?userId=<any id>` is an unauthenticated public
-read of that user's documents.
+Some features are built and tested but deliberately have no path to them from any screen —
+auction watchlists among them; "Built and deliberately held back" below has the list. Each is
+marked at its definition with the reason. **Do not wire one up without confirming the endpoint
+contract first.** File and folder deletion, translation history, the calendar subscription
+link and marking a statutory deadline done were held back the same way, and were released once
+their contracts were confirmed.
 
-This client sends both credentials so that it will keep working unchanged once the backend
-is hardened to derive the user from the token. **That hardening should happen before this
-app ships** — an App Store submission handling privileged client material against an API
-where any user id reads any matter is a review risk as well as a real one.
+The specifics — what is outstanding, and in what order — are tracked privately rather than here.
 
-There is also no logout endpoint and no server-side revocation: signing out discards the
-token locally, and a leaked token stays valid for its full 30 days. That is why it lives in
-the Keychain as `WhenUnlockedThisDeviceOnly` and never in `UserDefaults`.
+The session token is long-lived, which is why it lives in the Keychain as
+`WhenUnlockedThisDeviceOnly` and never in `UserDefaults`.
 
 ## The reasoning panel
 
@@ -192,17 +525,252 @@ Step labels are kept raw. The platform generalises them to "Reading your files�
 one-line status, which would throw away the document name and page range — exactly what
 makes a log worth reading.
 
-**Known limitation:** the work log is not persisted. The server stores only the answer text,
-so reopening a chat shows the answer without the log of how it was produced.
+**The work log is stored with the answer, in the web's shapes.** The web stores `reasoning`,
+`workflowTasks` and `workLog` on every assistant message it finishes (`streamManager.js`), and
+the server keeps message JSON verbatim. `WorkLogWire` reads them back — leniently: a malformed
+field costs only itself — and the panel is drawn, collapsed, above every stored answer that has
+one. This client attaches its own finished panel to its own answer in the same shapes, so the
+next `POST /chat` carries it, and stores it straight away through `/sync` when that is safe
+(above). Both directions are pinned to the web's own `startStream` run under Node
+(`scripts/generate-worklog-fixtures.mjs`). One deliberate difference: a stopped run keeps the
+plan rows it never reached pending, where the web ticks every row.
 
 ## Still to do
-- Markdown artifacts render as monospace text. GFM tables need a real renderer —
-  `AttributedString(markdown:)` does not support tables.
-- File library is picker-only. No preview, rename, move, delete, or favourite toggling yet
-  (`/view-file`, `/rename-file`, `/move-file`, `/delete-file`, `/favorite-file` all exist).
-- `GET /user-files` returns the whole tree with no pagination and runs a consolidation pass
-  plus a `statSync` per entry, so it is refreshed on appear and pull-to-refresh only, never
-  polled. A large library will need a cheaper path.
-- Background upload via `URLSessionConfiguration.background` so a large paperbook survives
-  the app being backgrounded.
-- Chat rename/delete via `POST /sync` (metadata only — never after a turn).
+
+### Needs a device
+- Background upload is built (`BackgroundUploader`) but **its lifecycle is unverified**. The
+  chunk arithmetic, the resumable manifest and the body encoding are covered on Linux; the
+  delegate callbacks, and above all the terminate-and-relaunch path, need a physical device. A
+  simulator does not evict apps the way a phone under memory pressure does.
+  `docs/RELEASING.md` lists what to try, in order.
+
+### Shared conversations
+
+A conversation shared from the web opens read-only in the app, as the web's `/share/:shareId`
+page shows it: the title, the role it was asked in, when it was last updated (in IST), then every
+question — with the documents it carried, by name — and every answer, drawn by the same
+`AnswerView` the conversation screen uses, each in a framed card. Drafts open full screen. An
+answer's citation chips are left out: they open documents in the asker's library. Nothing can be
+continued, changed or saved.
+
+- **Links** (`SharedChatLink`): `emperor://share/<id>`, and the web's
+  `https://<host>/share/<id>` on the host this build talks to (`APIEnvironment` — the dev host in
+  Debug, `app.emperorailabs.com` in Release). An id is letters, digits, `-` and `_`; anything
+  else is not a link. Like every `emperor://` link it only navigates.
+- **No account needed**, as on the web: `SharedChatService` reads `GET /shared-chat/:shareId`
+  with no token and no `userId`, signed in or not. The sheet (`SharedChatPresenting`) is shown
+  over whatever is on screen — the sign-in screen included — once the first-launch disclaimer is
+  answered and any open sheet has closed. It is not routed through `AppNavigator`, which belongs
+  to the signed-in tab view and ends at sign-out.
+- **Universal Links are not switched on.** The https link is read by `onOpenURL`, but iOS hands
+  it to the app only when the app carries the `com.apple.developer.associated-domains`
+  entitlement (`applinks:app.emperorailabs.com`) and the web serves an
+  `apple-app-site-association` file naming the app. Neither is in place: the entitlement cannot be
+  switched off per build the way `EMPEROR_APP_GROUP` and `EMPEROR_WEB_PLANS` are, a free Apple ID
+  cannot sign it, and CI's unsigned build clears the entitlements altogether. Until both exist, a
+  web link opens the web page, and `emperor://share/<id>` opens the app.
+- Creating a link stays held back — see below.
+
+### Devil's Advocate, the eighth role
+
+The web's eighth role is carried here as the others are: in the role picker, the first-sign-in
+welcome and on the account as `devil`. Its deck is eleven cards under `dadv-`, split by the side
+under attack — The Other Side or Our Own Case, with the shared cards in both. The side is
+remembered on the device, as the web keeps it in the browser, and is named in the guardrail the
+web adds to the end of every tool prompt while the role is active (`DevilsAdvocateMode`,
+`Practice.toolPromptGuardrail`). The Limitation card is not a prompt: it opens the Limitation
+Radar. The role sends `Devil's Advocate` as `role` on `/chat`, its `aiRole` on the web. This is a
+different thing from the server-run Devil's Advocate under Analysis tools.
+
+Every deck, its filters and sections, and every card's prompt come from the platform's own card
+modules and `registry.js` run under Node (`scripts/generate-role-card-fixtures.mjs`, which also
+writes `RoleCards.swift`). The guardrail is cut from `ToolWorkspace.jsx` and evaluated the same
+way. The web adds a role guardrail for Arbitrators & Judges, Paralegal, Student and Legal Aid
+too; those four are not added here yet.
+
+### Composer and export options
+
+Four of the web's composer and document options, each held to the web's own file by a generated
+fixture (`Resources/composer/`):
+- **Draft length.** Short or Detailed on every tool's form and under You → Answers, kept for the
+  account on this device (`DraftDepth`). The web's exact length sentence is appended after the
+  tool's prompt — to tool drafts only, as the web does; a plain question never carries it.
+- **Research sources.** Conversation menu → Research sources: Web search, ten jurisdictions and
+  eight repositories (`ResearchSources`). Web search is the same switch as "Always search the
+  web", now remembered from one conversation to the next; it starts off here although the web's
+  row starts on, because only on this client does it change the request. The rest are remembered
+  and sent nowhere, which the sheet says.
+- **Page setup.** A draft's download menu → Page setup: A4, Letter, Legal, A3 or A5, portrait or
+  landscape, and the four margins in millimetres (`DocumentPageSetup`, the web's
+  `pageSetup.js`). Word gets the sheet and margins in its section properties, landscape as a wide
+  page; the PDF, the filing-ready packages and their photographs are laid out on it too. The
+  default is the web's: A4 portrait, 25/20/25/25 mm.
+- **Feedback on a draft.** Thumbs under every answer, Report, and a Feedback button in the draft
+  viewer open the web's feedback sheet: Good or Needs work, six categories, a comment
+  (`DraftFeedbackViewModel`, `POST /draft-feedback`). When the feedback is about a draft, the
+  draft's HTML goes with it, as on the web, and the sheet says so before the tap. The draft's
+  saved id is not known to this client, so `documentId` is sent as null.
+### Connected services: Google Drive and OneDrive
+
+You → Connected services is the web's Settings card of that name (`CloudConnectionsViewModel`):
+each drive says whether this server has it set up, whether the account is connected and as
+whom, with Connect or Disconnect. The connection belongs to the account, so one made on the web
+shows here. Connect opens the drive's sign-in page in an in-app Safari view — Google refuses its
+sign-in inside an embedded web view, and the flow finishes on the web app rather than returning
+— and the connections are read again when it is closed, and whenever the app comes back to the
+front. Once a drive is connected, My Files' + menu offers Import from it (`CloudImportSheet`):
+the drive's fifty most recent files, ticked, into a chosen folder, one at a time, each row saying
+how it went; a plan refusal stops the run rather than repeating it for every file. The top level
+is not offered as a destination, as for uploads. A document's menu offers "Save to Google Drive"
+and "Save to OneDrive" for the connected drives — the web offers Google Drive alone. Cloud Sync is
+outside the Free plan, and that refusal arrives as a `Refusal`, worded by this client.
+### My Files: folders in, zips and searchable copies out
+
+- **Upload a folder.** My Files' Add menu offers "Upload a folder" beside Files and Photos. The
+  folder is read on the phone, planned by `FolderUploadPlan` — the web's `destinationFor`: every
+  file lands in a folder named by its path, under the picked folder's own name unless the
+  destination already ends in it; at the top level the folder lands under its own name, the one
+  case where the top of My Files is offered — and confirmed with the count, the place, the size
+  and what was left out (a type the library does not hold, over 500 MB, past 200 files).
+  Operating-system debris is dropped without a word. The duplicate check runs as for files: the
+  server's "would replace" counts for files landing directly in the destination, and the library
+  as last read answers for the folders beneath it. Each file then goes to `BackgroundUploader`
+  with its own folder, and the upload panel heads each folder with its path.
+- **Download several as a zip.** Select turns the rows into checkboxes; "Download N as zip" sends
+  them to `POST /download-files` and hands `documents.zip` to the share sheet. A folder's long
+  press offers "Download as zip", which sends every document beneath it and names the archive
+  after the folder, as the web does.
+- **Searchable PDF.** A PDF's long press in My Files, and the document viewer's footer, fetch
+  `GET /download-searchable` and share `<name>_searchable.pdf`: the same pages with an invisible
+  text layer over the scanned ones, so a reader outside the app can search and copy them. For a
+  digital PDF, or one already made searchable on arrival, it is the stored file renamed.
+- **A matter's documents** can be renamed and deleted from its Files section — swipe, long press
+  or VoiceOver action — through the routes My Files uses, addressed by the matter's own folder
+  (`_projects/<id>/…`), with the web's matter-worded confirmation. Uploading into a matter stays
+  out, as on the web: documents come in from My Files.
+### Editing a draft in place
+
+The last draft of a conversation can be edited where it is read, as on the web
+(`src/tools/useDocEditor.js`): Edit in the draft viewer switches the page itself into editing,
+with a bar above the keyboard — undo, redo, bold, italic, underline, bulleted and numbered lists,
+left, centre and right — each one `document.execCommand`, so the page keeps its own undo. The
+scripts are `DraftEditScript`, run in the app's script world; the page's own JavaScript stays off.
+Done reads the page back through the web's export rules (`DraftEdit.scrub`: edit attributes out,
+`align` to `text-align`, `<font>` unwrapped, script, style, meta, link and base dropped, WebKit's
+paste marker gone) and folds it into the assistant turn the draft came from, exactly where the
+web's `withEditedDraft` would (`DraftEdit.withEditedDraft`, held to the web's own function by
+`scripts/generate-draft-edit-fixtures.mjs`). Citation tokens the edit lost are carried, unseen.
+Only the last assistant turn takes an edit: position is identity, as on the web, and a question
+asked since stops it. A Markdown List of Dates is edited as the HTML table it is drawn as, and
+stored as that, inside its own `<table_content>`.
+
+The fold alone guarantees what the web's chat path does — every later question carries the edit.
+`ChatViewModel.commitDraftEdit` then stores it (`DraftEditService`): the Drafts row the original
+was filed under is found (`GET /documents?chatId=`, each candidate's content read back) and
+rewritten with `POST /save-document` and its id, then the conversation goes back through the
+guarded `/sync`. The order matters — see "The server files a Drafts row" above. The viewer says
+where the edit stands: saved; kept in the conversation and stored with the next question (the stored
+conversation had moved on); or not saved, with Retry. Cancel asks before throwing typing away.
+The outline button lists the draft's headings — `h1`–`h4`, and a paragraph that is one short bold
+run, as the web's rail reads them (`DraftEdit.anchored`) — and scrolls the page to each.
+### Billing, the welcome's second step, and stopping tracking
+
+- **Billing** opens from the plan row in You → Plan & usage, which stays as it was. It is the
+  web's Billing page without the purchase: the plan and its standing (`GET /billing/me`, whose
+  `plan` is `planStatus` — "no plan" is read from `planSource`, never from the tier every
+  account carries), the payment history with an invoice for each paid order
+  (`GET /billing/invoice?orderId=`, built from the order row, so a repriced plan never changes
+  one; GST is shown only where it was charged), the plans on offer (`GET /billing/config`, none
+  below the one held) and **Redeem a coupon**. Amounts are paise and are divided only for
+  display; `BillingMoney` is held to the page's own `fmtPaise` by
+  `scripts/generate-billing-fixtures.mjs`. A coupon is previewed against the plan held, or the
+  first on offer (`POST /billing/coupon/preview`), and only a code that owes nothing — a free
+  period, or a discount to below the gateway's minimum — is redeemed here
+  (`POST /billing/coupon/redeem`), after which the account is read again everywhere
+  (`Session.refreshAccount`). A discount is used where plans are bought, on the web. The coupon
+  box and the priced plans follow the `EMPEROR_WEB_PLANS` switch; the plan, the history and the
+  invoices always show. See `BillingViewModel`.
+- **The welcome has the web's second step.** After the role, chambers or firm and designation,
+  both optional, saved through `ProfileEditor` (all four fields, since `/update-profile` clears what it is not sent) and only when
+  something changed. "Skip" finishes without them; a failed save says why and never keeps anyone
+  out of the app. An account with no name is asked for one there, because a nameless profile save
+  is refused. See `RoleWelcomeFlow`.
+- **Stop tracking a case** — the web workspace's "Remove" — is in the case page's menu and on a
+  long press of a docket row, asked first. `DELETE /case?id=&userId=` removes the case and its
+  timeline from the docket of everyone on its team, so only the team's owner or an admin may do
+  it; anyone else is answered 403, which this client words. The docket is read again rather
+  than patched, and the copy kept for offline reading is dropped. **A matter made from the case
+  is not removed with it**, on the web or here: the matter keeps its chronology, tasks, fees,
+  people and documents, and stops showing the court's record and the case's hearing dates. See
+  `CaseRemoving`.
+
+### Companies, fee receipts and the matter's record
+
+- **The Corporate Calendar takes companies.** Add company / Edit company describes one — six
+  switches (listed, employees, GST, foreign dealings, tax audit, CSR), the state and the AGM
+  date — and the chosen company's statutory deadlines are generated on the device for 60 days
+  back and 366 ahead (`ComplianceSchedule`, a port of the web's `complianceSchedule.js`, held to
+  it by `scripts/generate-compliance-schedule-fixtures.mjs`). Companies stay on the device under
+  the web's own storage keys, as the web keeps them in the browser; nothing about them is sent.
+  The feed's own copy of any obligation the generator produces is dropped once a company is
+  chosen, as on the web.
+- **A deadline is marked done, or open again,** from its row (swipe) or its page.
+  `POST /compliance-event` upserts a row whose id is the deadline's own,
+  `stat:<obligation>:<YYYY-MM-DD>` — the generator's id for a company deadline
+  (`stat:aoc4:2026-10-30`), the pipeline's code for a feed row (`stat:GSTR1:2026-10-11`) — with
+  its title, its category as `type` (`filing` when it has none), the day, `done` or `open`, the
+  marker's existing notes and `remindDays: null`. No team is named, so a new marker is filed
+  under the user's own team; ticking again rewrites the same row. A refused tick is taken back.
+- **A payment prints as a fee receipt** (the "…" beside it → Fee receipt): the web's document
+  (`FeeReceipt`, held to `receipt.js` and `inr.js` byte for byte by
+  `scripts/generate-fee-receipt-fixtures.mjs`), laid out as an A4 PDF and offered through the
+  share sheet. An entry's attached slip or challan (`receipt_file`) is named under it and opens
+  in the viewer.
+- **The Chronology exports a List of Dates & Events** as Word or PDF: the user's entries, the
+  AI's and the court's orders by default, listings and notes on request, under the court and
+  cause title with DD.MM.YYYY dates (`ChronologyExport`, the web's `listOfDatesHtml`).
+- **The Overview draws the matter's timeline**: the chronology and the court's record up to
+  today, newest first, sides alternating, a marker at each year, the next hearing on top, and
+  every row saying whether it came from the court, the user or the documents
+  (`OverviewTimeline`). The merge, the export and the timeline are pinned by
+  `scripts/generate-matter-record-fixtures.mjs`. The web's horizontal timeline is not offered.
+
+### Built and deliberately held back
+These exist, are tested, and have no caller. Each is marked at its definition. **Do not wire one
+up without reading why it is held.**
+- **Chat rename** (`ChatMetadataService`). `/sync` is the only way to change a title, and it
+  either silently ignores the rename or rewrites every message in the conversation. Renaming an
+  *empty* chat is safe and is what the service does.
+- **Chat delete.** There is no route, and no SQL anywhere deletes a chat. The web client's
+  delete is local-only — the conversation returns on the next load and never left any other
+  device. A delete that does not delete is worse than none.
+- **Auction watchlists.**
+- **Sharing a conversation** (creating a link, `POST /share-chat`). These are privileged legal
+  conversations; held back until the endpoint contract is confirmed. No screen creates a share
+  link — the web has none either. A link made elsewhere opens read-only (above).
+- **The compliance pipeline's history page.** The web's version reads from a service the app
+  cannot reach.
+
+### Built, not yet reachable
+A different thing from the list above, and worth keeping separate: nobody decided to withhold
+these. They are finished, and no screen was ever connected to them. Treat them as work to land
+rather than as decisions to respect.
+- **A CIN on an eAuctions notice is not decoded.** The decoder (`Cin.swift`) now has a screen,
+  the MCA Registry, but `AuctionDetailView` still renders a notice's CIN as a bare string.
+
+### Waiting on the server
+- **`POST /delete-account` does not exist.** This blocks App Store listing outright under
+  guideline 5.1.1(v) and has no client-side workaround.
+- `GET /user-files` returns the whole tree with no pagination and runs a consolidation pass plus
+  a `statSync` per entry, so it is refreshed on appear and pull-to-refresh only, never polled. A
+  large library will need a cheaper path.
+- Two small changes would release the held-back chat features: let `/sync` accept a
+  metadata-only update (skip the message rewrite when `messages` is absent, rather than skipping
+  the whole chat when it is short), and add a real chat delete.
+- A way to set fields on one stored message without rewriting the chat would let the work log
+  be stored after every turn, not only when the stored conversation provably matches, and would
+  remove the `GET /chats` the save makes to echo the chat's title, role and model back.
+- `save-case` should include `diaryNumber` in `ext_id`; without it, unrelated matters collide on
+  the unique index and the second is refused as "already on the team dashboard"
+  (`CourtSearchViewModel.collisionWarning` warns about this from the client, which is the most
+  it can do).

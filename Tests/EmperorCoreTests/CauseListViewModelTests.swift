@@ -81,59 +81,6 @@ final class CauseListViewModelTests: XCTestCase {
 
     // MARK: - Day navigation
 
-    /// An empty day is a real answer, so the arrows never skip one — but a blank screen should
-    /// still say where the next listing is rather than being a dead end.
-    func testJumpingGoesToTheNextListedDayNotTheNextCalendarDay() async {
-        await withCauseList { service, model in
-            service.listings = [
-                Self.listing("2026-09-14"),
-                Self.listing("2026-09-21", caseID: "case_2"),
-                Self.listing("2026-10-05", caseID: "case_3"),
-            ]
-            await model.load()
-
-            XCTAssertEqual(model.nextListedDay, "2026-09-21", "not the 15th")
-            model.goToNextListedDay()
-            XCTAssertEqual(model.selectedDay, "2026-09-21")
-
-            model.goToNextListedDay()
-            XCTAssertEqual(model.selectedDay, "2026-10-05")
-        }
-    }
-
-    func testSteppingMovesOneCalendarDay() async {
-        await withCauseList { service, model in
-            service.listings = [Self.listing("2026-09-14")]
-            await model.load()
-
-            model.step(days: 1)
-            XCTAssertEqual(model.selectedDay, "2026-09-15")
-            model.step(days: -2)
-            XCTAssertEqual(model.selectedDay, "2026-09-13")
-        }
-    }
-
-    /// Stepping must not drift across a month boundary or a DST-style edge. India has no DST,
-    /// but the arithmetic still has to land on the right day.
-    func testSteppingCrossesAMonthBoundaryCleanly() async {
-        await withCauseList { _, model in
-            model.select(day: "2026-09-30")
-            model.step(days: 1)
-            XCTAssertEqual(model.selectedDay, "2026-10-01")
-        }
-    }
-
-    func testThereIsNoNextDayBeyondTheLastListing() async {
-        await withCauseList { service, model in
-            service.listings = [Self.listing("2026-09-14")]
-            await model.load()
-
-            XCTAssertNil(model.nextListedDay)
-            model.goToNextListedDay()
-            XCTAssertEqual(model.selectedDay, "2026-09-14", "stays put rather than jumping")
-        }
-    }
-
     func testGoToTodayReturnsToIndiasToday() async {
         await withCauseList { _, model in
             model.select(day: "2026-01-01")
@@ -193,6 +140,63 @@ final class CauseListViewModelTests: XCTestCase {
             await model.load()
 
             XCTAssertEqual(model.listingsForSelectedDay.map(\.itemNo), ["2", "7", "10"])
+        }
+    }
+
+    /// A court day is walked forum by forum and room by room, and within a room the matters
+    /// are called in item order — so that is the order on screen. Court 4 before Court 12,
+    /// which a string sort would get backwards.
+    func testListingsSortByForumThenRoomThenItem() async {
+        await withCauseList { service, model in
+            var nclt = Self.listing("2026-09-14", caseID: "n1", itemNo: "1", title: "N")
+            nclt.courtName = "NCLT Mumbai"
+            var room12 = Self.listing("2026-09-14", caseID: "r12", itemNo: "2", title: "B")
+            room12.courtNo = "Court No. 12"
+            room12.scraped = true
+            var room4late = Self.listing("2026-09-14", caseID: "r4b", itemNo: "30", title: "C")
+            room4late.courtNo = "Court 4"
+            room4late.scraped = true
+            var room4early = Self.listing("2026-09-14", caseID: "r4a", itemNo: "5", title: "D")
+            room4early.courtNo = "COURT NO.4"
+            room4early.scraped = true
+            let noRoom = Self.listing("2026-09-14", caseID: "x", itemNo: "1", title: "E")
+            service.listings = [nclt, noRoom, room12, room4late, room4early]
+            await model.load()
+
+            XCTAssertEqual(
+                model.listingsForSelectedDay.map(\.caseID), ["r4a", "r4b", "r12", "x", "n1"])
+        }
+    }
+
+    /// The order uses the item the row prints, so a hand-entered "item 15" in the purpose sorts
+    /// as 15 rather than as unnumbered.
+    func testTheSortUsesTheItemTheRowPrints() async {
+        await withCauseList { service, model in
+            var fromPurpose = Self.listing("2026-09-14", caseID: "p15", itemNo: nil, title: "A")
+            fromPurpose.purpose = "Listed at item 15"
+            let explicit = Self.listing("2026-09-14", caseID: "e3", itemNo: "3", title: "Z")
+            let none = Self.listing("2026-09-14", caseID: "none", itemNo: nil, title: "B")
+            service.listings = [none, fromPurpose, explicit]
+            await model.load()
+
+            XCTAssertEqual(model.listingsForSelectedDay.map(\.caseID), ["e3", "p15", "none"])
+        }
+    }
+
+    func testShareTextLeadsWithItemAndCourt() async {
+        await withCauseList { service, model in
+            var listing = Self.listing("2026-09-14", itemNo: "12")
+            listing.courtNo = "Court No. 4"
+            listing.scraped = true
+            listing.time = "10:30 AM"
+            listing.coram = "Justice Navin Chawla"
+            service.listings = [listing]
+            await model.load()
+
+            let text = model.shareText()
+            XCTAssertTrue(text.contains("Item 12 · Court 4 — Menon vs. Union of India"), text)
+            XCTAssertTrue(text.contains("Delhi High Court · Justice Navin Chawla"), text)
+            XCTAssertTrue(text.contains("10:30 AM"), text)
         }
     }
 

@@ -18,15 +18,45 @@ final class SourceDocumentViewModel {
     private(set) var isLoading = true
     var errorMessage: String?
 
+    /// True when `data` holds a server-rendered PDF of a Word document rather than the document
+    /// itself. Worth surfacing: the user should know they are looking at a rendering, because
+    /// the layout is LibreOffice's reading of it and not necessarily what the sender saw.
+    private(set) var isConvertedPreview = false
+
+    /// When `data` is the copy kept on this device rather than what the server just sent, the
+    /// moment that copy was fetched.
+    private(set) var savedCopyAt: Date?
+    /// Set when the document opened but could not be kept for reading offline, because the room
+    /// for offline copies is taken. Said rather than left to be discovered in a corridor with no
+    /// signal.
+    private(set) var offlineNote: String?
+
     let attachment: ChatAttachment
     let mention: AnnexureMention
 
     private let service: any FileProviding
+    private let officePreview: (any OfficePreviewProviding)?
+    private let offline: OfflineDocuments?
+    private let connectivity: (any ConnectivityReporting)?
 
-    init(attachment: ChatAttachment, mention: AnnexureMention, service: any FileProviding) {
+    /// - Parameters:
+    ///   - offline: where this account keeps documents for reading offline. Every document that
+    ///     opens is kept there, and opens from there when the server cannot be reached.
+    ///   - connectivity: whether the device is known to have no connection.
+    init(
+        attachment: ChatAttachment,
+        mention: AnnexureMention,
+        service: any FileProviding,
+        officePreview: (any OfficePreviewProviding)? = nil,
+        offline: OfflineDocuments? = nil,
+        connectivity: (any ConnectivityReporting)? = nil
+    ) {
         self.attachment = attachment
         self.mention = mention
         self.service = service
+        self.officePreview = officePreview
+        self.offline = offline
+        self.connectivity = connectivity
     }
 
     // MARK: - Titles
@@ -41,7 +71,15 @@ final class SourceDocumentViewModel {
 
     // MARK: - Content
 
-    var isPDF: Bool { attachment.name.lowercased().hasSuffix(".pdf") }
+    /// A converted Word document counts: what `data` holds in that case *is* a PDF, and the
+    /// renderer has to be told so or a successful preview would fall through to the "not a
+    /// format this app can display" branch.
+    var isPDF: Bool {
+        isConvertedPreview || attachment.name.lowercased().hasSuffix(".pdf")
+    }
+
+    /// Whether this is a document the server can render for viewing.
+    var isOfficeDocument: Bool { OfficePreview.canPreview(fileName: attachment.name) }
 
     /// The document as text, when it is text at all.
     ///
@@ -75,14 +113,68 @@ final class SourceDocumentViewModel {
 
     // MARK: - Loading
 
+    /// Fetches the document — a Word document through the server's converter, see
+    /// `DocumentFetch` — and keeps what arrived for reading offline.
+    ///
+    /// - Important: the converter's metadata route answers **200 with `success: false`** when
+    ///   conversion fails. Branching on the status code would leave `data` nil with no
+    ///   `errorMessage`, and the screen would show "not a format this app can display" — which is
+    ///   wrong, and hides the reason the server actually gave. `DocumentFetch` throws it instead.
+    ///
+    /// The copy kept on the device opens in two cases only, per `OfflineReading`: the system says
+    /// there is no connection, or the request could not reach the server. A document is a file
+    /// rather than a feed, so with no connection the copy is opened without asking the network at
+    /// all — the person is reading it, and it should not reload under them.
     func load() async {
         isLoading = true
         defer { isLoading = false }
+
+        if OfflineReading.opensSavedCopyFirst(connectivity), openSavedCopy() { return }
+
         do {
-            data = try await service.fileData(
-                name: attachment.name, folderName: attachment.folderName)
+            let document = try await DocumentFetch.fetch(
+                attachment, files: service, officePreview: officePreview)
+            data = document.data
+            isConvertedPreview = document.isConvertedPreview
+            savedCopyAt = nil
+            keep(document)
         } catch {
-            errorMessage = DisplayText.message(for: error)
+            if OfflineReading.mayStandIn(after: error), openSavedCopy() { return }
+            errorMessage = (error as? DocumentNotViewable)?.message
+                ?? DisplayText.message(for: error)
+        }
+    }
+
+    /// "Offline — showing the copy saved yesterday", while the kept copy is on screen.
+    func offlineNotice(now: Date = Date()) -> String? {
+        savedCopyAt.map { OfflineReading.notice(savedAt: $0, now: now) }
+    }
+
+    /// The rendering this viewer fetches for the document, which is the one to look for offline.
+    private var showsConverted: Bool { isOfficeDocument && officePreview != nil }
+
+    private func openSavedCopy() -> Bool {
+        guard let copy = offline?.copy(of: attachment, converted: showsConverted) else {
+            return false
+        }
+        data = copy.data
+        isConvertedPreview = showsConverted
+        savedCopyAt = copy.savedAt
+        errorMessage = nil
+        return true
+    }
+
+    /// Keeps what opened, without changing whether it was saved on purpose. Nothing is kept of a
+    /// document that arrived empty: on this API an empty body is "unknown", never a document.
+    private func keep(_ document: ViewableDocument) {
+        guard let offline else { return }
+        switch offline.keep(document, of: attachment, pin: nil) {
+        case .notSaved(.noRoom):
+            offlineNote = "Not kept for reading offline — the space for offline copies is taken by documents you saved."
+        case .notSaved(.tooLarge):
+            offlineNote = "Too large to keep for reading offline."
+        default:
+            offlineNote = nil
         }
     }
 }

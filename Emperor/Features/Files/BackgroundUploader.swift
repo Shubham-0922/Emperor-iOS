@@ -1,0 +1,546 @@
+import Foundation
+import SwiftUI
+
+/// Uploads that keep going after the user leaves the app.
+///
+/// The foreground path in `UploadService` is an `AsyncThrowingStream` driven by a `Task`. That
+/// is the right shape for attaching a two-page order and watching it land, and the wrong shape
+/// for the case this type exists for: a 200-page paperbook, scanned at a registry counter, on a
+/// connection that drops every time the lift moves. The task is suspended the moment the app
+/// goes to the background and killed if the system wants the memory, and the user comes back to
+/// a progress bar that quietly reset.
+///
+/// A background `URLSession` is handed to the system instead. It transfers with the app
+/// suspended, survives the app being terminated, and **relaunches the app** to deliver the
+/// result. That last part is what shapes everything here:
+///
+/// - **Nothing may live only in memory.** On relaunch there is no view model, no stream, no
+///   closure — only a task and its `taskDescription`. Which upload a chunk belongs to has to be
+///   recoverable from disk, which is `UploadManifestStore`.
+/// - **Bodies must be files.** A background session refuses `httpBody` outright; it takes
+///   `uploadTask(with:fromFile:)` and nothing else. Each chunk's multipart body is written out
+///   before the transfer starts.
+/// - **The document must be copied first.** The picker hands over a security-scoped URL that is
+///   revoked when the sheet closes — long before a large upload finishes.
+///
+/// ## Why every chunk goes at once
+///
+/// The server writes each chunk at `chunkIndex * chunkSize` as long as `chunkSize` is sent, so
+/// order does not matter. Every chunk is therefore enqueued immediately rather than chained,
+/// and the system schedules and retries them as it sees fit. A chain would be the more obvious
+/// design and would break in the middle every time the app was killed, because the completion
+/// that was supposed to enqueue the successor never ran.
+///
+/// ## What is not proven
+///
+/// The arithmetic, the manifest and the body encoding are covered by `BackgroundUploadTests`
+/// and `UploadPersistenceTests` on Linux. **The lifecycle below is not tested anywhere.** A
+/// simulator does not evict apps the way a phone under memory pressure does, and the relaunch
+/// path in particular cannot be exercised without a device. Treat the delegate callbacks as
+/// unverified until someone has watched a real scan survive a real backgrounding.
+@MainActor
+@Observable
+final class BackgroundUploader {
+
+    /// One instance per process. A background session is bound to its identifier, and
+    /// constructing a second with the same one is a runtime error — so the session, and
+    /// therefore this, has to be a single shared thing rather than something a view creates.
+    static let shared = BackgroundUploader()
+
+    /// Stable across launches: this string is how the system finds the session belonging to
+    /// this app when it relaunches it. Changing it strands every transfer already in flight.
+    static let sessionIdentifier = "com.emperorailabs.emperor.upload"
+
+    /// Uploads still going, newest first. Read by the library screen.
+    private(set) var inFlight: [UploadManifest] = []
+
+    /// An upload the server declined and that has been stopped, with the reason — held until
+    /// the person has seen it. See `ChunkOutcome` for why these are no longer retried.
+    struct Refused: Identifiable, Equatable {
+        let id: String
+        let fileName: String
+        let message: String
+    }
+
+    /// Declined uploads, newest first. Read by the library screen.
+    private(set) var refused: [Refused] = []
+
+    func dismissRefusal(_ id: String) {
+        refused.removeAll { $0.id == id }
+    }
+
+    /// What the upload panel draws: this batch's files, their progress and the measured speed.
+    ///
+    /// Only observes the transfer. Nothing here changes what is sent or when; it is fed from the
+    /// delegate's byte counts once a second (`sampleProgress`) and from each upload's outcome.
+    /// Memory only — after a relaunch it is rebuilt from the manifests in `resume()`.
+    private(set) var batch = UploadBatch()
+
+    /// Clears a finished batch from the panel.
+    func dismissBatch() {
+        batch.dismiss()
+    }
+
+    /// Wakes once a second while anything is sending, to read the bytes sent and take a speed
+    /// sample. Stops itself when the batch has sent everything.
+    @ObservationIgnored private var ticker: Task<Void, Never>?
+
+    /// Set by the app delegate when the system relaunches us to deliver events, and called once
+    /// the session says it has finished delivering them. Not calling it makes the system
+    /// consider the app unresponsive and stop relaunching it.
+    var backgroundCompletionHandler: (() -> Void)?
+
+    private let store: UploadManifestStore
+    private var session: URLSession!
+    private let delegate = Delegate()
+
+    /// Uploads currently being polled for ingestion, so two activations cannot start two
+    /// pollers for the same document.
+    private var finishing: Set<String> = []
+
+    /// Set by the app once the user is signed in, because a chunk request needs the token and
+    /// the caller id and this object outlives any one screen.
+    var client: APIClient?
+
+    private init(store: UploadManifestStore = UploadManifestStore(directory: UploadManifestStore.defaultDirectory())) {
+        self.store = store
+
+        self.session = URLSession(
+            configuration: Self.makeConfiguration(), delegate: delegate, delegateQueue: nil)
+
+        self.inFlight = store.all().filter { !$0.isComplete }
+    }
+
+    private static func makeConfiguration() -> URLSessionConfiguration {
+        #if DEBUG
+        // A background session ignores `URLProtocol`, so the UI tests' stub transport cannot
+        // intercept it — a real background configuration under test would put real requests on
+        // the wire and leave real state in the shared session store, which then leaks into the
+        // next run. An ephemeral configuration keeps the object usable (the library screen
+        // reads `inFlight` on every appearance) while nothing escapes.
+        if UITestSupport.isActive { return .ephemeral }
+        #endif
+
+        let configuration = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
+        // The user pressed a button and is watching. Discretionary would let the system defer
+        // the whole thing to a charging window overnight, which is not what "upload this" means.
+        configuration.isDiscretionary = false
+        // Without this the app is never relaunched to hear about a transfer that finished while
+        // it was dead, and the upload completes on the server while the app still shows it as
+        // in progress forever.
+        configuration.sessionSendsLaunchEvents = true
+        // **Shorter** than the seven-day default for a background session, not longer. A single
+        // chunk that has not moved in a day is wedged, not slow, and a week of the system
+        // carrying it around achieves nothing. Giving up is safe here because it is not the end
+        // of the upload: `resume()` re-enqueues whatever is still pending the next time the app
+        // is opened, which is also when the user is present and likely back on a real
+        // connection.
+        configuration.timeoutIntervalForResource = 24 * 60 * 60
+        return configuration
+    }
+
+    // MARK: - Starting
+
+    enum StartError: LocalizedError {
+        case notSignedIn
+        case unreadable
+
+        var errorDescription: String? {
+            switch self {
+            case .notSignedIn: return "You are signed out. Sign in and try again."
+            case .unreadable: return "That document could not be read."
+            }
+        }
+    }
+
+    /// Copies the document somewhere the app controls, records a manifest, and hands every
+    /// chunk to the system.
+    ///
+    /// - Parameter source: the picked file. Assumed to be inside a
+    ///   `startAccessingSecurityScopedResource` pair already — the copy taken here is what the
+    ///   upload actually reads, so the original may be revoked immediately afterwards.
+    @discardableResult
+    func start(source: URL, fileName: String, folderName: String) async throws -> UploadManifest {
+        guard let client, let credentials = await client.currentCredentials() else {
+            throw StartError.notSignedIn
+        }
+
+        let id = UUID().uuidString
+        let payload = store.payloadDirectory(for: id)
+        try FileManager.default.createDirectory(at: payload, withIntermediateDirectories: true)
+
+        // Copy before anything else. Everything after this point reads only the copy, so the
+        // picker's scoped access can end the moment this returns.
+        let copy = payload.appendingPathComponent("source.bin")
+        do {
+            try FileManager.default.copyItem(at: source, to: copy)
+        } catch {
+            try? FileManager.default.removeItem(at: payload)
+            throw StartError.unreadable
+        }
+
+        let size = (try? FileManager.default.attributesOfItem(atPath: copy.path)[.size] as? Int) ?? nil
+        guard let totalBytes = size else {
+            try? FileManager.default.removeItem(at: payload)
+            throw StartError.unreadable
+        }
+
+        let manifest = UploadManifest(
+            id: id,
+            fileName: fileName,
+            folderName: folderName,
+            totalBytes: totalBytes,
+            // A phone on a courtroom connection retries a failed chunk from the start of that
+            // chunk, so smaller chunks lose less on each drop.
+            chunkSize: UploadService.constrainedChunkSize,
+            sourcePath: copy.path,
+            createdAt: Date())
+
+        try store.save(manifest)
+        inFlight.insert(manifest, at: 0)
+        batch.add(
+            id: manifest.id, name: manifest.fileName, size: manifest.totalBytes,
+            folderName: manifest.folderName, at: Date())
+        startTicker()
+
+        try await enqueue(manifest.pending, of: manifest, credentials: credentials)
+        return manifest
+    }
+
+    // MARK: - Resuming
+
+    /// Called on launch and whenever the app becomes active.
+    ///
+    /// Three jobs: re-enqueue anything the system dropped, poll for ingestion on uploads whose
+    /// bytes all landed while the app was away, and clear out the residue of crashes. The last
+    /// matters more than it sounds — every abandoned upload is a copy of a client's document
+    /// sitting on the device.
+    func resume() async {
+        store.discardOrphanedPayloads()
+        store.discardExpired(now: Date())
+
+        let manifests = store.all()
+        inFlight = manifests.filter { !$0.isComplete }
+
+        // A relaunched app has an empty batch; put back what is still going so the panel shows
+        // it where it left off.
+        let now = Date()
+        for manifest in manifests where !batch.contains(manifest.id) {
+            batch.add(
+                id: manifest.id, name: manifest.fileName, size: manifest.totalBytes,
+                folderName: manifest.folderName, loaded: manifest.bytesSent,
+                sent: manifest.isComplete, at: now)
+        }
+        startTicker()
+
+        guard let client, let credentials = await client.currentCredentials() else { return }
+
+        // Anything the system already has in hand must not be enqueued twice.
+        let running = Set(
+            await session.allTasks.compactMap {
+                UploadManifest.parseTaskDescription($0.taskDescription).map { "\($0.id)#\($0.index)" }
+            })
+
+        for manifest in manifests {
+            if manifest.isComplete {
+                // Deliberately not awaited. `finish` polls for ingestion, which is allowed to
+                // take a quarter of an hour — awaiting it here would stall the rest of this
+                // loop, so an upload still needing chunks would not be re-enqueued until an
+                // unrelated one had finished being indexed.
+                // The completing chunk's stored name was written to the manifest when it
+                // landed, so it survives the process that received it.
+                Task { await finish(manifest) }
+                continue
+            }
+            let missing = manifest.pending.filter {
+                !running.contains(manifest.taskDescription(for: $0))
+            }
+            try? await enqueue(missing, of: manifest, credentials: credentials)
+        }
+    }
+
+    // MARK: - Enqueuing
+
+    private func enqueue(
+        _ indices: [Int], of manifest: UploadManifest, credentials: Credentials
+    ) async throws {
+        guard let client else { throw StartError.notSignedIn }
+        let source = URL(fileURLWithPath: manifest.sourcePath)
+
+        for index in indices {
+            let boundary = MultipartChunk.boundary()
+            let fields = MultipartChunk.Fields(
+                userID: credentials.userIDString,
+                fileName: manifest.fileName,
+                folderName: manifest.folderName,
+                uploadID: manifest.id,
+                chunkIndex: index,
+                chunkCount: manifest.chunkCount,
+                chunkSize: manifest.chunkSize,
+                totalBytes: manifest.totalBytes)
+
+            let bodyURL = store.chunkBodyURL(for: manifest.id, index: index)
+            do {
+                try MultipartChunk.write(
+                    chunkAt: manifest.range(of: index), from: source, to: bodyURL,
+                    fields: fields, boundary: boundary)
+            } catch {
+                // The copy is gone or truncated. Nothing further will work for this upload, and
+                // continuing would send chunks that place bytes at the wrong offsets.
+                store.discard(id: manifest.id)
+                inFlight.removeAll { $0.id == manifest.id }
+                batch.markFailed(manifest.id, message: StartError.unreadable.errorDescription ?? "")
+                throw error
+            }
+
+            var request = try await client.makeRequest(
+                "POST", "/upload-chunk", requiresAuth: true)
+            request.setValue(
+                MultipartChunk.contentType(boundary: boundary),
+                forHTTPHeaderField: "Content-Type")
+            request.setValue(manifest.id, forHTTPHeaderField: "x-upload-id")
+            request.setValue(String(manifest.totalBytes), forHTTPHeaderField: "x-total-bytes")
+
+            let task = session.uploadTask(with: request, fromFile: bodyURL)
+            // The only thing that survives into a relaunched process. Without it a delivered
+            // chunk cannot be attributed to anything and the upload stalls at 99%.
+            task.taskDescription = manifest.taskDescription(for: index)
+            task.resume()
+        }
+    }
+
+    // MARK: - Delegate callbacks
+
+    fileprivate func chunkFinished(
+        id: String, index: Int, error: Error?, statusCode: Int?, body: Data
+    ) async {
+        switch ChunkOutcome.classify(transportFailed: error != nil, status: statusCode, body: body) {
+        case .delivered:
+            break
+        case .retryLater:
+            // Left pending deliberately. The system retries transport failures on its own, and
+            // anything it gives up on is re-enqueued by `resume()` next time the app opens —
+            // which is the right moment to try again anyway, since the user is present and
+            // probably back on a usable connection.
+            return
+        case .refused(let message):
+            await abandon(id: id, because: message)
+            return
+        }
+
+        try? FileManager.default.removeItem(
+            at: store.chunkBodyURL(for: id, index: index))
+
+        // The reply that completes the file names where it was stored; it need not be the last
+        // index to land, so every delivered body is read.
+        let storedName = ChunkOutcome.storedName(status: statusCode, body: body)
+        guard let updated = store.recordCompletion(
+            id: id, index: index, storedName: storedName) else { return }
+        if let position = inFlight.firstIndex(where: { $0.id == id }) {
+            if updated.isComplete {
+                inFlight.remove(at: position)
+            } else {
+                inFlight[position] = updated
+            }
+        }
+        if updated.isComplete {
+            batch.markProcessing(id)
+        } else {
+            batch.setLoaded(updated.bytesSent, of: id, at: Date())
+        }
+
+        // The manifest now carries the stored name — for a photo, the PDF it was made into —
+        // and the poll asks after that (`pollName`): asked about the photo, `/upload-status`
+        // would answer "reading" until this gave up.
+        if updated.isComplete {
+            await finish(updated)
+        }
+    }
+
+    /// Every chunk has landed. The bytes are on the server; the document is not yet usable.
+    ///
+    /// Assembly, text extraction and indexing all run after the last response closed, and a
+    /// failure in any of them produces no HTTP error at all — so this polls, exactly as the
+    /// foreground path does. Doing it here rather than in a view model matters: the screen that
+    /// started the upload may never be opened again.
+    private func finish(_ manifest: UploadManifest) async {
+        // `resume()` runs on every activation, so without this a document that takes a while to
+        // index gets a second poller on each return to the app — and the first one to come back
+        // discards the manifest out from under the others.
+        guard !finishing.contains(manifest.id) else { return }
+        finishing.insert(manifest.id)
+        defer {
+            finishing.remove(manifest.id)
+            store.discard(id: manifest.id)
+        }
+
+        guard let client else { return }
+        let id = manifest.id
+        batch.markProcessing(id)
+        let state = try? await UploadService(client: client).waitForIngestion(
+            fileName: manifest.pollName, folderName: manifest.folderName,
+            // `@Sendable` and hopping explicitly, because the poll runs off the main actor and
+            // the batch lives on it.
+            onProgress: { @Sendable message in
+                Task { @MainActor in
+                    BackgroundUploader.shared.batch.markProcessing(id, message: message)
+                }
+            })
+        switch state {
+        case .some(.ready), .some(.scanned):
+            batch.markDone(id, savedAs: manifest.storedName)
+        case .some(.failed(let reason)):
+            batch.markProcessingFailed(
+                id, message: reason.replacingOccurrences(of: "ERROR: ", with: ""))
+        case .some(.inProgress(let message)):
+            batch.markUnconfirmed(id, message: message)
+        case .none:
+            batch.markUnconfirmed(
+                id, message: "Uploaded — it will appear in My Files once it has been read.")
+        }
+        NotificationCenter.default.post(name: .emperorUploadDidFinish, object: manifest.id)
+    }
+
+    // MARK: - Progress
+
+    private func startTicker() {
+        guard ticker == nil, batch.isSending else { return }
+        ticker = Task { [self] in
+            while !Task.isCancelled, batch.isSending {
+                try? await Task.sleep(for: .seconds(1))
+                sampleProgress(at: Date())
+            }
+            ticker = nil
+        }
+    }
+
+    /// Reads what the delegate has seen since the last sample: the new bytes, for the speed,
+    /// and how far each chunk in flight has got, for each file's bar.
+    ///
+    /// A chunk's request body carries a few hundred bytes of multipart framing as well as the
+    /// file's bytes, so a file's figure is the chunk's share of its own range rather than the
+    /// raw count. The speed uses the raw count: those bytes left the device too.
+    private func sampleProgress(at now: Date) {
+        let snapshot = delegate.takeProgress()
+        batch.record(sentBytes: snapshot.newBytes)
+        for manifest in inFlight {
+            var loaded = manifest.bytesSent
+            for index in manifest.pending {
+                guard let share = snapshot.fractions[manifest.taskDescription(for: index)]
+                else { continue }
+                loaded += Int(Double(manifest.range(of: index).count) * share)
+            }
+            batch.setLoaded(loaded, of: manifest.id, at: now)
+        }
+        batch.tick(at: now)
+    }
+
+    /// Stops an upload the server has declined: cancels its other chunks, discards the copy of
+    /// the document, and keeps the reason for the library screen to show.
+    private func abandon(id: String, because message: String) async {
+        let fileName = inFlight.first { $0.id == id }?.fileName
+            ?? store.all().first { $0.id == id }?.fileName
+        for task in await session.allTasks
+        where UploadManifest.parseTaskDescription(task.taskDescription)?.id == id {
+            task.cancel()
+        }
+        store.discard(id: id)
+        inFlight.removeAll { $0.id == id }
+        batch.markFailed(id, message: message)
+        // One notice per upload, however many of its chunks came back refused.
+        guard !refused.contains(where: { $0.id == id }), let fileName else { return }
+        refused.insert(Refused(id: id, fileName: fileName, message: message), at: 0)
+        NotificationCenter.default.post(name: .emperorUploadWasRefused, object: id)
+    }
+
+    fileprivate func finishedDeliveringEvents() {
+        // The system gives roughly thirty seconds after this before it stops being patient.
+        backgroundCompletionHandler?()
+        backgroundCompletionHandler = nil
+    }
+
+    // MARK: - The delegate itself
+
+    /// Separate from the observable object because `URLSession` retains its delegate for the
+    /// life of the session and calls it on its own queue, neither of which fits a `@MainActor`
+    /// type. Everything here does nothing but hop back.
+    ///
+    /// It reaches `shared` rather than holding a reference to its owner. A stored `weak var`
+    /// would be written on the main actor during `init` and read from the delegate queue, which
+    /// is a data race — benign in practice, because it is assigned before any task can exist,
+    /// but the kind that stops being benign when someone later adds a second assignment. There
+    /// is exactly one uploader per process by construction, so there is nothing to hold.
+    ///
+    /// Touching `shared` here cannot recurse into `init`: a callback requires a task, and a
+    /// task requires the session, which requires `init` to have finished.
+    private final class Delegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+
+        /// Each task's response body, which is the only place a refusal says *why*. Collected
+        /// here because the delegate is called on the session's own queue; the lock is what
+        /// makes `@unchecked Sendable` true.
+        private let lock = NSLock()
+        private var bodies: [Int: Data] = [:]
+
+        /// Bytes sent since the upload panel last asked, across every task.
+        private var newBytes = 0
+        /// How far each chunk in flight has got, 0–1, by its `taskDescription`.
+        private var fractions: [String: Double] = [:]
+
+        /// Hands over the bytes sent since the last call, and where each chunk in flight stands.
+        func takeProgress() -> (newBytes: Int, fractions: [String: Double]) {
+            lock.withLock {
+                let taken = newBytes
+                newBytes = 0
+                return (taken, fractions)
+            }
+        }
+
+        /// Called by the system as a request body goes out. Only counted: nothing about the
+        /// transfer is changed here.
+        func urlSession(
+            _ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+            totalBytesSent: Int64, totalBytesExpectedToSend: Int64
+        ) {
+            guard let key = task.taskDescription else { return }
+            let share = totalBytesExpectedToSend > 0
+                ? min(1, Double(totalBytesSent) / Double(totalBytesExpectedToSend)) : 0
+            lock.withLock {
+                newBytes += Int(max(0, bytesSent))
+                fractions[key] = share
+            }
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            lock.withLock { bodies[dataTask.taskIdentifier, default: Data()].append(data) }
+        }
+
+        func urlSession(
+            _ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?
+        ) {
+            let body = lock.withLock { () -> Data? in
+                if let key = task.taskDescription { fractions.removeValue(forKey: key) }
+                return bodies.removeValue(forKey: task.taskIdentifier)
+            } ?? Data()
+            guard let parsed = UploadManifest.parseTaskDescription(task.taskDescription) else { return }
+            let status = (task.response as? HTTPURLResponse)?.statusCode
+            Task { @MainActor in
+                await BackgroundUploader.shared.chunkFinished(
+                    id: parsed.id, index: parsed.index, error: error, statusCode: status,
+                    body: body)
+            }
+        }
+
+        func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+            Task { @MainActor in BackgroundUploader.shared.finishedDeliveringEvents() }
+        }
+    }
+}
+
+extension Notification.Name {
+    /// Posted when a background upload has been ingested, so a library already on screen can
+    /// re-read itself rather than showing a document that is not there yet.
+    static let emperorUploadDidFinish = Notification.Name("EmperorUploadDidFinish")
+    /// Posted when the server declined a background upload and it was stopped. The reason is
+    /// in `BackgroundUploader.shared.refused`.
+    static let emperorUploadWasRefused = Notification.Name("EmperorUploadWasRefused")
+}

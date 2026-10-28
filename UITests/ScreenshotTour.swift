@@ -1,0 +1,622 @@
+import XCTest
+
+/// Photographs every main screen, in the dark theme and the light one.
+///
+/// Not a test of behaviour — the other UI tests are that — but the only way to *see* this app
+/// from the machine it is developed on, which has no Xcode. CI exports these attachments as
+/// plain PNGs (the `screenshot-tour` artifact), so a layout that is cramped, clipped, low in
+/// contrast or simply wrong is caught by looking, which is how such things are caught.
+///
+/// Every step tolerates a missing control: a tour that stops at the first surprise shows
+/// nothing after it, and the point is to show everything that rendered.
+final class ScreenshotTour: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = true
+    }
+
+    func testTheDarkTour() { tour(light: false) }
+    func testTheLightTour() { tour(light: true) }
+
+    // MARK: - The tour
+
+    private func tour(light: Bool) {
+        let app = XCUIApplication()
+        // The first-sign-in role question is asked, so the tour can answer it: the role persists
+        // between launches, and the workspace photographed below is Litigator's.
+        app.launchArguments = ["-UITestMode", "-UITestRoleWelcome"] + (light ? ["-UITestLight"] : [])
+        app.launch()
+        let theme = light ? "light" : "dark"
+        var step = 0
+        func snap(_ name: String) {
+            step += 1
+            // Let animations and loads settle; a half-drawn transition is not what a person sees.
+            Thread.sleep(forTimeInterval: 0.8)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = String(format: "%@-%02d-%@", theme, step, name)
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+
+        // Signing in, every step of it.
+        guard app.textFields["Email"].waitForExistence(timeout: 15) else {
+            snap("launch-failed"); return
+        }
+        // The screen as it opens: the password leading.
+        snap("sign-in")
+
+        tapIfPresent(app.buttons["Create new account"])
+        if app.textFields["Full name"].waitForExistence(timeout: 5) { snap("create-account") }
+        // Full name takes focus on entry, so the keyboard lies over the foot of the form where
+        // "Sign in instead" lives. The design's back is a custom button, not a nav-bar one —
+        // labelled "Back to Sign in", at the top, where the keyboard never reaches.
+        tapIfPresent(app.buttons["Back to Sign in"])
+
+        // The other way in: the code segment, then the address.
+        tapIfPresent(app.buttons["Sign in with code"])
+        if app.buttons["Email me a sign-in code"].waitForExistence(timeout: 5) { snap("sign-in-code") }
+
+        let email = app.textFields["Email"]
+        if email.waitForExistence(timeout: 5) {
+            email.focusForTyping()
+            email.typeText("john.doe@firm.com")
+        }
+        tapIfPresent(app.buttons["Email me a sign-in code"])
+        let code = app.textFields["Sign-in code"]
+        if code.waitForExistence(timeout: 10) {
+            snap("enter-code")
+            code.focusForTyping()
+            code.typeText("123456")
+        }
+
+        let litigator = app.buttons["role-litigator"]
+        if litigator.waitForExistence(timeout: 10) {
+            snap("role-welcome")
+            litigator.tap()
+            tapIfPresent(app.buttons["Continue"])
+            let start = app.buttons["Start working"]
+            if start.waitForExistence(timeout: 10) {
+                snap("role-welcome-details")
+                start.tap()
+            }
+        }
+
+        guard app.tab("Home").waitForExistence(timeout: 15) else {
+            snap("sign-in-failed"); return
+        }
+        // The dashboard as it opens: the bar of pills, the composer and the two cards.
+        snap("home")
+
+        // The updates sheet, from Home's bell — the design's path. Its label carries the unread
+        // count, so it is found by how it starts.
+        let updates = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Updates")).firstMatch
+        if updates.waitForExistence(timeout: 5) {
+            updates.tap()
+            if app.navigationBars["Updates"].waitForExistence(timeout: 10) {
+                snap("updates")
+                tapIfPresent(app.navigationBars["Updates"].buttons["Done"])
+            }
+        }
+
+        app.tab("Ask").tap()
+        snap("ask")
+
+        // The redesigned More — search, workspace management, case tools, doc tools — then
+        // every conversation, from More → History.
+        app.tab("More").tap()
+        if app.buttons["Files"].waitForExistence(timeout: 10) {
+            snap("more")
+        }
+        tapIfPresent(app.buttons["History"].firstMatch)
+        if app.navigationBars["Conversations"].waitForExistence(timeout: 10) {
+            snap("history")
+            // Closed from its own Done before the next tab is tapped.
+            tapIfPresent(app.navigationBars["Conversations"].buttons["Done"])
+        }
+
+        // A conversation, from Home's recent ones: the stub serves a stored answer with headings,
+        // a table and citations, and the work log it was stored with, folded above it.
+        app.tab("Home").tap()
+        let conversation = app.stubConversationRow
+        if conversation.waitForExistence(timeout: 10) {
+            app.reveal(conversation)
+            conversation.tap()
+            snap("conversation")
+            // The answer mode, chosen from the composer's chip.
+            let mode = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Answer mode,")).firstMatch
+            if mode.waitForExistence(timeout: 5) {
+                mode.tap()
+                snap("answer-mode")
+                let close = app.buttons["Close"].firstMatch
+                if close.waitForExistence(timeout: 3) { close.tap() } else { app.swipeDown() }
+            }
+            app.swipeUp()
+            snap("conversation-references")
+            backOut(app)
+        }
+
+        // Matters: the next sitting, what is upcoming, and the docket.
+        app.tab("Matters").tap()
+        snap("matters")
+        let hearing = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Item 7, Court 12")).firstMatch
+        if hearing.waitForExistence(timeout: 5), hearing.isHittable {
+            hearing.tap()
+            Thread.sleep(forTimeInterval: 0.5)
+            snap("hearing")
+            let close = app.buttons["Close"].firstMatch
+            if close.waitForExistence(timeout: 3), close.isHittable { close.tap() } else { app.swipeDown() }
+            // Gone before the segments behind it are tapped.
+            var polls = 0
+            while close.exists && polls < 20 {
+                Thread.sleep(forTimeInterval: 0.25)
+                polls += 1
+            }
+        }
+        tapIfPresent(app.buttons["Upcoming"].firstMatch)
+        snap("matters-upcoming")
+        tapIfPresent(app.buttons["All matters"].firstMatch)
+        snap("matters-docket")
+
+        // The docket's sort & filter sheet, then scrolled to show the filters, and the docket
+        // once a court is chosen: its chip under the search field, the toolbar icon filled.
+        // Cleared afterwards so the rest of the tour sees every case.
+        let arrange = app.buttons["Sort and filter"].firstMatch
+        if arrange.waitForExistence(timeout: 5) {
+            arrange.tap()
+            let sheetBar = app.navigationBars["Sort & filter"]
+            if sheetBar.waitForExistence(timeout: 5) {
+                snap("matters-sort-filter")
+                // Scrolled inside the sheet's list; a swipe on its bar would move the sheet.
+                let form = app.collectionViews["case-arrangement-form"]
+                if form.exists { form.swipeUp() }
+                let highCourts = app.buttons["case-filter-court-hc"]
+                if highCourts.waitForExistence(timeout: 3), highCourts.isHittable {
+                    highCourts.tap()
+                }
+                snap("matters-sort-filter-full")
+                tapIfPresent(sheetBar.buttons["Done"])
+                snap("matters-filtered")
+                tapIfPresent(app.buttons["case-filters-clear-all"])
+            }
+        }
+
+        // Finding a case at the court — the form before a court is chosen.
+        let find = app.buttons["Add a matter"].firstMatch
+        if find.waitForExistence(timeout: 5) {
+            find.tap()
+            if app.navigationBars["Find a case"].waitForExistence(timeout: 10) {
+                snap("find-a-case")
+                tapIfPresent(app.navigationBars["Find a case"].buttons["Done"])
+            }
+        }
+
+        // The Calendar tab on today, where the stub lists one matter and one diary entry; the
+        // listing then opens its case on Matters, on the overview.
+        app.tab("Calendar").tap()
+        if app.navigationBars["Calendar"].waitForExistence(timeout: 10) {
+            let listing = app.buttons["calendar-listing-case1"]
+            let isListed = listing.waitForExistence(timeout: 10)
+            snap("calendar")
+            if isListed {
+                listing.tap()
+                let matter = app.navigationBars["Bakshi v. State of Maharashtra"]
+                if matter.waitForExistence(timeout: 10) {
+                    snap("case-overview")
+                    backOut(app)
+                }
+            }
+        }
+
+        // Files, from More: the folders, and one of them opened — its sub-folder above its
+        // documents. Closed from its own Done before the next step.
+        app.tab("More").tap()
+        tapIfPresent(app.buttons["Files"].firstMatch)
+        snap("files")
+        let folder = app.buttons["folder-Bakshi"]
+        if folder.waitForExistence(timeout: 5) {
+            folder.tap()
+            if app.navigationBars["Bakshi"].waitForExistence(timeout: 10) {
+                snap("files-folder")
+                backOut(app)
+            }
+        }
+        tapIfPresent(app.navigationBars["Files"].buttons["Done"])
+
+        // You: the account, its settings, and the tools that are not tabs — opened from Home's
+        // profile button, where the redesign keeps it.
+        app.tab("Home").tap()
+        app.buttons["home-profile"].tap()
+        guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 10) else { snap("you-missing"); return }
+        snap("you")
+        // The role selector.
+        let selector = app.buttons["Role selector"].firstMatch
+        if selector.waitForExistence(timeout: 5) {
+            app.reveal(selector)
+            selector.tap()
+            if app.navigationBars["Switch role"].waitForExistence(timeout: 5) {
+                snap("you-role-selector")
+                backOut(app)
+            }
+        }
+        // Notifications: off, as a fresh install finds it; then on, with the hearing reminders
+        // and updates beneath; then the account's email at the foot.
+        let notifications = app.buttons["notifications-settings"].firstMatch
+        app.reveal(notifications)
+        if notifications.waitForExistence(timeout: 5) {
+            notifications.tap()
+            if app.navigationBars["Notifications"].waitForExistence(timeout: 5) {
+                snap("you-notifications")
+                let allow = app.switches["notifications-allow"].firstMatch
+                if allow.waitForExistence(timeout: 5) {
+                    turnOn(allow)
+                    _ = app.switches["notifications-briefing"].firstMatch
+                        .waitForExistence(timeout: 5)
+                    snap("you-notifications-on")
+                    app.swipeUp()
+                    snap("you-notifications-email")
+                }
+                backOut(app)
+            }
+        }
+
+        // Everything You's Tools present, each opened and closed from its own Done. eAuctions is
+        // hidden for now; see `ToolsSections`.
+        for row in ["Your workspace", "Corporate Calendar", "Library", "Fetch Orders",
+                    "Matter workspaces", "All tools", "Analysis tools", "Limitation Radar",
+                    "MCA Registry", "File tools", "OCR", "Translate"] {
+            let button = app.buttons[row].firstMatch
+            app.reveal(button)
+            guard button.waitForExistence(timeout: 5) else { continue }
+            button.tap()
+            snap(row.lowercased().replacingOccurrences(of: " ", with: "-"))
+            if row == "Your workspace" {
+                // Litigator's workspace is the drafting taxonomy; one of its documents, opened.
+                tapIfPresent(app.buttons["matter-civil"])
+                let plaint = app.descendants(matching: .any)
+                    .matching(identifier: "ldoc-civil-plaint").firstMatch
+                if plaint.waitForExistence(timeout: 5) {
+                    plaint.tap()
+                    snap("litigator-document")
+                    // Scoped to the form's own bar: the sheet sits over You, and an unscoped
+                    // query could reach for a bar behind it.
+                    let back = app.navigationBars["Plaint"].buttons.element(boundBy: 0)
+                    if back.waitForExistence(timeout: 5) { back.tap() } else { backOut(app) }
+                }
+            }
+            let done = app.buttons["Done"].firstMatch
+            if done.waitForExistence(timeout: 5) { done.tap() } else { app.swipeDown() }
+            if row == "OCR" {
+                // Until the sheet has gone, its OCR | Translate switch carries a button named
+                // for the next row, and the next lookup could find that instead.
+                let modes = app.segmentedControls.firstMatch
+                var polls = 0
+                while modes.exists && polls < 20 {
+                    Thread.sleep(forTimeInterval: 0.1)
+                    polls += 1
+                }
+            }
+        }
+
+        // The plan and its allowances, and the rest of You, at the foot.
+        app.swipeUp()
+        snap("you-foot")
+    }
+
+    /// What each tab says when there is nothing to show — every fixture empty. The empty state is
+    /// a component of its own, drawn on more screens than any other, and the populated tour never
+    /// reaches it.
+    func testTheEmptyStatesDark() { emptyTour(light: false) }
+    func testTheEmptyStatesLight() { emptyTour(light: true) }
+
+    private func emptyTour(light: Bool) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestMode", "-UITestEmpty"] + (light ? ["-UITestLight"] : [])
+        app.launch()
+        let theme = light ? "light" : "dark"
+        guard app.signInWithACode(), app.tab("Home").waitForExistence(timeout: 15) else { return }
+
+        var step = 0
+        for tab in ["Home", "Matters", "Ask", "Calendar", "More"] {
+            let button = app.tab(tab)
+            guard button.waitForExistence(timeout: 5) else { continue }
+            button.tap()
+            step += 1
+            Thread.sleep(forTimeInterval: 0.8)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = String(format: "empty-%@-%02d-%@", theme, step, tab.lowercased())
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+    }
+
+    /// The sign-in screens as they look once Sign in with Apple and Google are switched on —
+    /// `-UITestSocial` draws them with a placeholder client id; nothing here signs in.
+    func testTheSignInProviders() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestMode", "-UITestSocial"]
+        app.launch()
+        guard app.textFields["Email"].waitForExistence(timeout: 15) else { return }
+        Thread.sleep(forTimeInterval: 0.8)
+        let signIn = XCTAttachment(screenshot: app.screenshot())
+        signIn.name = "providers-01-sign-in"
+        signIn.lifetime = .keepAlways
+        add(signIn)
+
+        tapIfPresent(app.buttons["Create new account"])
+        Thread.sleep(forTimeInterval: 0.8)
+        let create = XCTAttachment(screenshot: app.screenshot())
+        create.name = "providers-02-create-account"
+        create.lifetime = .keepAlways
+        add(create)
+    }
+
+    // MARK: - Offline reading
+
+    /// A conversation reopened with no signal — the copy kept on the device, the calm bar above
+    /// the composer that says so and how old it is — and You → Storage counting it.
+    /// `-UITestOffline` lets each route answer once and then fails it, as a phone in a court
+    /// corridor does.
+    func testTheOfflineConversationDark() { offlineTour(light: false) }
+    func testTheOfflineConversationLight() { offlineTour(light: true) }
+
+    private func offlineTour(light: Bool) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestMode", "-UITestOffline"] + (light ? ["-UITestLight"] : [])
+        app.launch()
+        let theme = light ? "light" : "dark"
+        var step = 0
+        func snap(_ name: String) {
+            step += 1
+            Thread.sleep(forTimeInterval: 0.8)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = String(format: "offline-%@-%02d-%@", theme, step, name)
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+
+        guard app.signInWithACode(), app.tab("Home").waitForExistence(timeout: 15) else { return }
+        app.tab("Home").tap()
+
+        // Opened once with the signal, which keeps it; then back to Home and in again, without.
+        let conversation = app.stubConversationRow
+        guard conversation.waitForExistence(timeout: 10) else { return }
+        app.reveal(conversation)
+        conversation.tap()
+        _ = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Read 1 document"))
+            .firstMatch.waitForExistence(timeout: 10)
+        let bar = app.navigationBars["Conversation"]
+        if bar.waitForExistence(timeout: 5) { bar.buttons.element(boundBy: 0).tap() }
+        if conversation.waitForExistence(timeout: 10) {
+            app.reveal(conversation)
+            conversation.tap()
+        }
+        if app.staticTexts["offline-notice"].firstMatch.waitForExistence(timeout: 10) {
+            snap("conversation")
+        }
+        if bar.waitForExistence(timeout: 5) { bar.buttons.element(boundBy: 0).tap() }
+
+        // You → Storage, scrolled to — You opened from Home's profile button.
+        app.tab("Home").tap()
+        app.buttons["home-profile"].tap()
+        guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 5) else { return }
+        let size = app.staticTexts["offline-storage-size"].firstMatch
+        var swipes = 0
+        while !(size.exists && size.isHittable) && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        snap("you-storage")
+    }
+
+    /// Turns a switch on, tolerating a miss as every step here does. The switch is a child of the
+    /// row on recent iOS; otherwise it is drawn at the row's trailing edge — tapping the middle of
+    /// the row lands on the label, which does not turn it.
+    private func turnOn(_ toggle: XCUIElement) {
+        guard (toggle.value as? String) != "1" else { return }
+        let inner = toggle.switches.firstMatch
+        if inner.exists {
+            inner.tap()
+        } else {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        }
+        var polls = 0
+        while (toggle.value as? String) != "1" && polls < 20 {
+            Thread.sleep(forTimeInterval: 0.25)
+            polls += 1
+        }
+    }
+
+    /// Taps a control if it is there to be tapped — present, and not under a sheet that did not
+    /// close — and otherwise goes on, as every step of a tour does.
+    private func tapIfPresent(_ element: XCUIElement) {
+        if element.waitForExistence(timeout: 5), element.isHittable { element.tap() }
+    }
+
+    private func backOut(_ app: XCUIApplication) {
+        let back = app.navigationBars.buttons.element(boundBy: 0)
+        if back.exists { back.tap() }
+    }
+
+    // MARK: - App lock
+
+    /// The lock the app opens behind, and You → Security with the lock on and its timeout
+    /// showing — `-UITestAppLock` starts with the lock on and someone signed in.
+    func testTheAppLockDark() { appLockTour(light: false) }
+    func testTheAppLockLight() { appLockTour(light: true) }
+
+    private func appLockTour(light: Bool) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestMode", "-UITestAppLock"] + (light ? ["-UITestLight"] : [])
+        app.launch()
+        let theme = light ? "light" : "dark"
+        var step = 0
+        func snap(_ name: String) {
+            step += 1
+            Thread.sleep(forTimeInterval: 0.8)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = String(format: "lock-%@-%02d-%@", theme, step, name)
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+
+        let unlock = app.buttons["app-lock-unlock"]
+        guard unlock.waitForExistence(timeout: 15) else { snap("launch-failed"); return }
+        snap("locked")
+
+        unlock.tap()
+        guard app.tab("Home").waitForExistence(timeout: 10) else { snap("unlock-failed"); return }
+        app.buttons["home-profile"].tap()
+        guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 10) else {
+            snap("unlock-failed"); return
+        }
+        // Far down You; scrolled until the switch is in view, then raised so the timeout row
+        // beneath it is in the picture too — a swipe alone leaves the switch on the bottom edge.
+        let toggle = app.switches["app-lock-toggle"].firstMatch
+        var swipes = 0
+        while !(toggle.exists && toggle.isHittable) && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        appLockRaise(toggle, in: app)
+        snap("you-security")
+    }
+
+    /// Drags the list holding `element` until the element sits in its upper half. Slow drags, so
+    /// momentum cannot carry it off the top; stops early where the list ends.
+    private func appLockRaise(_ element: XCUIElement, in app: XCUIApplication) {
+        let list = app.collectionViews.containing(.any, identifier: element.identifier).firstMatch
+        guard list.exists else { return }
+        for _ in 0..<6 {
+            guard element.exists, element.frame.minY > list.frame.midY else { return }
+            let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow,
+                        thenHoldForDuration: 0.2)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+    }
+
+    // MARK: - Profile and documents shared in
+
+    /// "Save to My Files" for a document handed to the app — the form, the folder list, and the
+    /// confirmation — and You → Edit profile, in both themes. A launch of their own, so the
+    /// document arriving does not interrupt the main tour.
+    func testTheProfileAndSharingDark() { profileAndSharingTour(light: false) }
+    func testTheProfileAndSharingLight() { profileAndSharingTour(light: true) }
+
+    private func profileAndSharingTour(light: Bool) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-UITestMode", "-UITestIncomingDocument"] + (light ? ["-UITestLight"] : [])
+        app.launch()
+        let theme = light ? "light" : "dark"
+        var step = 0
+        func snap(_ name: String) {
+            step += 1
+            Thread.sleep(forTimeInterval: 0.8)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = String(format: "share-%@-%02d-%@", theme, step, name)
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+
+        guard app.signInWithACode() else { return }
+
+        let sheet = app.navigationBars["Save to My Files"]
+        if sheet.waitForExistence(timeout: 15) {
+            snap("save-to-my-files")
+            let folder = app.buttons["incoming-folder"].firstMatch
+            if folder.waitForExistence(timeout: 5) {
+                folder.tap()
+                if app.navigationBars["Choose a folder"].waitForExistence(timeout: 5) {
+                    _ = app.buttons["incoming-folder-Bakshi"].firstMatch.waitForExistence(timeout: 5)
+                    snap("save-to-my-files-folders")
+                    tapIfPresent(app.buttons["incoming-folder-Bakshi"].firstMatch)
+                }
+            }
+            let save = app.buttons["incoming-save"].firstMatch
+            if save.waitForExistence(timeout: 5) {
+                save.tap()
+                if app.staticTexts["Uploading to Bakshi"].firstMatch.waitForExistence(timeout: 10) {
+                    snap("save-to-my-files-saved")
+                }
+            }
+            tapIfPresent(app.buttons["incoming-done"].firstMatch)
+        }
+
+        guard app.tab("Home").waitForExistence(timeout: 10) else { return }
+        app.buttons["home-profile"].tap()
+        guard app.navigationBars["Account & Profile"].waitForExistence(timeout: 10) else { return }
+        let edit = app.buttons["edit-profile"].firstMatch
+        var swipes = 0
+        while !(edit.exists && edit.isHittable) && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        snap("you-account")
+        let search = app.switches["spotlight-toggle"].firstMatch
+        swipes = 0
+        while !(search.exists && search.isHittable) && swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        snap("you-search")
+        if edit.waitForExistence(timeout: 5) {
+            swipes = 0
+            while !(edit.exists && edit.isHittable) && swipes < 6 {
+                app.swipeDown()
+                swipes += 1
+            }
+            edit.tap()
+            if app.navigationBars["Edit profile"].waitForExistence(timeout: 5) {
+                snap("edit-profile")
+            }
+        }
+    }
+
+    // MARK: - Opened from a link
+
+    /// The Calendar opened from a link — what the Today widget, a tapped hearing reminder and
+    /// "Open my calendar" do — on a day two ahead, where the stub's docket lists a matter. The
+    /// link arrives as the app comes back to the front (`-UITestLinkOnReturn`), as a widget's
+    /// tap reaches a running app; `XCUIApplication.open(_:)` would relaunch it signed out.
+    func testTheCalendarOpenedFromALinkDark() { linkTour(light: false) }
+    func testTheCalendarOpenedFromALinkLight() { linkTour(light: true) }
+
+    private func linkTour(light: Bool) {
+        let ahead = DateFormatter()
+        ahead.dateFormat = "yyyy-MM-dd"
+        ahead.timeZone = TimeZone(identifier: "Asia/Kolkata")
+        ahead.locale = Locale(identifier: "en_US_POSIX")
+        let day = ahead.string(from: Date().addingTimeInterval(2 * 86_400))
+
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-UITestMode", "-UITestLinkOnReturn", "emperor://calendar?day=\(day)",
+        ] + (light ? ["-UITestLight"] : [])
+        app.launch()
+        guard app.signInWithACode(), app.tab("Home").waitForExistence(timeout: 15) else { return }
+
+        XCUIDevice.shared.press(.home)
+        var polls = 0
+        while app.state == .runningForeground && polls < 20 {
+            Thread.sleep(forTimeInterval: 0.25)
+            polls += 1
+        }
+        if app.state == .runningForeground {
+            XCUIApplication(bundleIdentifier: "com.apple.springboard").activate()
+        }
+        app.activate()
+
+        guard app.navigationBars["Calendar"].waitForExistence(timeout: 10) else { return }
+        _ = app.buttons["calendar-listing-case-hc-delhi"].waitForExistence(timeout: 5)
+        Thread.sleep(forTimeInterval: 0.8)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = String(format: "link-%@-01-calendar-on-a-day", light ? "light" : "dark")
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+}

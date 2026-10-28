@@ -20,6 +20,8 @@ struct AuctionListView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var model: AuctionListViewModel?
 
     var body: some View {
@@ -32,6 +34,13 @@ struct AuctionListView: View {
                 }
             }
             .navigationTitle(AuctionListViewModel.Copy.title)
+            // On the root rather than inside `content`, so it is there in every state — including
+            // the spinner before the first load returns, and the failure view if it never does.
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
             .navigationDestination(for: String.self) { noticeID in
                 AuctionDetailView(noticeID: noticeID)
             }
@@ -77,19 +86,16 @@ struct AuctionListView: View {
                     // On the content state as well as the empty one. Every figure above was
                     // parsed out of a PDF by a scraper, and the notice is the only authority.
                     Text(AuctionListViewModel.Copy.confirmWithNotice)
-                        .font(.brand(.caption2))
+                        .font(.brand(.caption))
                         .foregroundStyle(theme.textTertiary)
                 }
+                .listRowBackground(theme.surface)
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(theme.canvas)
+            .background(theme.groupedBackground)
         } empty: {
-            ContentUnavailableView {
-                Label(model.emptyTitle, systemImage: "hammer")
-            } description: {
-                Text(model.emptyDetail)
-            } actions: {
+            EmptyStateView(model.emptyTitle, systemImage: "hammer", message: model.emptyDetail) {
                 if model.upcomingOnly {
                     Button("Include past auctions") {
                         model.upcomingOnly = false
@@ -171,13 +177,13 @@ struct AuctionListView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(notice.displayDebtor)
                 .font(.brand(.headline))
-                .lineLimit(2)
+                .dynamicLineLimit(2)
 
             if let assets = notice.natureOfAssets, !assets.isEmpty {
                 Text(assets)
                     .font(.brand(.subheadline))
                     .foregroundStyle(theme.textSecondary)
-                    .lineLimit(2)
+                    .dynamicLineLimit(2)
             }
 
             HStack(spacing: 8) {
@@ -199,8 +205,8 @@ struct AuctionListView: View {
                     Label(DisplayText.longDay(day), systemImage: "calendar")
                 }
                 if let platform = notice.auctionPlatform, !platform.isEmpty {
-                    Text("·")
-                    Text(platform).lineLimit(1)
+                    SeparatorDot()
+                    Text(platform).dynamicLineLimit(1)
                 }
             }
             .font(.brand(.caption))

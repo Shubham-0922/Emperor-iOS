@@ -19,6 +19,12 @@ settings:
     # intermittent streaming glitches.
     SWIFT_STRICT_CONCURRENCY: complete
     DEVELOPMENT_TEAM: "" # set this to your Apple Developer team id before archiving
+    # The app group the app and its Today widget share (`AppGroup`). Both targets declare it in
+    # their `.entitlements` and carry it in Info.plist as `EmperorAppGroup`. A build re-signed by
+    # a sideloading tool may be given a differently named group, or none; both targets then look
+    # for `group.` + the app's installed bundle id, and failing that the widget says to open the
+    # app — nothing breaks.
+    EMPEROR_APP_GROUP: group.com.emperorailabs.emperor
   configs:
     # Which backend the build talks to. Read via the Info.plist key `EmperorEnvironment` and
     # resolved by `APIConfig.resolveEnvironment`.
@@ -40,6 +46,10 @@ targets:
       # machine exercises exactly the code the app ships.
       - path: Sources/EmperorCore
       - path: Emperor
+    # The Today widget, built with the app and embedded in its `PlugIns/` (XcodeGen's default
+    # for an app extension).
+    dependencies:
+      - target: EmperorWidget
     info:
       path: Emperor/Resources/Info.plist
       properties:
@@ -51,16 +61,30 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # Consumed by `APIConfig.resolvedEnvironment`; driven by the per-config build setting.
         EmperorEnvironment: $(EMPEROR_ENVIRONMENT)
+        # Sign in with Apple and Continue with Google — off until all of: a Google Cloud OAuth
+        # client of the iOS type (its id below), the platform's `POST /auth/google` and
+        # `POST /auth/apple` routes, and the Sign in with Apple capability on the app id. Read by
+        # `SocialSignInConfig`; nothing is drawn while either is unset.
+        EmperorSocialSignIn: $(EMPEROR_SOCIAL_SIGN_IN)
+        EmperorGoogleClientID: $(EMPEROR_GOOGLE_CLIENT_ID)
+        # "View plans" — opens the web app's plans page in the browser. Read by `WebPlans`.
+        EmperorWebPlans: $(EMPEROR_WEB_PLANS)
         UILaunchScreen: {}
-        # `--font-brand` in `emperor-ai/src/ui/theme.css`. Bundled rather than fetched: the web
-        # pulls it from Google Fonts by `@import`, which an app cannot do.
+        # The Record faces (Design/record-tokens.json, `font`): Plus Jakarta Sans for the
+        # interface and Instrument Serif for large titles, greetings and the numbers people scan
+        # for. Both SIL OFL 1.1, licences beside them in Resources/Fonts. Bundled rather than
+        # fetched, as an app must.
         #
-        # One file, because it is a **variable** font carrying all five weights as named
-        # instances. Its default instance is Light and its family name is "Fredoka Light", so
-        # `UIFont(name: "Fredoka")` gets Light or nothing — always address a named instance
-        # (`Fredoka-Regular`, `-Medium`, `-SemiBold`, `-Bold`). See `BrandFont`.
+        # Plus Jakarta Sans is four **static** files, not Google Fonts' variable one: that file's
+        # named instances carry no PostScript names, so `UIFont(name:)` could not address a weight
+        # reliably. Each static file has its own (`PlusJakartaSans-Medium`, …). See `BrandFont`.
         UIAppFonts:
-          - Fredoka.ttf
+          - PlusJakartaSans-Regular.ttf
+          - PlusJakartaSans-Medium.ttf
+          - PlusJakartaSans-SemiBold.ttf
+          - PlusJakartaSans-Bold.ttf
+          - InstrumentSerif-Regular.ttf
+          - InstrumentSerif-Italic.ttf
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -70,14 +94,120 @@ targets:
         NSCameraUsageDescription: >
           Emperor uses the camera to scan paperbooks, orders and pleadings into your
           document library.
+        # Required for the app lock to use Face ID (`DeviceOwnerAuthenticator`) — without it iOS
+        # refuses Face ID to the app. Shown once, the first time the lock asks.
+        NSFaceIDUsageDescription: >-
+          Emperor uses Face ID to keep your matters private when you open the app.
+        # Background App Refresh, so hearing reminders are re-planned from a fresh cause list
+        # while the app is not open (`AppNotifications`, `NotificationCoordinator`). The
+        # identifier must match `NotificationCoordinator.refreshTaskIdentifier`, or iOS refuses
+        # the request. Reminders are local notifications: there is deliberately no Push
+        # Notifications capability and no `aps-environment`.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.emperorailabs.emperor.refresh
+        # "Open in Emperor" and the share sheet, for the documents the library holds — PDF, Word
+        # and photos. `Alternate`, so Emperor is offered beside the usual app, never in place of
+        # it. With opening in place off, iOS hands the app a copy in its own inbox, which
+        # `AppIncomingDocuments` takes from there. Deliberately not a share extension: that would
+        # need an app group, which a free Apple ID's signing may rename or drop. HEIC photos are
+        # converted to JPEG on the way into the library, which does not hold HEIC.
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: PDF Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.adobe.pdf
+          - CFBundleTypeName: Word Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.openxmlformats.wordprocessingml.document
+              - com.microsoft.word.doc
+          - CFBundleTypeName: Image
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.jpeg
+              - public.png
+              - public.heic
         ITSAppUsesNonExemptEncryption: false
+        # The app's own links — `emperor://calendar?day=YYYY-MM-DD`, `emperor://updates` — which
+        # the Today widget opens. They only navigate; see `EmperorLink`.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.emperorailabs.emperor
+            CFBundleURLSchemes:
+              - emperor
+        # Read by `AppGroup`; see `EMPEROR_APP_GROUP` above.
+        EmperorAppGroup: $(EMPEROR_APP_GROUP)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.emperorailabs.emperor
+        # See `EmperorSocialSignIn` above. "YES" and a client id such as
+        # "1234-abcd.apps.googleusercontent.com" turn the providers on.
+        EMPEROR_SOCIAL_SIGN_IN: "NO"
+        EMPEROR_GOOGLE_CLIENT_ID: ""
+        # "NO" removes every "View plans" button. App Review restricts links to a purchase made
+        # outside the app (guidelines 3.1.1, 3.1.3) and what is allowed differs by storefront —
+        # check the current guidelines and set this for the storefront before each submission.
+        EMPEROR_WEB_PLANS: "YES"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2" # iPhone and iPad
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # The app group, and nothing else. CI's unsigned builds pass `CODE_SIGN_ENTITLEMENTS=""`
+        # or sign nothing at all, so this only matters to a properly signed build.
+        CODE_SIGN_ENTITLEMENTS: Emperor/Resources/Emperor.entitlements
+
+  # The Today widget: Home Screen (small, medium, large) and Lock Screen (rectangular, inline),
+  # showing today's listed matters or the next day that has any.
+  #
+  # It compiles the widget's slice of the core — `Sources/EmperorCore/Today`, Foundation only and
+  # self-contained — so the snapshot it reads, the choice of what to show and the wording are the
+  # same bytes the app writes them with and `swift test` checks. Nothing else of the app: it does
+  # no networking, holds no token and reads only the snapshot the app leaves in the app group.
+  EmperorWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: EmperorWidget
+      - path: Sources/EmperorCore/Today
+      # The Record faces, registered for the widget by `UIAppFonts` below. The licences ship in
+      # the app that contains it.
+      - path: Emperor/Resources/Fonts/PlusJakartaSans-Regular.ttf
+      - path: Emperor/Resources/Fonts/PlusJakartaSans-Medium.ttf
+      - path: Emperor/Resources/Fonts/PlusJakartaSans-SemiBold.ttf
+      - path: Emperor/Resources/Fonts/PlusJakartaSans-Bold.ttf
+      - path: Emperor/Resources/Fonts/InstrumentSerif-Regular.ttf
+    info:
+      path: EmperorWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Emperor
+        # Must match the app's — App Store validation refuses a pair that differ; hence the
+        # same two settings below.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        EmperorAppGroup: $(EMPEROR_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        UIAppFonts:
+          - PlusJakartaSans-Regular.ttf
+          - PlusJakartaSans-Medium.ttf
+          - PlusJakartaSans-SemiBold.ttf
+          - PlusJakartaSans-Bold.ttf
+          - InstrumentSerif-Regular.ttf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.emperorailabs.emperor.widget
+        # Kept equal to the app's — see `CFBundleShortVersionString` above.
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_ENTITLEMENTS: EmperorWidget/EmperorWidget.entitlements
+        SKIP_INSTALL: true
 
   # Runs *inside* the app process, which is the point: it can reach UIKit and the app bundle,
   # so it can answer questions `swift test` on Linux structurally cannot — whether the bundled

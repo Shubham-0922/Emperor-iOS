@@ -349,6 +349,13 @@ final class AuctionServiceWireTests: XCTestCase {
 
     private static let config = APIConfig(baseURL: URL(string: "https://example.test/api")!)
 
+    /// Before each test, not only after. `tearDown` alone leaves the **first** test in the class
+    /// reading whatever the previous suite left in `HTTPStub.seen`. See `HTTPStub.reset`.
+    override func setUp() {
+        super.setUp()
+        HTTPStub.reset()
+    }
+
     override func tearDown() {
         HTTPStub.reset()
         super.tearDown()
@@ -546,6 +553,14 @@ final class AuctionServiceWireTests: XCTestCase {
 // MARK: - The list screen
 
 final class AuctionListViewModelTests: XCTestCase {
+
+    /// The web renamed the page to eAuctions (`src/pages/Liquidations.jsx:126`). Someone who uses
+    /// both should find it under one name, and the More row and the screen title both read this.
+    /// `Copy` is a nested type, so reading it does not need the main actor.
+    func testTheScreenCarriesTheWebsName() {
+        XCTAssertEqual(AuctionListViewModel.Copy.title, "eAuctions")
+        XCTAssertFalse(AuctionListViewModel.Copy.title.localizedCaseInsensitiveContains("liquidation"))
+    }
 
     func testTheFirstPageLoads() async {
         await withAuctions { fake, model in

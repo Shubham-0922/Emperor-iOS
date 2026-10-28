@@ -52,6 +52,10 @@ struct UploadService: UploadProviding {
 
     enum UploadEvent {
         case progress(sent: Int, total: Int)
+        /// The name the server stored the document under. Differs from the name sent when the
+        /// server converted the upload (an image becomes a searchable PDF), and is the name
+        /// ingestion has to be polled with.
+        case stored(name: String)
         case processing(String)
         case finished(IngestState)
     }
@@ -97,6 +101,7 @@ struct UploadService: UploadProviding {
                     let uploadID = UUID().uuidString
                     let total = data.count
                     let chunkCount = max(1, Int(ceil(Double(total) / Double(chunkSize))))
+                    var storedName: String?
 
                     for index in 0..<chunkCount {
                         try Task.checkCancellation()
@@ -104,17 +109,21 @@ struct UploadService: UploadProviding {
                         let end = min(start + chunkSize, total)
                         let chunk = data.subdata(in: start..<end)
 
-                        try await sendChunk(
+                        let reply = try await sendChunk(
                             chunk, index: index, chunkCount: chunkCount, chunkSize: chunkSize,
                             totalBytes: total, fileName: fileName, folderName: folderName,
                             uploadID: uploadID, credentials: credentials)
+                        // Only the chunk that completes the file carries the stored name, and
+                        // that is not guaranteed to be the last one sent.
+                        if let name = reply.storedName { storedName = name }
 
                         continuation.yield(.progress(sent: end, total: total))
                     }
 
                     // The upload is only half the job — ingestion runs after the response closed.
+                    if let storedName { continuation.yield(.stored(name: storedName)) }
                     let state = try await waitForIngestion(
-                        fileName: fileName, folderName: folderName,
+                        fileName: storedName ?? fileName, folderName: folderName,
                         onProgress: { continuation.yield(.processing($0)) })
                     continuation.yield(.finished(state))
                     continuation.finish()
@@ -131,46 +140,31 @@ struct UploadService: UploadProviding {
     private func sendChunk(
         _ chunk: Data, index: Int, chunkCount: Int, chunkSize: Int, totalBytes: Int,
         fileName: String, folderName: String, uploadID: String, credentials: Credentials
-    ) async throws {
+    ) async throws -> UploadReply {
         var request = try await client.makeRequest("POST", "/upload-chunk", requiresAuth: true)
-        let boundary = "Boundary-\(UUID().uuidString)"
-        request.setValue("multipart/form-data; boundary=\(boundary)",
+        let boundary = MultipartChunk.boundary()
+        request.setValue(MultipartChunk.contentType(boundary: boundary),
                          forHTTPHeaderField: "Content-Type")
         // The server accepts these as headers as well as form fields; the web client sends both.
         request.setValue(uploadID, forHTTPHeaderField: "x-upload-id")
         request.setValue(String(totalBytes), forHTTPHeaderField: "x-total-bytes")
 
-        // Every numeric value is a decimal string: multipart has no typing, and the server
-        // `parseInt`s each one with no NaN guard — a non-numeric value would silently corrupt
-        // the offset arithmetic rather than error.
-        let fields: [(String, String)] = [
-            ("userId", credentials.userIDString),
-            ("folderName", folderName),
-            ("fileName", fileName),
-            ("chunkIndex", String(index)),
-            ("totalChunks", String(chunkCount)),
-            ("chunkSize", String(chunkSize)),
-            ("uploadId", uploadID),
-            ("totalBytes", String(totalBytes)),
-        ]
-
-        var body = Data()
-        func append(_ string: String) { body.append(Data(string.utf8)) }
-        for (name, value) in fields {
-            append("--\(boundary)\r\n")
-            append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-            append("\(value)\r\n")
-        }
-        // The file part is ignored unless it carries a `filename` parameter.
-        append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n")
-        append("Content-Type: application/octet-stream\r\n\r\n")
-        body.append(chunk)
-        append("\r\n--\(boundary)--\r\n")
-        request.httpBody = body
+        // The field list and the encoding live in `MultipartChunk`, shared with the background
+        // path. Two hand-written encoders would drift, and the background one is the one no
+        // test can reach.
+        let fields = MultipartChunk.Fields(
+            userID: credentials.userIDString,
+            fileName: fileName,
+            folderName: folderName,
+            uploadID: uploadID,
+            chunkIndex: index,
+            chunkCount: chunkCount,
+            chunkSize: chunkSize,
+            totalBytes: totalBytes)
+        request.httpBody = MultipartChunk.body(chunk: chunk, fields: fields, boundary: boundary)
 
         do {
-            _ = try await client.send(request, as: UploadChunkResponse.self)
+            return try await client.send(request, as: UploadReply.self)
         } catch let error as APIError {
             // Over the cap the server destroys the socket rather than replying, so a reset
             // mid-chunk means "too large" even though no 413 arrived.
@@ -213,4 +207,33 @@ struct UploadService: UploadProviding {
         }
         return .inProgress("Still processing — this is taking longer than usual.")
     }
+}
+
+/// What a chunk reply says about where the document ended up.
+///
+/// Its own type rather than a widening of `UploadChunkResponse`: both fields are present only on
+/// the reply to the chunk that completes the file, and absent on every other.
+struct UploadReply: Decodable, Equatable, Sendable {
+    /// The name the file is stored under. For a converted image this is the PDF's name, which
+    /// may carry a numeric suffix when the plain name was already taken.
+    let storedName: String?
+    /// The original extension when the server converted the upload, otherwise absent.
+    let convertedFrom: String?
+
+    /// Lenient: any body that is not a JSON object with a non-empty `storedName` yields nil, so
+    /// an intermediate chunk's reply or an unreadable one simply means "no name yet".
+    static func storedName(from body: Data) -> String? {
+        guard let reply = try? JSONDecoder().decode(UploadReply.self, from: body),
+              let name = reply.storedName, !name.isEmpty
+        else { return nil }
+        return name
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        storedName = try? container.decodeIfPresent(String.self, forKey: .storedName)
+        convertedFrom = try? container.decodeIfPresent(String.self, forKey: .convertedFrom)
+    }
+
+    private enum CodingKeys: String, CodingKey { case storedName, convertedFrom }
 }

@@ -9,6 +9,13 @@ final class GapFixTests: XCTestCase {
 
     private static let config = APIConfig(baseURL: URL(string: "https://example.test/api")!)
 
+    /// Before each test, not only after. `tearDown` alone leaves the **first** test in the class
+    /// reading whatever the previous suite left in `HTTPStub.seen`. See `HTTPStub.reset`.
+    override func setUp() {
+        super.setUp()
+        HTTPStub.reset()
+    }
+
     override func tearDown() {
         HTTPStub.reset()
         super.tearDown()
@@ -83,6 +90,8 @@ final class GapFixTests: XCTestCase {
         ])
         await withSignedInSession(store) { session in
             XCTAssertEqual(session.state, .signedIn(User(id: 42)))
+            // A 401 met before the session's handler is installed would go unnoticed.
+            await session.clientHandlersInstalled()
 
             HTTPStub.always(.json(#"{"error":"Invalid credentials"}"#, status: 401))
             _ = try? await session.chats.chats()
@@ -130,13 +139,14 @@ final class GapFixTests: XCTestCase {
     /// The route answers 200 for an unknown address on purpose, so it never leaks which emails
     /// exist. The confirmation therefore cannot claim an account was found.
     func testTheConfirmationNeverClaimsTheAccountExists() {
-        let notice = Session.passwordResetNotice.lowercased()
+        let notice = SignInFlow.passwordResetNotice.lowercased()
         XCTAssertTrue(notice.contains("if an account exists"))
         XCTAssertFalse(notice.contains("we found"))
-        XCTAssertFalse(notice.contains("check your inbox"), "SMTP may not be configured at all")
-        XCTAssertTrue(
-            notice.contains("administrator"),
-            "accounts are created for you — there is no self-signup to fall back on")
+        XCTAssertFalse(notice.contains("check your inbox"), "it may not have been sent at all")
+        // Accounts can be created from the app now, so "ask your administrator" is no longer
+        // the way back in — and a Google account has no password to reset.
+        XCTAssertFalse(notice.contains("administrator"))
+        XCTAssertTrue(notice.contains("one-time code"))
         XCTAssertTrue(notice.contains("browser"), "the reset link is a web URL")
     }
 
@@ -153,6 +163,19 @@ final class GapFixTests: XCTestCase {
             XCTAssertEqual(uploads.uploadedNames, ["Order.pdf"])
             XCTAssertEqual(uploads.uploadedFolders, [FileLibraryViewModel.uploadFolder])
             XCTAssertEqual(model.files.count, 1, "and the library is re-read once it is readable")
+            XCTAssertNil(model.uploadError)
+        }
+    }
+
+    func testAConvertedUploadShowsItsStoredNameAndRefreshesTheLibrary() async {
+        await withLibrary { files, uploads, model in
+            uploads.events = [.stored(name: "scan (1).pdf"), .finished(.ready)]
+            files.tree = [folder("Uploads", [.file(readyFile("Uploads/scan (1).pdf"))])]
+
+            await model.upload(data: Data("x".utf8), fileName: "scan.png")
+
+            XCTAssertEqual(model.storedName, "scan (1).pdf")
+            XCTAssertEqual(model.files.count, 1)
             XCTAssertNil(model.uploadError)
         }
     }

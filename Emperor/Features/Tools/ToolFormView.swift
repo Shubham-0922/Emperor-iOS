@@ -13,19 +13,35 @@ import SwiftUI
 /// why `ToolValues.text` takes a fallback rather than returning an empty string.
 struct ToolFormView: View {
     @Environment(\.theme) private var theme
+    @Environment(\.practice) private var practice
+    @Environment(Session.self) private var session
 
     let tool: ToolSpec
 
     @State private var values: [String: String] = [:]
     @State private var startedChatID: String?
+    /// Short or Detailed — the web's Length toggle on its draft page. Remembered for the account
+    /// on this device, so a chosen length carries from one tool to the next, as on the web.
+    @State private var depth = DraftDepth.default
+    private let preferences = Preferences()
 
     var body: some View {
         Form {
+            // The tool's own tile beside what it does — the same tile it wears in the list.
             Section {
-                Text(tool.blurb)
-                    .font(.brand(.callout))
-                    .foregroundStyle(theme.textSecondary)
+                HStack(alignment: .top, spacing: Spacing.md) {
+                    IconTile(
+                        systemImage: ToolSymbol.symbol(for: tool.id),
+                        hue: TileHue.forTool(tool.id),
+                        size: .large)
+                    Text(tool.blurb)
+                        .font(.brand(.callout))
+                        .foregroundStyle(theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, Spacing.xs)
             }
+            .listRowBackground(theme.surface)
 
             Section {
                 ForEach(tool.inputs) { field in
@@ -33,31 +49,71 @@ struct ToolFormView: View {
                 }
             } footer: {
                 Text("Everything here is optional. Anything you leave blank, the assistant works out from the record.")
-                    .font(.brand(.caption2))
+                    .font(.brand(.caption))
+                    .foregroundStyle(theme.textTertiary)
             }
+            .listRowBackground(theme.surface)
 
             Section {
-                Button {
-                    // A fresh conversation each run. Threading a second tool prompt into an
-                    // existing thread would send the whole prior history back with it, and
-                    // `POST /chat` rewrites what it receives.
-                    startedChatID = ChatListViewModel.newChatID()
-                } label: {
-                    Text("Run")
-                        .font(.brand(.headline))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                RecordSegmentedControl(
+                    label: "Length",
+                    options: DraftDepth.allCases.map { (value: $0, title: $0.label) },
+                    selection: Binding(
+                        get: { depth },
+                        set: { chosen in
+                            depth = chosen
+                            chosen.save(to: preferences, userID: session.currentUser?.id)
+                        }))
+                    .listRowInsets(EdgeInsets(top: Spacing.sm, leading: Spacing.md, bottom: Spacing.sm, trailing: Spacing.md))
+            } header: {
+                SectionHeader(title: "Length")
+            } footer: {
+                Text(depth.hint + ".")
+                    .font(.brand(.caption))
+                    .foregroundStyle(theme.textTertiary)
+            }
+            .listRowBackground(theme.surface)
+        }
+        .font(.brand(.body))
+        // "Run" in a bar of its own at the foot, as the role welcome's "Continue" is: the one
+        // action on the screen, in reach however long the form. Drawn as a row of the form it was
+        // read by the accessibility audit as a list cell's text, and failed for contrast however
+        // the gradient under it was set; outside the form, the same button passes as it does on
+        // the sign-in screen.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button {
+                // A fresh conversation each run. Threading a second tool prompt into an
+                // existing thread would send the whole prior history back with it, and
+                // `POST /chat` rewrites what it receives.
+                startedChatID = ChatListViewModel.newChatID()
+            } label: {
+                Text("Run")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.primaryAction)
+            .padding(.horizontal, Spacing.gutter)
+            .padding(.vertical, Spacing.md)
+            .frame(maxWidth: .infinity)
+            .background(theme.groupedBackground)
+            .overlay(alignment: .top) {
+                Rectangle().fill(theme.separator).frame(height: 0.5)
             }
         }
         .scrollContentBackground(.hidden)
-        .background(theme.canvas)
+        .background(theme.groupedBackground)
         .navigationTitle(tool.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $startedChatID) { id in
-            ChatThreadView(chatID: id, seed: tool.prompt(ToolValues(values)))
+            // The tool's prompt, then the length line, then the role's guardrail — the order
+            // the web's draft page composes it at generate time (for Devil's Advocate, the side
+            // under attack; `Practice`).
+            ChatThreadView(
+                chatID: id,
+                seed: tool.draftPrompt(ToolValues(values), depth: depth)
+                    + practice.toolPromptGuardrail)
+        }
+        .onAppear {
+            depth = DraftDepth.stored(in: preferences, userID: session.currentUser?.id)
         }
     }
 
@@ -65,17 +121,25 @@ struct ToolFormView: View {
     private func field(_ field: ToolField) -> some View {
         switch field.type {
         case .text:
-            TextField(field.placeholder ?? field.label, text: binding(field.key))
+            // A short answer, but one that wraps rather than scrolling out of sight sideways at
+            // a large text size — "the Respondent, a statutory authority" is still one answer.
+            TextField(
+                field.label, text: binding(field.key), prompt: prompt(for: field), axis: .vertical)
+                .lineLimit(1...4)
                 .accessibilityLabel(field.label)
 
         case .textarea:
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Spacing.xs + 2) {
+                // For the eye. The field below carries the same name for VoiceOver, so the label
+                // is not read twice, once as text and once as the field.
                 Text(field.label)
-                    .font(.brand(.caption))
+                    .font(.brand(.caption, weight: .medium))
                     .foregroundStyle(theme.textSecondary)
+                    .accessibilityHidden(true)
                 TextField(
-                    field.placeholder ?? field.label,
+                    field.label,
                     text: binding(field.key),
+                    prompt: prompt(for: field),
                     axis: .vertical)
                     // `big` marks the one field a whole record gets pasted into.
                     .lineLimit(field.big ? 6...14 : 2...6)
@@ -93,6 +157,12 @@ struct ToolFormView: View {
                 }
             }
         }
+    }
+
+    /// The field's example, in the palette's tertiary: the system's placeholder grey is too faint
+    /// on a dark card to read.
+    private func prompt(for field: ToolField) -> Text {
+        Text(verbatim: field.placeholder ?? field.label).foregroundStyle(theme.textTertiary)
     }
 
     private func binding(_ key: String) -> Binding<String> {

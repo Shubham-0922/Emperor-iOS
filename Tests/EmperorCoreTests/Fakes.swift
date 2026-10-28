@@ -12,6 +12,10 @@ final class FakeFiles: FileProviding, @unchecked Sendable {
     /// How many times the tree was fetched. `tree()` is an expensive server-side walk, so
     /// "was it fetched at all" and "was it fetched twice" are both worth asserting.
     private(set) var treeCallCount = 0
+    /// The last name passed to `fileData`, or `nil` if it was never called. Lets a test assert
+    /// a document was routed *away* from `/view-file`, which is what the office-preview path
+    /// has to do for a `.docx`.
+    private(set) var lastRequestedName: String?
 
     func tree() async throws -> [FileNode] {
         treeCallCount += 1
@@ -20,6 +24,7 @@ final class FakeFiles: FileProviding, @unchecked Sendable {
     }
 
     func fileData(name: String, folderName: String?) async throws -> Data {
+        lastRequestedName = name
         if let dataError { throw dataError }
         return data[name] ?? Data()
     }
@@ -72,6 +77,104 @@ final class InertChat: ChatProviding, @unchecked Sendable {
     }
 }
 
+/// A `ChatProviding` whose answers come from scripts, for following a run, stopping one, and
+/// adopting what the server saved. Each script is consumed in order and its last entry repeats.
+final class ScriptedChat: ChatProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _statuses: [Result<StreamStatus, Error>] = [.success(StreamStatus(active: false))]
+    private var _histories: [Result<[ChatMessage], Error>] = [.success([])]
+    private var _statusCalls = 0
+    private var _messagesCalls = 0
+    private var _stopCalls = 0
+    private var _sent: [[ChatMessage]] = []
+
+    var events: [ChatTurnEvent] = []
+    /// `nil` answers as a server that could not be reached.
+    var stopReply: StopReply? = StopReply(
+        success: true, running: true, stopped: true, savedBy: "run", error: nil)
+
+    var statusCalls: Int { lock.withLock { _statusCalls } }
+    var messagesCalls: Int { lock.withLock { _messagesCalls } }
+    var stopCalls: Int { lock.withLock { _stopCalls } }
+    var sent: [[ChatMessage]] { lock.withLock { _sent } }
+
+    func scriptStatuses(_ statuses: [Result<StreamStatus, Error>]) {
+        lock.withLock { _statuses = statuses }
+    }
+
+    func scriptStatuses(_ statuses: [StreamStatus]) {
+        scriptStatuses(statuses.map { .success($0) })
+    }
+
+    func scriptHistories(_ histories: [[ChatMessage]]) {
+        lock.withLock { _histories = histories.map { .success($0) } }
+    }
+
+    func scriptHistories(_ histories: [Result<[ChatMessage], Error>]) {
+        lock.withLock { _histories = histories }
+    }
+
+    private static func next<T>(_ script: inout [T]) -> T {
+        script.count > 1 ? script.removeFirst() : script[0]
+    }
+
+    func messages(chatID: String) async throws -> [ChatMessage] {
+        let result = lock.withLock { () -> Result<[ChatMessage], Error> in
+            _messagesCalls += 1
+            return Self.next(&_histories)
+        }
+        return try result.get()
+    }
+
+    func streamStatus(chatID: String) async throws -> StreamStatus {
+        let result = lock.withLock { () -> Result<StreamStatus, Error> in
+            _statusCalls += 1
+            return Self.next(&_statuses)
+        }
+        return try result.get()
+    }
+
+    func stopRun(chatID: String) async throws -> StopReply {
+        lock.withLock { _stopCalls += 1 }
+        guard let stopReply else { throw APIError.transport("The network connection was lost.") }
+        return stopReply
+    }
+
+    func send(
+        history: [ChatMessage], chatID: String, model: ChatModel, role: ChatRole?,
+        attachments: [ChatAttachment]?, webSearch: Bool
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
+        lock.withLock { _sent.append(history) }
+        let queued = events
+        return AsyncThrowingStream { continuation in
+            for event in queued { continuation.yield(event) }
+            continuation.finish()
+        }
+    }
+}
+
+/// A clock that moves only when the follower waits, by exactly what it waited, and remembers
+/// every wait — so back-off and the 35-minute limit can be tested in no time at all.
+final class SteppedClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSince1970: 1_800_000_000)
+    private var _waits: [Int] = []
+
+    var waits: [Int] { lock.withLock { _waits } }
+
+    var timing: FollowTiming {
+        FollowTiming(
+            now: { [self] in lock.withLock { current } },
+            sleep: { [self] ms in
+                lock.withLock {
+                    _waits.append(ms)
+                    current = current.addingTimeInterval(Double(ms) / 1000)
+                }
+                await Task.yield()
+            })
+    }
+}
+
 // MARK: - Builders
 
 /// A file the model can read. `status` matters: a `nil` status classifies as *in progress*,
@@ -97,6 +200,8 @@ final class FakeCases: CaseProviding, @unchecked Sendable {
     var detail: CaseDetail?
     var listings: [CauseListing] = []
     var error: Error?
+    /// Fails `/cause-list` alone, for a screen that also reads the docket.
+    var causeListError: Error?
     var orderData = Data("%PDF-1.4 stub".utf8)
     /// `/cause-list` takes no date parameter and returns the entire history, so the client
     /// fetches once and windows locally. Counting proves it does not re-fetch per day.
@@ -119,7 +224,7 @@ final class FakeCases: CaseProviding, @unchecked Sendable {
 
     func causeList() async throws -> [CauseListing] {
         causeListCallCount += 1
-        if let error { throw error }
+        if let error = causeListError ?? error { throw error }
         return listings
     }
 
@@ -146,7 +251,7 @@ final class FakeNotifications: NotificationProviding, @unchecked Sendable {
     private(set) var markedRead: [String] = []
     private(set) var markedAllRead = false
 
-    func notifications(limit: Int, unreadOnly: Bool) async throws -> [AppNotification] {
+    func notifications(limit: Int) async throws -> [AppNotification] {
         if let error { throw error }
         return notifications
     }
@@ -189,7 +294,81 @@ final class FakeOCR: OCRProviding, @unchecked Sendable {
     }
 
     func download(outputFile: String) async throws -> Data {
-        downloadData
+        if let downloadError { throw downloadError }
+        downloaded.append(outputFile)
+        return downloadData
+    }
+
+    var historyJobs: [OCRJob] = []
+    var historyListedOthers = false
+    var historyError: Error?
+    var clearError: Error?
+    var downloadError: Error?
+    private(set) var downloaded: [String] = []
+    private(set) var historyCalls = 0
+    private(set) var clearCalls = 0
+
+    func history() async throws -> OCRHistory {
+        historyCalls += 1
+        if let historyError { throw historyError }
+        return OCRHistory(jobs: historyJobs, listedOtherJobs: historyListedOthers)
+    }
+
+    func clearHistory() async throws {
+        clearCalls += 1
+        if let clearError { throw clearError }
+        historyJobs = []
+    }
+}
+
+/// The on-device tools, without PDFKit. Records what each tool was asked to do.
+final class FakeDocumentToolEngine: DocumentToolEngine, @unchecked Sendable {
+    var error: Error?
+    var output = Data("%PDF-1.7 fake".utf8)
+    var compressResult = PDFCompression.Result(
+        outcome: PDFCompression.Outcome(
+            originalBytes: 0, compressedBytes: 0, pageCount: 1, pagesReencoded: 1),
+        data: Data(count: 600))
+    var imageReport = ImageCompression.Report(
+        originalWidth: 4032, originalHeight: 3024,
+        result: ImageCompression.Result(
+            data: Data(count: 90_000), width: 1579, height: 1184, quality: 0.5, hitTarget: true))
+    /// Fractions reported through `progress` before `compressPDF` returns.
+    var progressSteps: [Double] = []
+
+    private(set) var rearranged: [(url: URL, pages: [Int], name: String)] = []
+    private(set) var compressedLevels: [PDFCompression.Level] = []
+    private(set) var imageTargets: [Int] = []
+    private(set) var imageBatches: [(urls: [URL], size: ImagePDFLayout.PageSize, name: String)] = []
+
+    func rearrange(_ source: URL, pages: [Int], outputName: String) async throws -> ToolFile {
+        if let error { throw error }
+        rearranged.append((source, pages, outputName))
+        return ToolFile(name: outputName, data: output)
+    }
+
+    func compressPDF(
+        _ source: URL, level: PDFCompression.Level,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws -> PDFCompression.Result {
+        if let error { throw error }
+        compressedLevels.append(level)
+        for step in progressSteps { progress(step) }
+        return compressResult
+    }
+
+    func compressImage(_ source: URL, targetBytes: Int) async throws -> ImageCompression.Report {
+        if let error { throw error }
+        imageTargets.append(targetBytes)
+        return imageReport
+    }
+
+    func imagesToPDF(
+        _ images: [URL], pageSize: ImagePDFLayout.PageSize, outputName: String
+    ) async throws -> ToolFile {
+        if let error { throw error }
+        imageBatches.append((images, pageSize, outputName))
+        return ToolFile(name: outputName, data: output)
     }
 }
 
@@ -216,36 +395,147 @@ final class FakeCalendar: CalendarProviding, @unchecked Sendable {
 }
 
 final class FakeLibrary: LibraryProviding, @unchecked Sendable {
-    var categories: [LibraryCategory] = []
-    var subFilters: [String] = []
-    var pages: [[LibraryDocument]] = []
-    var total = 0
+    var categories: [LibraryCategoryCount] = []
+    var facets: [String: LibraryFacets] = [:]
+    /// Pages served by `browse`, in order; the last repeats.
+    var pages: [LibraryPage] = []
+    var searchPages: [LibraryPage] = []
+    var grouped = LibraryGroupedSearch()
+    var shelves: [String: LibraryShelf] = [:]
+    var seriesShelves = LibrarySeriesShelves()
+    var documents: [Int: LibraryDocumentDetail] = [:]
+    var acts: [Int: ActBundle] = [:]
+    var actIndexPages: [ActIndexPage] = []
+    var judgments: [Int: JudgmentDocument] = [:]
+    var covers: [Int: LibraryCoverOutcome] = [:]
+    var files: [Int: Data] = [:]
+    var fileErrors: [Int: Error] = [:]
+    var judgmentErrors: [Int: Error] = [:]
     var error: Error?
-    var documentData = Data("%PDF-1.4".utf8)
-    private(set) var browseCalls: [(category: String, page: Int, search: String?, sort: LibrarySort)] = []
+    var shelfError: Error?
+    var groupedError: Error?
+    var searchError: Error?
 
-    func categories() async throws -> [LibraryCategory] {
+    // The home loads every shelf at once, so the records are appended from several tasks.
+    private let lock = NSLock()
+    private var _browseCalls: [LibraryBrowseFilters] = []
+    private var _searchCalls: [LibraryBrowseFilters] = []
+    private var _actIndexCalls: [ActIndexFilters] = []
+    private var _coverCalls: [Int] = []
+    private var _fileCalls: [(id: Int, prefer: LibraryFilePreference)] = []
+    private var _headCalls: [Int] = []
+    private var _shelfCalls: [String] = []
+    var browseCalls: [LibraryBrowseFilters] { lock.withLock { _browseCalls } }
+    var searchCalls: [LibraryBrowseFilters] { lock.withLock { _searchCalls } }
+    var actIndexCalls: [ActIndexFilters] { lock.withLock { _actIndexCalls } }
+    var coverCalls: [Int] { lock.withLock { _coverCalls } }
+    var fileCalls: [(id: Int, prefer: LibraryFilePreference)] { lock.withLock { _fileCalls } }
+    var headCalls: [Int] { lock.withLock { _headCalls } }
+    var shelfCalls: [String] { lock.withLock { _shelfCalls } }
+
+    func categories() async throws -> [LibraryCategoryCount] {
         if let error { throw error }
         return categories
     }
 
-    func subFilters(category: String) async throws -> [String] {
+    func facets(category: String) async throws -> LibraryFacets {
         if let error { throw error }
-        return subFilters
+        return facets[category] ?? LibraryFacets()
     }
 
-    func browse(
-        category: String, subFilter: String?, search: String?,
-        sort: LibrarySort, page: Int, pageSize: Int
-    ) async throws -> (items: [LibraryDocument], total: Int) {
-        browseCalls.append((category, page, search, sort))
+    func browse(_ filters: LibraryBrowseFilters) async throws -> LibraryPage {
+        lock.withLock { _browseCalls.append(filters) }
         if let error { throw error }
-        let index = page - 1
-        return (index < pages.count ? pages[index] : [], total)
+        let index = min(max(filters.page - 1, 0), max(pages.count - 1, 0))
+        guard pages.indices.contains(index) else { return LibraryPage() }
+        var page = pages[index]
+        page.page = filters.page
+        return page
     }
 
-    func document(id: Int) async throws -> Data {
+    func browseGrouped(query: String, pageSize: Int) async throws -> LibraryGroupedSearch {
+        if let groupedError { throw groupedError }
         if let error { throw error }
-        return documentData
+        return grouped
+    }
+
+    func search(_ filters: LibraryBrowseFilters) async throws -> LibraryPage {
+        lock.withLock { _searchCalls.append(filters) }
+        if let searchError { throw searchError }
+        if let error { throw error }
+        let index = min(max(filters.page - 1, 0), max(searchPages.count - 1, 0))
+        return searchPages.indices.contains(index) ? searchPages[index] : LibraryPage()
+    }
+
+    func shelf(category: String, limit: Int) async throws -> LibraryShelf {
+        lock.withLock { _shelfCalls.append(category) }
+        if let shelfError { throw shelfError }
+        if let error { throw error }
+        return shelves[category] ?? LibraryShelf(category: category)
+    }
+
+    func seriesShelves(limit: Int, per: Int) async throws -> LibrarySeriesShelves {
+        if let error { throw error }
+        return seriesShelves
+    }
+
+    func document(id: Int) async throws -> LibraryDocumentDetail {
+        if let error { throw error }
+        guard let detail = documents[id] else { throw LibraryCatalogueError(status: 404, code: "not_found") }
+        return detail
+    }
+
+    func act(id: Int) async throws -> ActBundle {
+        if let error { throw error }
+        guard let bundle = acts[id] else { throw LibraryCatalogueError(status: 404, code: "not_found") }
+        return bundle
+    }
+
+    func actIndex(_ filters: ActIndexFilters) async throws -> ActIndexPage {
+        lock.withLock { _actIndexCalls.append(filters) }
+        if let error { throw error }
+        let index = min(max(filters.page - 1, 0), max(actIndexPages.count - 1, 0))
+        return actIndexPages.indices.contains(index) ? actIndexPages[index] : ActIndexPage()
+    }
+
+    func judgment(id: Int) async throws -> JudgmentDocument {
+        if let error = judgmentErrors[id] { throw error }
+        if let error { throw error }
+        guard let judgment = judgments[id] else { throw LibraryCatalogueError(status: 404, code: "not_found") }
+        return judgment
+    }
+
+    func cover(id: Int, width: Int) async throws -> LibraryCoverOutcome {
+        lock.withLock { _coverCalls.append(id) }
+        if let error { throw error }
+        return covers[id] ?? .none(reason: "not_pdf")
+    }
+
+    func fileExists(id: Int) async throws -> Bool {
+        lock.withLock { _headCalls.append(id) }
+        if let error { throw error }
+        return files[id] != nil
+    }
+
+    func file(id: Int, prefer: LibraryFilePreference) async throws -> Data {
+        lock.withLock { _fileCalls.append((id, prefer)) }
+        if let error = fileErrors[id] { throw error }
+        if let error { throw error }
+        guard let data = files[id] else { throw LibraryCatalogueError(status: 404, code: "not_found") }
+        return data
+    }
+}
+
+/// A `LimitationRadarProviding` that answers with what it is given and records what it was sent.
+final class FakeLimitationRadar: LimitationRadarProviding, @unchecked Sendable {
+    var audit: LimitationAudit?
+    var error: Error?
+    private(set) var requests: [LimitationRequest] = []
+
+    func audit(_ request: LimitationRequest) async throws -> LimitationAudit {
+        requests.append(request)
+        if let error { throw error }
+        guard let audit else { throw APIError.decoding("No audit configured.") }
+        return audit
     }
 }

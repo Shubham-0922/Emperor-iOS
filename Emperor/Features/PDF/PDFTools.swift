@@ -2,7 +2,11 @@ import Foundation
 import PDFKit
 import UIKit
 
-/// Splitting, merging and compressing, entirely on the device.
+/// Splitting and merging, entirely on the device — `SplitPDFView` and `MergePDFView`.
+///
+/// The newer tools (rearrange, compress, image to PDF) do their work in `OnDeviceToolEngine`,
+/// behind the core's `DocumentToolEngine` so their view models are tested without PDFKit. These
+/// two predate that and stay as they were; the rule below governs all of them.
 ///
 /// **Nothing here is uploaded.** These are the operations an advocate does to a paperbook before
 /// filing it, and the documents are privileged — sending a client's brief to a server to cut
@@ -147,10 +151,17 @@ enum PDFTools {
     /// expects, and sorting by filename would quietly reorder an annexure bundle.
     static func merge(_ urls: [URL], name: String) throws -> Output {
         guard urls.count >= 2 else { throw Failure.needsTwo }
+        let output = try merged(urls.map(open))
+        return try write(output, named: name.hasSuffix(".pdf") ? name : "\(name).pdf")
+    }
+
+    /// Joins documents already open, in the order given, copying each page structurally. Shared
+    /// by the Merge tool and the filing-ready package, which merges an annexure's original after
+    /// the draft without either being written to disk first.
+    static func merged(_ documents: [PDFDocument]) throws -> PDFDocument {
         let output = PDFDocument()
         var position = 0
-        for url in urls {
-            let source = try open(url)
+        for source in documents {
             for index in 0..<source.pageCount {
                 guard let page = source.page(at: index) else { continue }
                 output.insert(page, at: position)
@@ -158,40 +169,7 @@ enum PDFTools {
             }
         }
         guard position > 0 else { throw Failure.empty }
-        return try write(output, named: name.hasSuffix(".pdf") ? name : "\(name).pdf")
-    }
-
-    // MARK: - Compress an image
-
-    /// Trades quality before resolution, the way the platform's own `CompressImage` does.
-    ///
-    /// A scan that has been downscaled is a scan whose small print has stopped being legible,
-    /// which for an exhibit is worse than a larger file. So quality is spent first, and the
-    /// image is only made smaller once the lowest useful quality still overshoots.
-    ///
-    /// Returns the smallest result it achieved even when that is still over target — with the
-    /// caller expected to say so, because refusing to produce anything is not more helpful than
-    /// producing something honest about its size.
-    static func compress(image: UIImage, targetBytes: Int) -> Data? {
-        for quality in stride(from: 0.9, through: 0.3, by: -0.1) {
-            guard let data = image.jpegData(compressionQuality: quality) else { continue }
-            if data.count <= targetBytes { return data }
-        }
-
-        var working = image
-        var smallest = image.jpegData(compressionQuality: 0.3)
-        // Six halvings floors a 12 MP photo at roughly 50 KP, past which an exhibit is not worth
-        // keeping. Bounded so a target of 1 byte cannot loop forever.
-        for _ in 0..<6 {
-            let size = CGSize(width: working.size.width * 0.75, height: working.size.height * 0.75)
-            guard size.width >= 200, size.height >= 200 else { break }
-            let renderer = UIGraphicsImageRenderer(size: size)
-            working = renderer.image { _ in working.draw(in: CGRect(origin: .zero, size: size)) }
-            guard let data = working.jpegData(compressionQuality: 0.6) else { break }
-            smallest = data
-            if data.count <= targetBytes { return data }
-        }
-        return smallest
+        return output
     }
 
     // MARK: - Plumbing

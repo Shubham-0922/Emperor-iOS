@@ -32,6 +32,22 @@ enum ChatModel: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// The mode's name in the Record design's composer and answer-mode sheet.
+    var modeName: String {
+        switch self {
+        case .fast: return "Fast"
+        case .thinking: return "Deep thinking"
+        }
+    }
+
+    /// What the mode is for, under its name in the answer-mode sheet.
+    var modeDescription: String {
+        switch self {
+        case .fast: return "Quick answers from your record. Best for most questions."
+        case .thinking: return "Slower; reasons through long records. Counts against your deep-thinking allowance."
+        }
+    }
+
     /// Omitting `model` server-side defaults to `fast` (`sync-server.js:7779`), but the client
     /// always sends it explicitly rather than relying on that.
     static let `default` = ChatModel.fast
@@ -53,12 +69,20 @@ enum ChatModel: String, CaseIterable, Identifiable, Codable {
 ///   with no branching, so it is a prompt-injection surface and must never be free text from
 ///   a user. This enum is the entire allowed set.
 ///
-/// The platform's seven UI roles collapse to these three on the wire
-/// (`src/roles/roleConfig.js:10-107`), so matching them keeps answers identical to the web app.
+/// The platform's eight UI roles collapse to these four on the wire (each role's `aiRole` in
+/// `src/roles/roleConfig.js`), so matching them keeps answers identical to the web app.
+///
+/// `Devil's Advocate` is a wire value of its own because the web sends it: `ToolWorkspace.jsx`
+/// puts the role's `aiRole` on every `/chat` as `role`, and `getLeadingIdentity` in
+/// `src/lib/clerk_identity.js` writes whatever it is given into "a top-tier, highly experienced
+/// <role>". There is no list of known identities on the server — the three older values are
+/// simply the ones the other roles happen to send — so sending `Litigator` for this role instead
+/// would tell the model something different from what the web tells it for the same account.
 enum ChatRole: String, CaseIterable, Identifiable, Codable {
     case litigator = "Litigator"
     case corporateCounsel = "Corporate Counsel"
     case judicialOfficer = "Judicial Officer"
+    case devilsAdvocate = "Devil's Advocate"
 
     var id: String { rawValue }
 
@@ -67,6 +91,7 @@ enum ChatRole: String, CaseIterable, Identifiable, Codable {
         case .litigator: return "Litigator"
         case .corporateCounsel: return "Corporate Counsel"
         case .judicialOfficer: return "Arbitrator or Judge"
+        case .devilsAdvocate: return "Devil's Advocate"
         }
     }
 
@@ -75,6 +100,7 @@ enum ChatRole: String, CaseIterable, Identifiable, Codable {
         case .litigator: return "Advocate handling cases"
         case .corporateCounsel: return "In-house and corporate advisory"
         case .judicialOfficer: return "Neutral adjudication"
+        case .devilsAdvocate: return "Adversarial stress-testing"
         }
     }
 
@@ -88,4 +114,39 @@ enum ChatRole: String, CaseIterable, Identifiable, Codable {
     ///   `null` yields the literal word "null". Omitting the key entirely is the only safe
     ///   way to take the default, which is what a `nil` here produces.
     var wireValue: String { rawValue }
+}
+
+/// The answer mode a new question starts in.
+///
+/// Fast on every plan and every launch; deep thinking only on the Partner plan (fee tier
+/// `ultimate`). Deliberately ignores the account's stored `preferred_model` and keeps no choice on
+/// the device, and does not read `plan`: the `ultra` capability tier is shared by Senior Associate
+/// and Partner. A server that does not send the fee tier yet gets Fast. A question can still be
+/// switched to deep thinking from the composer's mode chip.
+enum AnswerModeDefault {
+    /// The fee-schedule key of the top plan, Partner.
+    static let topFeeTier = "ultimate"
+
+    static func starting(feeTier: String?) -> ChatModel {
+        feeTier == topFeeTier ? .thinking : .fast
+    }
+}
+
+/// Whether a draft shows its citation numbers, remembered per account on this device.
+///
+/// A display choice only: the stored draft is never rewritten by it, and every download asks
+/// again whether to carry them (`DocumentExportMenu`).
+enum DraftCitationsPreference {
+    static func key(forUser userID: Int?) -> String {
+        "draft.show-citations.v1.\(userID.map(String.init) ?? "anonymous")"
+    }
+
+    /// On unless this account has turned them off here.
+    static func showsCitations(in store: any PreferenceStore, userID: Int?) -> Bool {
+        store.string(for: key(forUser: userID)) != "off"
+    }
+
+    static func save(_ shows: Bool, to store: any PreferenceStore, userID: Int?) {
+        store.setString(shows ? "on" : "off", for: key(forUser: userID))
+    }
 }

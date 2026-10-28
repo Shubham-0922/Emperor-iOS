@@ -107,18 +107,37 @@ struct User: Codable, Equatable, Identifiable, Sendable {
     var preferredModel: String?
     var plan: String?
     var planLabel: String?
+    /// The fee-schedule plan the account holds: `free`, `essential` (Junior Associate), `premium`
+    /// (Senior Associate), `ultimate` (Partner) or `legacy`. Absent from servers that predate it.
+    /// `plan` is only the capability tier, which Senior Associate and Partner share.
+    var feeTier: String?
+    /// Set by `/login` when the account has no active plan, so new AI work and uploads will be
+    /// refused until it has one. A snapshot from sign-in: a plan bought later on the web is
+    /// learned from the next successful request, not from this.
+    var needsPlan: Bool?
+    /// Set by `/login` when an administrator has paused the account. Reading still works.
+    var suspended: Bool?
+    /// Why an administrator paused the account, as the platform reports it with `/auth/session`
+    /// and `/update-profile`. Absent or empty when the account is not paused or none was given.
+    var suspendedReason: String?
+    /// The mobile number given at sign-up, as the platform stores it: `+91XXXXXXXXXX`.
+    var phone: String?
+    /// The role the account practises as, by the web's id for it (`PractitionerRole.webID`).
+    /// `nil` until one is chosen, on either client — and on a server that does not keep it.
+    var practiceRole: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, email, name, avatar, title, organization, plan
+        case id, email, name, avatar, title, organization, plan, phone
         case preferredModel = "preferred_model"
-        case planLabel
+        case practiceRole = "practice_role"
+        case planLabel, feeTier, needsPlan, suspended, suspendedReason
     }
 }
 
-/// `/login` and `/register` share this envelope but not their `user` shape: register builds
-/// its object by hand and returns only `id`, `name`, `email`. Every other field on `User` is
-/// therefore optional.
-struct AuthResponse: Codable {
+/// `/login` and `/auth/otp/verify` answer with this envelope. A `/register` from a server that
+/// predates email confirmation did too, with a hand-built `user` carrying only `id`, `name` and
+/// `email` — which is why every other field on `User` is optional.
+struct AuthResponse: Codable, Equatable, Sendable {
     let success: Bool
     let user: User
     let token: String
@@ -142,8 +161,19 @@ struct ChatSummary: Codable, Equatable, Identifiable, Sendable {
     var messageCount: Int?
     var lastPreview: String?
     var updatedAtRaw: String?
+    /// The matter this conversation belongs to, when it was started inside one on the web
+    /// (`chats.project_id`, docs/projects.md). Such a conversation searches only that matter's
+    /// documents, and a turn sent to it from outside the matter would drop every one of its
+    /// attachments — so, as the web's History does, this client keeps them out of its lists
+    /// (`ChatListViewModel.ownConversations`). `nil` from a server that predates matters.
+    var projectID: String?
 
     var updatedAt: Date? { WireDate.parse(updatedAtRaw) }
+
+    /// Whether this conversation lives inside a matter.
+    var belongsToMatter: Bool {
+        !(projectID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
     var displayTitle: String {
         let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? "New Chat" : trimmed
@@ -152,6 +182,8 @@ struct ChatSummary: Codable, Equatable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, title, role, model, messageCount, lastPreview
         case updatedAtRaw = "updatedAt"
+        // snake_case on an otherwise camelCase row: the server copies the column name through.
+        case projectID = "project_id"
     }
 }
 
@@ -168,8 +200,16 @@ enum MessageRole: String, Codable {
 ///
 /// `messages.data` is an opaque TEXT column and `getMessages` returns `JSON.parse` output
 /// unmodified, so there is no server-enforced schema — this is the union of what the
-/// codebase actually produces. `extra` preserves unknown keys so a message can round-trip
-/// back through `POST /sync` without losing fields.
+/// codebase actually produces.
+///
+/// ## Every key goes back
+///
+/// `POST /chat` stores the history it is sent *as* the conversation, so a message this client
+/// decodes and posts back is the message from then on. Anything a typed struct drops on the way
+/// through is deleted from the server: the web's work log on its own answers, a `serverRun` mark,
+/// whatever a later platform build adds. So `extra` holds every key this type does not model, and
+/// a modelled key whose value is not the expected type — or is `null` — is kept there raw rather
+/// than dropped. Encoding writes both back.
 struct ChatMessage: Codable, Equatable, Identifiable {
     var id: String?
     var role: MessageRole
@@ -182,6 +222,11 @@ struct ChatMessage: Codable, Equatable, Identifiable {
     var incompleteReason: String?
     var attachments: [JSONValue]?
     var sources: [JSONValue]?
+    /// Every key the stored message carried that is not modelled above, value for value.
+    var extra: [String: JSONValue] = [:]
+    /// `role` or `content` that was missing on the wire and filled with a default, so it is not
+    /// written back as though the server had sent it.
+    private var defaulted: Set<String> = []
 
     var timestamp: Date? { WireDate.parse(timestampRaw) }
 
@@ -189,11 +234,44 @@ struct ChatMessage: Codable, Equatable, Identifiable {
     /// never written back into the blob — so a stable identity has to be synthesised.
     var stableID: String { id ?? "\(role.rawValue)-\(timestampRaw ?? "")-\(content.count)" }
 
-    enum CodingKeys: String, CodingKey {
+    // MARK: - The work log stored with an answer
+
+    /// The reasoning panel this answer was stored with, by either client. See `WorkLogWire`.
+    var storedWorkLog: ReasoningSnapshot? {
+        role == .assistant ? WorkLogWire.snapshot(from: extra) : nil
+    }
+
+    /// Whether any of the panel's keys is present, readable or not.
+    var hasWorkLog: Bool { WorkLogWire.keys.contains { extra[$0] != nil } }
+
+    /// Stores a finished turn's panel on the answer, under the web's own keys.
+    ///
+    /// On the message rather than beside it, because the next `POST /chat` stores the history
+    /// it is sent: a log that lived anywhere else would be deleted by the very next question.
+    mutating func attachWorkLog(_ fields: [String: JSONValue]) {
+        for key in WorkLogWire.keys {
+            if let value = fields[key] { extra[key] = value }
+        }
+    }
+
+    // MARK: - Coding
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case id, role, content, usage, isTyping, done, incomplete, incompleteReason
         case attachments, sources
         case timestampRaw = "timestamp"
     }
+
+    /// Any key at all, for the ones this type does not model.
+    private struct AnyKey: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init(_ string: String) { stringValue = string }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+
+    private static let modelledKeys = Set(CodingKeys.allCases.map(\.rawValue))
 
     init(role: MessageRole, content: String, id: String? = nil) {
         self.role = role
@@ -204,10 +282,26 @@ struct ChatMessage: Codable, Equatable, Identifiable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let all = try decoder.container(keyedBy: AnyKey.self)
+        var raw: [String: JSONValue] = [:]
+        for key in all.allKeys {
+            raw[key.stringValue] = try? all.decode(JSONValue.self, forKey: key)
+        }
+
         // Role is occasionally absent on hand-written rows; assume assistant rather than throw,
         // because one malformed row should not fail the whole history load.
-        role = (try? c.decode(MessageRole.self, forKey: .role)) ?? .assistant
-        content = (try? c.decode(String.self, forKey: .content)) ?? ""
+        if let decoded = try? c.decode(MessageRole.self, forKey: .role) {
+            role = decoded
+        } else {
+            role = .assistant
+            defaulted.insert(CodingKeys.role.rawValue)
+        }
+        if let decoded = try? c.decode(String.self, forKey: .content) {
+            content = decoded
+        } else {
+            content = ""
+            defaulted.insert(CodingKeys.content.rawValue)
+        }
         id = try? c.decodeIfPresent(String.self, forKey: .id)
         timestampRaw = try? c.decodeIfPresent(String.self, forKey: .timestampRaw)
         usage = try? c.decodeIfPresent(JSONValue.self, forKey: .usage)
@@ -217,6 +311,48 @@ struct ChatMessage: Codable, Equatable, Identifiable {
         incompleteReason = try? c.decodeIfPresent(String.self, forKey: .incompleteReason)
         attachments = try? c.decodeIfPresent([JSONValue].self, forKey: .attachments)
         sources = try? c.decodeIfPresent([JSONValue].self, forKey: .sources)
+
+        // Unknown keys, and any modelled one that did not decode as its type — a null, a number
+        // where a string was expected. Kept raw so it goes back as it came.
+        let typed: [String: Bool] = [
+            "role": !defaulted.contains("role"), "content": !defaulted.contains("content"),
+            "id": id != nil, "timestamp": timestampRaw != nil, "usage": usage != nil,
+            "isTyping": isTyping != nil, "done": done != nil, "incomplete": incomplete != nil,
+            "incompleteReason": incompleteReason != nil, "attachments": attachments != nil,
+            "sources": sources != nil,
+        ]
+        for (key, value) in raw where typed[key] != true {
+            extra[key] = value
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        func put<T: Encodable>(_ value: T?, _ key: CodingKeys) throws {
+            if let value {
+                try c.encode(value, forKey: AnyKey(key.rawValue))
+            } else if let kept = extra[key.rawValue] {
+                try c.encode(kept, forKey: AnyKey(key.rawValue))
+            }
+        }
+        try put(id, .id)
+        // A default the decoder filled in is not the server's; write back what it sent, or
+        // nothing. Once changed deliberately, it is written.
+        let roleIsDefault = defaulted.contains("role") && role == .assistant
+        try put(roleIsDefault ? nil : role, .role)
+        let contentIsDefault = defaulted.contains("content") && content.isEmpty
+        try put(contentIsDefault ? nil : content, .content)
+        try put(timestampRaw, .timestampRaw)
+        try put(usage, .usage)
+        try put(isTyping, .isTyping)
+        try put(done, .done)
+        try put(incomplete, .incomplete)
+        try put(incompleteReason, .incompleteReason)
+        try put(attachments, .attachments)
+        try put(sources, .sources)
+        for (key, value) in extra where !Self.modelledKeys.contains(key) {
+            try c.encode(value, forKey: AnyKey(key))
+        }
     }
 }
 
@@ -248,6 +384,27 @@ struct StreamStatus: Codable {
     /// Epoch milliseconds, unlike every other date on this API.
     var startedAt: Double?
     var updatedAt: Double?
+
+    // The run's own view of itself. Present from the first moment of a run, before any answer
+    // text has been saved; a reply from an older server, or the no-checkpoint reply
+    // (`error: "No messages"`), simply leaves them nil. `startedAt` can be null there too.
+
+    /// Whether a run is going. This is the field to branch on; `active` is the older, laxer
+    /// signal that also honours a stored typing flag.
+    var running: Bool?
+    /// `starting`, then `research`, `wrapup` or `compose`.
+    var phase: String?
+    /// True once the run has produced visible answer text.
+    var writing: Bool?
+    var elapsedMs: Double?
+    /// The newest status line the run announced, and when (epoch milliseconds).
+    var status: String?
+    var statusAt: Double?
+    /// The most recent distinct status lines, oldest first.
+    var statusLines: [String]?
+    var aliveAt: Double?
+    /// Whether `content` is the live run's own text (true) or still the previous turn's answer.
+    var fromLiveRun: Bool?
 
     var startedDate: Date? { WireDate.fromEpochMillis(startedAt) }
 }

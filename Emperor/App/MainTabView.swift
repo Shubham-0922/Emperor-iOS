@@ -1,55 +1,103 @@
 import SwiftUI
+import UIKit
 
-/// The signed-in app.
+/// The signed-in app: **Home · Matters · Ask · Calendar · More**.
 ///
-/// **This is the web app's own mobile navigation, not a choice made here.**
-/// `src/shell/MobileNav.jsx` is rendered by `AppShell` under 768px and its comment reads
-/// *"Native-app-style bottom tab bar (mobile only). Primary destinations + 'More' (drawer)."*
-/// Its items are **Home · Cases · Chat · More**, with a role-gated Corporate entry this client
-/// has no equivalent for. So the platform had already answered what Emperor looks like on a
-/// phone, and it answered "a tab bar" — which is also what iOS wants.
+/// - **Home** is the dashboard: the composer that starts a question, the cause list and the
+///   Precedents Vault as cards, and the recent conversations. The profile button in its bar
+///   opens **Account & Profile** as a sheet — the account card, its plan and allowances, the
+///   app's settings, and Tools (the role's workspace, every tool, the file tools, OCR and
+///   Translate, the Corporate Calendar, Library, drafts and updates).
+/// - **Matters** is the cause list and the docket together: the next sitting, what is upcoming,
+///   and every matter.
+/// - **Ask** is where a question starts: the composer, and suggestions for the reader's role.
+///   Its tab icon is the Record mark — the logo, where the sparkle was.
+/// - **Calendar** is both calendars behind one switch: the user's matters day by day with the
+///   diary — Subscribe in the bar — and the Corporate calendar's statutory deadlines.
+/// - **More** is the workspace's screens and tools: Files, History, All Notifications and
+///   Library, then the web sidebar's Case tools (drawn; not yet wired) and Doc tools (wired to
+///   OCR and the PDF tools), with a search that filters the whole screen.
 ///
-/// That settles a question the two mobile clients had answered differently: Android uses a
-/// navigation drawer with nineteen rows and no tab bar at all. It is the outlier, not this.
+/// Pushed screens — a conversation, a draft, a folder — hide the tab bar (`.toolbar(.hidden,
+/// for: .tabBar)` on each), as the design asks.
 ///
-/// Four entries where there were five. `Library` and `Diary` were tabs and are now inside
-/// **More**, which is where the web puts them too — they are places you go occasionally, not
-/// places you live. `Today` becomes **Home**, matching the platform's label for the same
-/// screen: the thing you open the phone to find out.
+/// ## Crossing tabs
 ///
-/// Notifications stay out of the bar. The platform's own dashboard puts them in the topbar as a
-/// bell with a count (`src/shell/NotificationBell.jsx`), and the Home screen carries them the
-/// same way.
+/// The selected tab lives in an `AppNavigator`, made here and handed down the environment, so
+/// one tab can ask another to show something without reaching into it — a matter opened from the
+/// Calendar, "Ask about it" on a hearing. Made here rather than higher up so that signing out
+/// discards it with everything else: a request must not survive into the next account.
 struct MainTabView: View {
     @Environment(\.theme) private var theme
 
+    @State private var navigator = AppNavigator()
+
     var body: some View {
-        TabView {
-            CauseListView()
+        TabView(selection: Binding(
+            get: { navigator.selectedTab },
+            set: { navigator.selectedTab = $0 }
+        )) {
+            // Outline names: the bar fills each one itself, which is the iOS convention.
+            HomeView()
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
+                .tag(AppNavigator.Tab.home)
 
-            CaseListView()
+            MattersView()
                 .tabItem {
-                    Label("Cases", systemImage: "briefcase")
+                    Label("Matters", systemImage: "folder")
                 }
+                .tag(AppNavigator.Tab.matters)
 
-            ChatListView()
+            AskHomeView()
                 .tabItem {
-                    Label("Chat", systemImage: "bubble.left.and.text.bubble.right")
+                    Label {
+                        Text("Ask")
+                    } icon: {
+                        Image(uiImage: Self.askMarkImage())
+                    }
                 }
+                .tag(AppNavigator.Tab.ask)
 
-            MoreView()
+            CalendarView()
+                .tabItem {
+                    Label("Calendar", systemImage: "calendar")
+                }
+                .tag(AppNavigator.Tab.calendar)
+
+            MoreTabView()
                 .tabItem {
                     Label("More", systemImage: "line.3.horizontal")
                 }
+                .tag(AppNavigator.Tab.more)
         }
-        // The web marks the active item with `--ex-accent` and a soft pill behind the icon.
-        // The colour ports; the pill does not — a custom indicator would mean rebuilding the
-        // tab bar to draw something iOS already draws, and losing the platform's own
-        // accessibility and safe-area behaviour with it. The bar's translucent blur over the
-        // canvas is what `.ex-mobilenav` asks for anyway, and iOS gives that by default.
-        .tint(theme.accent)
+        .environment(\.navigator, navigator)
+        // A tapped notification opens where it leads — the Calendar, or Updates.
+        .routesNotificationTaps(to: navigator)
+        // A case or document tapped in the device's search opens here too.
+        .routesSpotlightResults(to: navigator)
+        // The chosen tab in the accent's text colour; the others in the caption colour
+        // (`BrandAppearance`). iOS switches tabs instantly, as the design asks.
+        .tint(theme.accentText)
+    }
+
+    /// The two-stroke Record mark, rendered once from its shape as a template image for the tab
+    /// bar — template, so the bar tints it like every other icon.
+    ///
+    /// `ImageRenderer` rather than a bundled asset: the mark already exists as a `Shape`
+    /// (`RecordMarkShape`) and the asset catalogue's copy is marked "original", which would
+    /// resist the bar's tint.
+    @MainActor
+    private static func askMarkImage() -> UIImage {
+        let height: CGFloat = 30
+        let content = RecordMarkShape()
+            .fill(Color.black)
+            .frame(
+                width: height * CGFloat(RecordMark.viewBox.width / RecordMark.viewBox.height),
+                height: height)
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 3
+        return (renderer.uiImage ?? UIImage()).withRenderingMode(.alwaysTemplate)
     }
 }

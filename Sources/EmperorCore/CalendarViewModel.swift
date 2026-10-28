@@ -3,11 +3,15 @@ import Foundation
 import Observation
 #endif
 
-/// The month view: hearings from the docket alongside obligations from the calendar.
+/// The Calendar tab: the user's case listings, day by day, alongside their diary.
 ///
-/// Both sources matter and neither is complete on its own — a limitation date lives in
+/// Both matter and neither is complete on its own — a limitation date lives in
 /// `compliance_events` while the hearing it relates to lives on the case. Showing one without
 /// the other is how a date gets missed.
+///
+/// A day's listings come from the cause list, topped up from the docket's next hearing dates, in
+/// the order the day will run — see `CalendarListings` for both rules. Opening one is not this
+/// screen's job: it hands the case to `AppNavigator`, which shows it on the Matters tab.
 ///
 /// See `ChatViewModel` for why `@Observable` is Apple-only.
 #if canImport(Darwin)
@@ -18,6 +22,11 @@ final class CalendarViewModel {
 
     private(set) var events: [ComplianceEvent] = []
     private(set) var cases: [LegalCase] = []
+    /// Every listing for every date — `/cause-list` takes no range (README trap 10).
+    private(set) var causeList: [CauseListing] = []
+    /// `causeList` and `cases` merged into days, each in calendar order. Rebuilt whenever either
+    /// changes, and only then, because building it is the expensive part.
+    private(set) var listingsByDay: [String: [CauseListing]] = [:]
     private(set) var state: LoadState = .idle
     private(set) var cachedAt: Date?
     private(set) var isWriting = false
@@ -45,41 +54,106 @@ final class CalendarViewModel {
     }
 
     var presentation: ListPresentation {
-        ListPresentation(
-            state: state, isEmpty: events.isEmpty && cases.isEmpty, cachedAt: cachedAt)
+        ListPresentation(state: state, isEmpty: hasNothingOnScreen, cachedAt: cachedAt)
     }
+
+    /// Whether there is nothing on screen *yet* — the question `ListPresentation` asks to choose
+    /// between a spinner, a failure and content.
+    ///
+    /// Not "the calendar has no rows". Once a load has returned, the grid is itself content and
+    /// must not be replaced: `ListStateView`'s empty branch takes the whole screen, and the grid
+    /// is exactly what a reader with nothing scheduled still needs — to step to another month,
+    /// or to pick a day to add one to. Which kind of nothing it is gets said inside the day's
+    /// own section, where an empty day can be told from an empty calendar.
+    ///
+    /// Before that first load returns, holding nothing *does* mean a spinner or an error, so
+    /// this stays true until then. `isEmpty` decides four things here, not one — flatten it to
+    /// `false` and a failed first load draws an empty grid under a stale banner instead of the
+    /// failure and its retry, and the initial spinner never appears at all.
+    private var hasNothingOnScreen: Bool {
+        events.isEmpty && cases.isEmpty && causeList.isEmpty && !state.hasLoaded
+    }
+
+    /// Whether the calendar holds a single row anywhere — not merely on the day being shown.
+    ///
+    /// It separates "nothing on this day" from "nothing at all", which are different things to
+    /// tell someone looking at an empty grid. Deliberately not `events.isEmpty && cases.isEmpty`:
+    /// both buckets the screen draws from are filtered — `upcoming()` keeps today onward, and a
+    /// past hearing is not overdue, see `overdue` — so a user whose matters have all been heard
+    /// has data and no rows. Asking the raw arrays answers "not empty", and for a while that
+    /// rendered a list of zero sections, which is a blank screen.
+    ///
+    /// Asked without building `upcoming()`: whether any populated day falls on or after today is
+    /// the same question for one pass, where assembling the days re-filters both arrays per day.
+    var hasNothingToShow: Bool {
+        let today = todayKey
+        return overdue.isEmpty && !populatedDays.contains { $0 >= today }
+    }
+
+    /// The month the grid is showing — whichever one holds `selectedDay`.
+    var month: CalendarMonth? { CalendarMonth.containing(selectedDay) }
+
+    /// Everything on the day the grid has selected.
+    var selectedCalendarDay: CalendarDay { day(selectedDay) }
 
     var todayKey: String { WireDate.dayKey(now()) }
     var isShowingToday: Bool { selectedDay == todayKey }
 
     // MARK: - Days
 
-    /// Everything on a given day, from both sources.
+    /// Everything on a given day: its listings in calendar order, then its diary entries.
     func day(_ key: String) -> CalendarDay {
         CalendarDay(
             key: key,
-            hearings: cases.filter { $0.nextHearingDateRaw?.prefix(10) == Substring(key) },
+            listings: listingsByDay[key] ?? [],
             events: events.filter { $0.dayKey == key })
     }
 
-    var selectedDayContents: CalendarDay { day(selectedDay) }
-
-    /// Every day that has anything on it, ascending. Drives the dots on a month grid.
+    /// Every day that has anything on it.
     var populatedDays: Set<String> {
-        var days = Set(events.compactMap(\.dayKey))
-        for legalCase in cases {
-            if let raw = legalCase.nextHearingDateRaw, raw.count >= 10 {
-                days.insert(String(raw.prefix(10)))
-            }
-        }
-        return days
+        Set(events.compactMap(\.dayKey)).union(listingsByDay.keys)
     }
 
-    /// What is coming, soonest first — the agenda view.
-    func upcoming(limit: Int = 50) -> [CalendarDay] {
+    /// What each marked cell of the month grid says. A day with a listing is marked as listed
+    /// whatever else is on it — a hearing is the thing on a day that cannot move.
+    ///
+    /// Read once per render: the grid asks about forty-odd days.
+    var marks: [String: CalendarDayMark] {
+        var marks: [String: CalendarDayMark] = [:]
+        for key in events.compactMap(\.dayKey) { marks[key] = .diary }
+        for key in listingsByDay.keys { marks[key] = .listed }
+        return marks
+    }
+
+    // MARK: - Copy
+
+    enum Copy {
+        /// Under the day's listings on every state, empty included. These are the user's own
+        /// matters, not the court's list, and an empty day must never read as a free one — the
+        /// same framing Home carries (`CauseListViewModel.Copy`).
+        static let listingsFooter =
+            "\(CauseListViewModel.Copy.subtitle). \(CauseListViewModel.Copy.confirmWithCourt)"
+        static let nothingScheduled =
+            "Nothing scheduled yet. Hearings on your matters appear here, and you can add a diary entry with the + above."
+    }
+
+    /// What the selected day says in place of listings when it has none — and which kind of
+    /// nothing it is. An empty day in a full calendar and an empty calendar are different things
+    /// to be told.
+    var selectedDayEmptyText: String {
+        if hasNothingToShow && selectedCalendarDay.isEmpty { return Copy.nothingScheduled }
+        return isShowingToday
+            ? CauseListViewModel.Copy.nothingToday : CauseListViewModel.Copy.nothingThisDay
+    }
+
+    /// What is coming, soonest first — the agenda beneath the grid.
+    ///
+    /// `excluding` drops the day the grid has selected. That day is listed in full immediately
+    /// above the agenda, and would otherwise be read twice on the same screen.
+    func upcoming(limit: Int = 50, excluding excluded: String? = nil) -> [CalendarDay] {
         let today = todayKey
         return populatedDays
-            .filter { $0 >= today }
+            .filter { $0 >= today && $0 != excluded }
             .sorted()
             .prefix(limit)
             .map { day($0) }
@@ -110,25 +184,59 @@ final class CalendarViewModel {
     // MARK: - Loading
 
     func load() async {
-        if state == .idle, events.isEmpty,
-           let cached = cache?.load([ComplianceEvent].self, for: .calendarEvents) {
-            events = cached.value
-            cachedAt = cached.storedAt
+        if state == .idle, events.isEmpty, cases.isEmpty, causeList.isEmpty {
+            restoreFromCache()
         }
 
         state = .loading
         do {
-            // Both, because a calendar showing only half the dates is worse than none.
+            // All three, and all or nothing, because a calendar showing only some of the dates
+            // is worse than none — a day without its listings reads as a day without hearings.
             async let fetchedEvents = calendar.events()
             async let fetchedCases = caseService.cases()
-            events = try await fetchedEvents
-            cases = try await fetchedCases
+            async let fetchedListings = caseService.causeList()
+            let (newEvents, newCases, newListings) =
+                try await (fetchedEvents, fetchedCases, fetchedListings)
+            events = newEvents
+            cases = newCases
+            causeList = newListings
+            rebuildListings()
             cachedAt = nil
             cache?.save(events, for: .calendarEvents)
+            // The same routes Matters and Home cache under, so whichever screen loaded last
+            // leaves the freshest copy for the others to open on.
+            cache?.save(cases, for: .caseList)
+            cache?.save(causeList, for: .causeList)
             state = .loaded
         } catch {
             state = .failed(LoadFailure(error))
         }
+    }
+
+    /// Opens on what was last loaded, stamped with when — the oldest of the three, since that
+    /// is how stale the screen is.
+    private func restoreFromCache() {
+        guard let cache else { return }
+        var stamps: [Date] = []
+        if let cached = cache.load([ComplianceEvent].self, for: .calendarEvents) {
+            events = cached.value
+            stamps.append(cached.storedAt)
+        }
+        if let cached = cache.load([LegalCase].self, for: .caseList) {
+            cases = cached.value
+            stamps.append(cached.storedAt)
+        }
+        if let cached = cache.load([CauseListing].self, for: .causeList) {
+            causeList = cached.value
+            stamps.append(cached.storedAt)
+        }
+        guard !stamps.isEmpty else { return }
+        cachedAt = stamps.min()
+        rebuildListings()
+    }
+
+    private func rebuildListings() {
+        listingsByDay = CalendarListings.byDay(causeList: causeList, cases: cases)
     }
 
     // MARK: - Writing

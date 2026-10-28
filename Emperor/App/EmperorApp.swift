@@ -1,7 +1,12 @@
 import SwiftUI
+import CoreSpotlight
 
 @main
 struct EmperorApp: App {
+    /// Present to receive `handleEventsForBackgroundURLSession`, and to register notifications
+    /// before launching finishes — see `AppDelegate`.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     /// The Keychain and the response cache are supplied here because they are the parts of
     /// `Session` that cannot exist in the tested core — everything else about sign-in and
     /// caching lives there.
@@ -9,7 +14,17 @@ struct EmperorApp: App {
     /// sheets write PDFs into — those would otherwise outlive the session that fetched them.
     @State private var session = EmperorApp.makeSession()
 
+    /// Face ID when the app opens or comes back, and the cover in the app switcher. Made here,
+    /// beside the session, so there is one lock however the scene's views are rebuilt — see
+    /// `AppLock` and `AppLockShield`.
+    @State private var appLock = AppLock.forThisDevice()
+
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
+        // Before any view exists, so the first navigation bar drawn already wears the brand.
+        BrandAppearance.apply()
+
         #if DEBUG
         if UITestSupport.isActive {
             // Both directions have to be set, not just one. `UserDefaults` survives between
@@ -21,6 +36,30 @@ struct EmperorApp: App {
             // and `-UITestDisclaimer` actively clears it to test the gate itself.
             let wantsGate = ProcessInfo.processInfo.arguments.contains("-UITestDisclaimer")
             Preferences().setBool(!wantsGate, for: Disclaimer.key)
+            // The same rule for appearance: set it every launch, or the screenshot tour's light
+            // pass would leave every later run light. Dark is the app's own default.
+            let light = ProcessInfo.processInfo.arguments.contains("-UITestLight")
+            Preferences().setString(
+                (light ? ThemePreference.light : ThemePreference.dark).rawValue,
+                for: ThemePreference.storageKey)
+
+            // The first-sign-in role choice, on the same terms: every test signs in through the
+            // real login screen, so it would appear in front of all of them. Answered by
+            // default; `-UITestRoleWelcome` clears it, and the role with it, to test it.
+            let wantsRoleWelcome = ProcessInfo.processInfo.arguments.contains("-UITestRoleWelcome")
+            Preferences().setBool(!wantsRoleWelcome, for: RoleWelcome.completedKey)
+            Preferences().setBool(false, for: RoleWelcome.pendingKey)
+            if wantsRoleWelcome {
+                UserDefaults.standard.removeObject(forKey: PractitionerRole.storageKey)
+            }
+
+            // A document handed to the app, as "Open in Emperor" would hand it over — through
+            // the same handler `onOpenURL` uses, before anyone has signed in, so the test also
+            // covers a document waiting for sign-in.
+            if ProcessInfo.processInfo.arguments.contains("-UITestIncomingDocument"),
+               let sample = UITestSupport.sampleIncomingDocument() {
+                AppIncomingDocuments.shared.handle(sample)
+            }
         }
         #endif
     }
@@ -30,25 +69,111 @@ struct EmperorApp: App {
         if UITestSupport.isActive {
             // In-memory everywhere: no Keychain prompt, and no state carried between test runs.
             // Sign-in is not faked — the tests drive the real login screen and the stub answers
-            // `/login`, so the whole authentication path is exercised.
-            return Session(
-                store: InMemoryCredentialStore(),
+            // `/login`, so the whole authentication path is exercised. The one exception is
+            // `-UITestAppLock`, whose subject is a session already on the device at launch — see
+            // `UITestSupport.storedCredentials`.
+            let session = Session(
+                store: InMemoryCredentialStore(UITestSupport.storedCredentials),
                 cache: ResponseCache(store: InMemoryCacheStore()),
                 urlSession: UITestSupport.makeSession())
+            // `-UITestSocial` draws the provider buttons so the screenshot tour can show them;
+            // the client id is a placeholder and nothing here can complete a real sign-in.
+            if ProcessInfo.processInfo.arguments.contains("-UITestSocial") {
+                session.signInFlow.social = SocialSignInConfig(
+                    isEnabled: true, googleClientID: "0000-uitest.apps.googleusercontent.com")
+            }
+            // Notifications start off on every run, for the reason the gates in `init` are
+            // reset. Cleared here rather than there: the coordinator reads them when the session
+            // is handed over below, which happens before `init`'s body runs.
+            UserDefaults.standard.removeObject(forKey: NotificationPreferences.storageKey)
+            UserDefaults.standard.removeObject(forKey: SeenUpdates.storageKey)
+            AppNotifications.shared.session = session
+            // The search setting starts on every run, for the same reason.
+            UserDefaults.standard.removeObject(forKey: SpotlightPreference.disabledKey)
+            AppSpotlight.shared.session = session
+            return session
         }
         #endif
-        return Session(
+        let session = Session(
             store: Keychain(),
             cache: ResponseCache(
-                store: FileCacheStore(directory: FileCacheStore.defaultDirectory()),
+                // Told when anything is cached, so that whichever screen loaded the cause list,
+                // the hearing reminders are re-planned from it — see `NotifyingCacheStore`.
+                store: NotifyingCacheStore(
+                    base: FileCacheStore(directory: FileCacheStore.defaultDirectory()),
+                    onWrite: { key in
+                        // The docket, likewise, keeps the device's search in step — see
+                        // `AppSpotlight`.
+                        if key == ResponseCache.Key.caseList.rawValue {
+                            Task { @MainActor in AppSpotlight.shared.caseListChanged() }
+                        }
+                        guard key == ResponseCache.Key.causeList.rawValue else { return }
+                        Task { @MainActor in AppNotifications.shared.causeListChanged() }
+                    }),
+                // Conversations, documents and matters kept for reading offline: Application
+                // Support rather than Caches, sealed while the phone is locked — see
+                // `FileCacheStore.Protection`. Wiped with the rest on sign-out.
+                offline: OfflineLibrary(store: FileCacheStore(
+                    directory: FileCacheStore.offlineDirectory(),
+                    protection: .whileUnlocked, fileExtension: "dat")),
                 onClear: { ShareableFile.clear() }))
+        // Off unless the build is configured for it — see `SocialSignInConfig`.
+        session.signInFlow.social = SocialSignInConfig(info: Bundle.main.infoDictionary ?? [:])
+        // On unless the build switches it off — see `WebPlans`.
+        session.webPlans = WebPlans(
+            info: Bundle.main.infoDictionary ?? [:], apiBaseURL: APIConfig.current.baseURL)
+        // Handed over here because this runs on every launch, including the background launch
+        // a refresh arrives in, where no view will ever exist to pass it on.
+        AppNotifications.shared.session = session
+        AppSpotlight.shared.session = session
+        // Started at launch, so the first screen to ask whether there is a connection is given
+        // the system's answer rather than "not known yet" — see `NetworkConnectivity`.
+        _ = NetworkConnectivity.shared
+        return session
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(session)
-                .task { await session.restore() }
+                .environment(appLock)
+                .task {
+                    await session.restore()
+                    // Empties the device's search if it should be empty, or brings it up to the
+                    // cached docket — see `AppSpotlight`.
+                    AppSpotlight.shared.launched()
+                    // The stored account can be weeks old, and the token is renewed by reading
+                    // it — see `Session.refreshAccount`.
+                    await session.refreshAccount()
+                    #if DEBUG
+                    // A background `URLSession` does not consult `URLProtocol`, so the UI
+                    // tests' stub transport cannot reach it — touching the uploader here would
+                    // put real requests on the wire from a test run. It is left uncreated
+                    // instead, which is also why background upload has no UI test.
+                    if UITestSupport.isActive { return }
+                    #endif
+                    // The uploader outlives every screen, so it is given the client here rather
+                    // than by whichever view happened to start a transfer.
+                    BackgroundUploader.shared.client = session.client
+                    await BackgroundUploader.shared.resume()
+                }
+                // Becoming active is the moment to re-enqueue anything the system dropped and
+                // to poll ingestion for uploads whose bytes all landed while the app was away.
+                // It is also when the user is present and most likely back on a usable
+                // connection, which is the right time to retry.
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active else { return }
+                    // A plan bought on the web, or a pause lifted, reaches a phone that was
+                    // left open — at most every half hour.
+                    Task { await session.refreshAccountIfDue() }
+                    // The cause list and the feed may have moved on while the app was away, and
+                    // permission may have been changed in iOS Settings.
+                    Task { await AppNotifications.shared.refresh() }
+                    #if DEBUG
+                    if UITestSupport.isActive { return }
+                    #endif
+                    Task { await BackgroundUploader.shared.resume() }
+                }
         }
     }
 }
@@ -57,13 +182,36 @@ struct RootView: View {
     @Environment(Session.self) private var session
     /// The device's own setting, so a `.system` preference can resolve.
     @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private let preferences = Preferences()
     @State private var theme = Theme(store: Preferences())
+    /// The role the toolkit is scoped to. Beside the theme because it is the same kind of
+    /// thing: one app-wide choice, read by screens that must not disagree about it.
+    @State private var practice = Practice(store: Preferences())
     /// `nil` until read. Read before anything else is shown, so the gate cannot flash past.
     @State private var hasAcknowledgedDisclaimer: Bool?
+    /// Set once the first-sign-in role choice is answered, so the screen gives way at once. The
+    /// stored flags are the record; this only redraws.
+    @State private var hasAnsweredRoleWelcome = false
 
+    // Split in two: as one chain of modifiers the body is too long for the type checker to
+    // finish in reasonable time, which fails the build rather than warning.
     var body: some View {
+        themedRoot
+            // Also on the way *into* "Match device", not only when the scheme moves. Releasing the
+            // override need not change `systemColorScheme` at all — a dark phone held on an
+            // explicit dark leaves it exactly where it was — and then no change fires and the
+            // recorded value is whatever it last was. This asks the question again at the one
+            // moment the answer starts to matter.
+            .onChange(of: theme.preference) { _, _ in recordDeviceAppearance(systemColorScheme) }
+            .modifier(AccountLifecycle(
+                session: session, practice: practice, accountRoleReading: accountRoleReading,
+                hasAcknowledgedDisclaimer: $hasAcknowledgedDisclaimer, preferences: preferences))
+    }
+
+    /// The gate, the theme and the appearance plumbing.
+    private var themedRoot: some View {
         Group {
             if let acknowledged = hasAcknowledgedDisclaimer {
                 if acknowledged {
@@ -78,18 +226,55 @@ struct RootView: View {
                 ProgressView().controlSize(.large)
             }
         }
+        // A shared conversation a link asked for, over whatever is showing — signed in or not,
+        // once the disclaimer is answered. Inside the theme, so the sheet wears it.
+        .presentsSharedChats(isReady: hasAcknowledgedDisclaimer == true)
         .environment(\.theme, theme)
-        // Dark unless the user has said otherwise — `ThemePreference.default` is `.dark`.
+        .environment(\.practice, practice)
+        // The device's appearance unless the user has chosen one — `ThemePreference.default` is
+        // `.system`.
         .preferredColorScheme(theme.colorScheme)
-        .tint(theme.accent)
+        // `accentText`, not `accent`: the tint colours every toolbar button, plain list button
+        // and the selected tab as *text*, and the fill accent is too faint for text on dark
+        // (`PaletteTests.testTheFillAccentIsNotATextColourOnDark`).
+        .tint(theme.accentText)
         .background(theme.canvas.ignoresSafeArea())
-        .onAppear { theme.systemIsDark = systemColorScheme == .dark }
-        .onChange(of: systemColorScheme) { _, new in theme.systemIsDark = new == .dark }
-        .task {
-            if hasAcknowledgedDisclaimer == nil {
-                hasAcknowledgedDisclaimer = Disclaimer.hasAcknowledged(preferences)
-            }
+        // The app lock, and the cover in the app switcher — over everything, sheets included.
+        .appLockShield(theme: theme)
+        .onAppear {
+            recordDeviceAppearance(systemColorScheme)
+            theme.increasesContrast = contrast == .increased
         }
+        // Increase Contrast swaps `border` for `borderStrong` and `textMute` for `textFaint`.
+        .onChange(of: contrast) { _, new in theme.increasesContrast = new == .increased }
+        .onChange(of: systemColorScheme) { _, new in recordDeviceAppearance(new) }
+    }
+
+    /// Who is signed in and the role their account holds, as one value to watch: a different
+    /// account with the same role is still a new reading.
+    struct AccountRoleReading: Equatable {
+        let userID: Int
+        let role: String?
+    }
+
+    private var accountRoleReading: AccountRoleReading? {
+        session.currentUser.map { AccountRoleReading(userID: $0.id, role: $0.practiceRole) }
+    }
+
+    /// Record what the *device* asks for, which is not always what this environment reports.
+    ///
+    /// `preferredColorScheme` above propagates to the window, and the window's override comes
+    /// straight back down as `\.colorScheme` — including to this view, which is the one setting
+    /// it. So under a `.dark` or `.light` preference `systemColorScheme` echoes our own choice,
+    /// and writing it through would file that echo as the device's setting. Pick dark on a light
+    /// phone, then switch to "Match device", and the app stays dark until something else moves.
+    ///
+    /// `Theme.colorScheme` is `nil` exactly when no override is in force, so it doubles as the
+    /// test for whether the reading means anything — and that is also the only state in which
+    /// `systemIsDark` is ever consulted.
+    private func recordDeviceAppearance(_ scheme: ColorScheme) {
+        guard theme.colorScheme == nil else { return }
+        theme.systemIsDark = scheme == .dark
     }
 
     @ViewBuilder
@@ -99,8 +284,86 @@ struct RootView: View {
             ProgressView().controlSize(.large)
         case .signedOut:
             LoginView()
-        case .signedIn:
-            MainTabView()
+                // Whoever signs in from here signs in on this device, which is what makes them
+                // owed the role choice — a session restored from the Keychain never passes
+                // through this screen. See `RoleWelcome`.
+                .onAppear { RoleWelcome.noteSignInShown(preferences) }
+        case .signedIn(let user):
+            // Read from the store as the state changes rather than in an `onChange`, so the tab
+            // bar never draws for a frame in front of the question.
+            // An account that already holds a role — chosen on the web, or on another phone —
+            // is not asked again.
+            if !hasAnsweredRoleWelcome
+                && RoleWelcome.shouldShow(
+                    preferences, isSignedIn: true, accountRole: user.practiceRole) {
+                RoleWelcomeView(user: user) { chosen in
+                    if let chosen { practice.select(chosen) }
+                    RoleWelcome.finish(choosing: chosen, in: preferences)
+                    withAnimation { hasAnsweredRoleWelcome = true }
+                }
+            } else {
+                MainTabView()
+                    // Documents handed over by other apps are asked about here, once the
+                    // signed-in app is showing — see `IncomingDocumentPresenting`.
+                    .presentsIncomingDocuments()
+            }
         }
+    }
+}
+
+/// What follows the signed-in account: the role, reminders, links handed to the app, Spotlight
+/// and incoming documents. Its own modifier so `RootView.body` stays small enough to type-check.
+private struct AccountLifecycle: ViewModifier {
+    let session: Session
+    let practice: Practice
+    let accountRoleReading: RootView.AccountRoleReading?
+    @Binding var hasAcknowledgedDisclaimer: Bool?
+    let preferences: Preferences
+
+    func body(content: Content) -> some View {
+        content
+            // The role lives on the account, so every reading of the account — sign-in, launch, a
+            // return to the app — brings this device into line with it, and a role switched here is
+            // written back. See `Practice`.
+            .onChange(of: accountRoleReading, initial: true) { _, reading in
+                guard let reading else { return }
+                practice.link(to: session)
+                practice.reconcile(withAccountRole: reading.role)
+            }
+            // Reminders belong to the account signed in: planned when one signs in or is restored at
+            // launch, and withdrawn the moment it signs out — a reminder naming a client's matter
+            // must not fire on a phone its owner has left. See `AppNotifications`.
+            .onChange(of: session.currentUser?.id) { old, new in
+                Task {
+                    if old != nil { await AppNotifications.shared.signedOut() }
+                    if new != nil { await AppNotifications.shared.refresh() }
+                }
+            }
+            .task {
+                if hasAcknowledgedDisclaimer == nil {
+                    hasAcknowledgedDisclaimer = Disclaimer.hasAcknowledged(preferences)
+                }
+            }
+            // URLs handed to the app, through one handler: the app's own `emperor://` links (the
+            // Today widget's tap, chiefly — see `AppLinks`) and shared-conversation links, both the
+            // app's own and the web's `https://…/share/<id>` should it arrive as a Universal Link
+            // (`SharedChatLink`), then documents another app handed over
+            // ("Open in Emperor"), which arrive as file URLs. One handler rather than one each,
+            // because how SwiftUI treats several `onOpenURL`s on one view is not something to rely on.
+            .onOpenURL { url in
+                if AppLinks.open(url) { return }
+                AppIncomingDocuments.shared.handle(url)
+            }
+            // A case or document tapped in the device's search — see `SpotlightRouting`.
+            .onContinueUserActivity(CSSearchableItemActionType) { activity in
+                AppSpotlight.shared.open(activity)
+            }
+            // Signing out empties the device's search and lets go of any document still waiting to
+            // be filed: both belong to the account that just left.
+            .onChange(of: session.currentUser?.id) { old, new in
+                guard old != nil, new == nil else { return }
+                AppSpotlight.shared.signedOut()
+                AppIncomingDocuments.shared.queue.discardAll()
+            }
     }
 }

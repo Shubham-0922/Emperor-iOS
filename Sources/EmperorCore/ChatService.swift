@@ -10,7 +10,10 @@ import FoundationNetworking
 /// The server accepts either a bare filename string or an object with a folder, and defaults
 /// the folder to the storage root. We always send the object form so files in sub-folders
 /// resolve correctly.
-struct ChatAttachment: Codable, Equatable {
+/// `Hashable` so a list can key on the whole value rather than on `name`. The platform's identity
+/// for a document is `{name, folderName}`: two matters may each hold an `Order.pdf`, and a view
+/// keyed on the name alone would treat them as one row and remove the wrong one.
+struct ChatAttachment: Codable, Equatable, Hashable {
     var name: String
     var folderName: String?
 
@@ -57,6 +60,41 @@ struct ChatAttachment: Codable, Equatable {
     }
 }
 
+extension Collection where Element == ChatMessage {
+    /// Every document this conversation is reading, in the order it first appeared.
+    ///
+    /// ## Why it has to be reconstructed at all
+    ///
+    /// There is no attachments field on a chat. The server stores each message's JSON verbatim
+    /// and hands it back untouched, so the documents a conversation is about exist only as a
+    /// property of the turns that carried them. A client that reads only `content` therefore
+    /// reopens a matter with its documents silently detached — the answers still cite them by
+    /// page, the document button says none are attached, and the next question is asked against
+    /// nothing.
+    ///
+    /// ## The union, not the last turn
+    ///
+    /// A document attached on turn one is still what turn seven is about — the toolbar calls
+    /// this list "In this conversation", and that is the honest reading. Taking only the most
+    /// recent turn would drop the pleading the whole matter rests on the moment a follow-up is
+    /// asked without re-attaching it.
+    ///
+    /// Deduplicated on `{name, folderName}`, the platform's identity for a document, so a file
+    /// carried on five consecutive turns appears once. First-seen order is kept: it is the order
+    /// the user chose them in, and the order the earlier answers cite them in.
+    var attachedDocuments: [ChatAttachment] {
+        var seen = Set<ChatAttachment>()
+        var ordered: [ChatAttachment] = []
+        for message in self {
+            for attachment in ChatAttachment.list(from: message.attachments) {
+                guard seen.insert(attachment).inserted else { continue }
+                ordered.append(attachment)
+            }
+        }
+        return ordered
+    }
+}
+
 struct ChatRequest: Encodable {
     var messages: [ChatMessage]
     var userId: String
@@ -66,6 +104,11 @@ struct ChatRequest: Encodable {
     var searchMode: String?
     var attachments: [ChatAttachment]?
     var source: String?
+    /// The matter this turn is asked inside (docs/projects.md). With it, the server keeps only
+    /// that matter's documents among the attachments and gives the model the matter's context;
+    /// without it, any attachment from inside a matter is dropped. `nil` omits the key, which is
+    /// an ordinary conversation — never an empty string, which the server would try to own.
+    var projectId: String?
 }
 
 /// Everything the reasoning panel needs, as of this moment in the stream.
@@ -80,6 +123,36 @@ struct ReasoningSnapshot: Equatable, Sendable {
             if case .group(let group) = entry { return total + group.steps.count }
             return total
         }
+    }
+
+    /// The same state with nothing left running, for a stream that has ended.
+    ///
+    /// On a clean finish, work still in flight did come back — the model went on to write the
+    /// answer — and every plan row is done. On a stop or a failure we do not know, so a call in
+    /// flight is reported `ended` rather than ticked, and so is the plan row the run was on; rows
+    /// it never reached stay pending. Rounds are re-derived from their steps. Idempotent.
+    func settled(ended: WorkStatus) -> ReasoningSnapshot {
+        var settled = self
+        settled.workLog = workLog.map { entry in
+            guard case .group(var group) = entry else { return entry }
+            for index in group.steps.indices where group.steps[index].status == .inProgress {
+                group.steps[index].status = ended
+            }
+            group.status = WorkGroup.rollUp(group.steps)
+            return .group(group)
+        }
+        func settle(_ row: PlanRow) -> PlanRow {
+            var row = row
+            if ended == .completed {
+                row.status = .completed
+            } else if row.status == .inProgress {
+                row.status = ended
+            }
+            row.subtasks = row.subtasks.map(settle)
+            return row
+        }
+        settled.plan = plan.map(settle)
+        return settled
     }
 }
 
@@ -104,6 +177,9 @@ enum ChatTurnEvent {
 protocol ChatProviding: Sendable {
     func messages(chatID: String) async throws -> [ChatMessage]
     func streamStatus(chatID: String) async throws -> StreamStatus
+    /// Asks the server to end the run for this chat and keep what it had written. Waits for the
+    /// answer to be saved, which can take a few seconds.
+    func stopRun(chatID: String) async throws -> StopReply
     func send(
         history: [ChatMessage],
         chatID: String,
@@ -112,6 +188,89 @@ protocol ChatProviding: Sendable {
         attachments: [ChatAttachment]?,
         webSearch: Bool
     ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error>
+    /// The same turn, asked inside a matter: `projectID` names it on the request, so the turn
+    /// reads the matter's documents and the conversation is filed under the matter. `nil` is an
+    /// ordinary conversation. Stand-ins that do not care get the default below, which forwards
+    /// to the six-argument form.
+    func send(
+        history: [ChatMessage],
+        chatID: String,
+        model: ChatModel,
+        role: ChatRole?,
+        attachments: [ChatAttachment]?,
+        webSearch: Bool,
+        projectID: String?
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error>
+    /// Stores a finished turn's work log on its answer, the way the web does. Never throws and
+    /// never surfaces: see `WorkLogSync` for when it declines, and why that is always silent.
+    ///
+    /// - Parameters:
+    ///   - fields: the three `WorkLogWire` keys, as attached to the answer.
+    ///   - transcript: this client's conversation, ending with the question and that answer.
+    ///   - commit: asked immediately before the rewrite is sent; `false` abandons it. The view
+    ///     model answers whether the conversation is still exactly as it was.
+    func saveWorkLog(
+        _ fields: [String: JSONValue],
+        transcript: [ChatMessage],
+        chatID: String,
+        commit: @escaping @Sendable () async -> Bool
+    ) async -> WorkLogSaveOutcome
+}
+
+/// The answer to `POST /chat/stop`.
+struct StopReply: Codable, Equatable, Sendable {
+    /// What the stop saved, and who saved it.
+    enum SavedBy: String, Codable, Equatable, Sendable {
+        /// The run wrote the stopped answer itself as it wound down.
+        case run
+        /// The run did not wind down in time, so the stop request saved it.
+        case stop
+        /// Nothing could be saved.
+        case none
+    }
+
+    var success: Bool
+    /// False when no run was going for this chat: nothing to stop, and not an error.
+    var running: Bool?
+    var stopped: Bool?
+    var savedBy: String?
+    var error: String?
+
+    var savedByKind: SavedBy? { savedBy.flatMap(SavedBy.init(rawValue:)) }
+
+    /// What a stand-in without a server answers.
+    static let unsupported = StopReply(
+        success: false, running: nil, stopped: nil, savedBy: nil, error: "Stop is not supported")
+}
+
+extension ChatProviding {
+    /// Drops the matter, for stand-ins that do not exercise it. `ChatService` implements the
+    /// seven-argument form itself, so this is never what a real turn goes through.
+    func send(
+        history: [ChatMessage],
+        chatID: String,
+        model: ChatModel,
+        role: ChatRole?,
+        attachments: [ChatAttachment]?,
+        webSearch: Bool,
+        projectID: String?
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
+        try await send(
+            history: history, chatID: chatID, model: model, role: role,
+            attachments: attachments, webSearch: webSearch)
+    }
+    /// A stand-in that cannot stop anything, for fakes that do not exercise stopping.
+    func stopRun(chatID: String) async throws -> StopReply { .unsupported }
+
+    /// A stand-in that stores nothing, for fakes that do not exercise saving.
+    func saveWorkLog(
+        _ fields: [String: JSONValue],
+        transcript: [ChatMessage],
+        chatID: String,
+        commit: @escaping @Sendable () async -> Bool
+    ) async -> WorkLogSaveOutcome {
+        .skipped(.nothingToSave)
+    }
 }
 
 /// The conversation list, kept separate from `ChatProviding`.
@@ -135,6 +294,9 @@ struct ChatService: ChatProviding, ChatListProviding {
         }
     }
 
+    /// The conversation, every message carrying every key it was stored with — see
+    /// `ChatMessage`. That is what lets the next `POST /chat` give it back unchanged, including the
+    /// work log either client stored on an answer.
     func messages(chatID: String) async throws -> [ChatMessage] {
         let request = try await client.makeRequest("GET", "/messages", query: ["chatId": chatID])
         let all = try await client.send(request, as: MessagesResponse.self).messages
@@ -159,13 +321,36 @@ struct ChatService: ChatProviding, ChatListProviding {
         }
     }
 
+    /// Stops this chat's run: `POST /chat/stop` with the chat and the caller.
+    ///
+    /// Dropping the connection does not end a run — it carries on and saves its answer — so a
+    /// Stop button has to say so explicitly. The reply arrives once the stopped answer is saved.
+    func stopRun(chatID: String) async throws -> StopReply {
+        guard let credentials = await client.currentCredentials() else {
+            throw APIError.notAuthenticated
+        }
+        let request = try await client.makeRequest(
+            "POST", "/chat/stop",
+            body: StopRequest(chatId: chatID, userId: credentials.userIDString))
+        return try await client.send(request, as: StopReply.self)
+    }
+
+    private struct StopRequest: Encodable {
+        let chatId: String
+        let userId: String
+    }
+
     // MARK: - Sending a turn
 
     /// Streams one conversational turn.
     ///
     /// - Important: `/chat` is **destructive to history**. The server persists exactly
     ///   `messages + answer`, deleting every other message on the chat first, so anything
-    ///   omitted from `history` is deleted server-side. Always pass the full conversation.
+    ///   omitted from `history` is deleted server-side. Always pass the full conversation —
+    ///   and every key of every message in it, which `ChatMessage` keeps for that reason.
+    ///
+    /// The answer this stores carries no work log: `/chat` writes `{role, content, usage, …}`
+    /// only. The log is stored afterwards by `saveWorkLog`, as the web stores its own.
     ///
     /// The run is not tied to the socket: disconnecting does not cancel generation, and the
     /// server keeps checkpointing to the database. A dropped connection should therefore be
@@ -178,10 +363,27 @@ struct ChatService: ChatProviding, ChatListProviding {
         attachments: [ChatAttachment]? = nil,
         webSearch: Bool = false
     ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
+        try await send(
+            history: history, chatID: chatID, model: model, role: role,
+            attachments: attachments, webSearch: webSearch, projectID: nil)
+    }
+
+    /// The same turn, asked inside a matter (docs/projects.md, "Chat plumbing"). This is the
+    /// form `ChatViewModel` calls; the six-argument one above forwards here with no matter.
+    func send(
+        history: [ChatMessage],
+        chatID: String,
+        model: ChatModel,
+        role: ChatRole?,
+        attachments: [ChatAttachment]?,
+        webSearch: Bool,
+        projectID: String?
+    ) async throws -> AsyncThrowingStream<ChatTurnEvent, Error> {
         guard let credentials = await client.currentCredentials() else {
             throw APIError.notAuthenticated
         }
 
+        let trimmedProject = projectID?.trimmingCharacters(in: .whitespacesAndNewlines)
         let payload = ChatRequest(
             messages: history,
             userId: credentials.userIDString,
@@ -195,7 +397,8 @@ struct ChatService: ChatProviding, ChatListProviding {
             // search on keywords in the message, so this cannot fully opt out.
             searchMode: webSearch ? "web" : nil,
             attachments: attachments,
-            source: "chat")
+            source: "chat",
+            projectId: (trimmedProject?.isEmpty ?? true) ? nil : trimmedProject)
 
         var request = try await client.makeRequest("POST", "/chat", body: payload)
         request.setValue("text/plain", forHTTPHeaderField: "Accept")
@@ -220,6 +423,9 @@ struct ChatService: ChatProviding, ChatListProviding {
                     continuation.yield(.progress(snapshot(of: tracker)))
                     continuation.finish()
                 } catch {
+                    if let refusal = (error as? APIError)?.refusal {
+                        await client.noteRefusal(refusal)
+                    }
                     // Cancelled or failed: we genuinely do not know whether in-flight calls
                     // returned, so they are reported unfinished rather than ticked off.
                     tracker.finish(ended: .stopped)
@@ -230,6 +436,82 @@ struct ChatService: ChatProviding, ChatListProviding {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
+    // MARK: - Storing the work log
+
+    /// Stores a finished turn's work log with its answer: `POST /sync`, as the web does when a
+    /// turn ends (`src/lib/store.js`, `persistAssistantSession` → `syncWithServer`).
+    ///
+    /// **Read `WorkLogSync` before changing anything here.** `/sync` deletes every stored message
+    /// of the chat and re-inserts the array it is sent, so this declines — silently — unless the
+    /// conversation stored on the server is, at this moment, exactly the one on screen ending in
+    /// this client's own answer, with nothing running. The array sent is the stored bytes from a
+    /// fresh `GET /messages`, not this client's re-encoding, so attachments, citations and any
+    /// field this build does not know go back exactly as they were stored.
+    ///
+    /// Every request here goes through `perform`, not `send`: a refusal or an expired session
+    /// met while storing a log is not news worth signing anyone out over, or worth a word on
+    /// screen. The answer is already stored; only the log is at stake.
+    func saveWorkLog(
+        _ fields: [String: JSONValue],
+        transcript: [ChatMessage],
+        chatID: String,
+        commit: @escaping @Sendable () async -> Bool
+    ) async -> WorkLogSaveOutcome {
+        guard let credentials = await client.currentCredentials() else {
+            return .skipped(.signedOut)
+        }
+        do {
+            // The chat row first and the messages last, so the stretch between reading what is
+            // stored and rewriting it is as short as it can be.
+            var listing = try await client.makeRequest("GET", "/chats")
+            listing.timeoutInterval = Self.saveTimeout
+            let (listData, listResponse) = try await client.perform(listing)
+            guard (200..<300).contains(listResponse.statusCode),
+                  let chats = try? JSONDecoder().decode(ChatListResponse.self, from: listData).chats,
+                  let chat = chats.first(where: { $0.id == chatID })
+            else { return .skipped(.chatNotListed) }
+
+            var read = try await client.makeRequest("GET", "/messages", query: ["chatId": chatID])
+            read.timeoutInterval = Self.saveTimeout
+            let (data, response) = try await client.perform(read)
+            guard (200..<300).contains(response.statusCode),
+                  let stored = try? JSONDecoder().decode(MessagesResponse.self, from: data).messages,
+                  let bytes = RawJSON.arrayElements(forKey: "messages", in: data),
+                  bytes.count == stored.count
+            else { return .skipped(.unreadable) }
+
+            if let mismatch = WorkLogSync.mismatch(server: stored, local: transcript) {
+                return .skipped(mismatch)
+            }
+            guard let body = WorkLogSync.body(
+                userID: credentials.userIDString, chat: chat, storedMessages: bytes, adding: fields)
+            else { return .skipped(.unreadable) }
+
+            guard !Task.isCancelled, await commit() else { return .skipped(.newTurnStarted) }
+
+            var write = try await client.makeRequest("POST", "/sync")
+            write.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            write.httpBody = body
+            write.timeoutInterval = Self.saveTimeout
+            // Not cancellable once committed. The view model waits for this before its next turn
+            // goes out, and that wait is only an ordering guarantee if the request it waits for is
+            // the one that reached the server — a cancelled request may or may not have.
+            let client = self.client
+            let sent = Task { try await client.perform(write) }
+            let (reply, status) = try await sent.value
+            guard (200..<300).contains(status.statusCode),
+                  (try? JSONDecoder().decode(WriteResponse.self, from: reply))?.success == true
+            else { return .failed }
+            return .saved
+        } catch {
+            return Task.isCancelled ? .skipped(.newTurnStarted) : .failed
+        }
+    }
+
+    /// Short, because the next question waits for a save already on its way (see
+    /// `ChatViewModel.send`). The answer is not at stake, so a slow network costs only the log.
+    static let saveTimeout: TimeInterval = 20
 
     private func snapshot(of tracker: ReasoningTracker) -> ReasoningSnapshot {
         ReasoningSnapshot(
@@ -281,6 +563,7 @@ enum ByteStream {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest = request.timeoutInterval
             config.timeoutIntervalForResource = request.timeoutInterval
+            APIClient.refuseCookies(config)
             let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
             let task = session.dataTask(with: request)
             continuation.onTermination = { _ in
@@ -323,17 +606,14 @@ enum ByteStream {
             defer { session.finishTasksAndInvalidate() }
 
             if let error {
-                continuation.finish(throwing: APIError.transport(error.localizedDescription))
+                continuation.finish(throwing: APIError.transportFailure(error))
                 return
             }
             if isErrorResponse {
+                // Plan refusals arrive here: the server checks the allowance before writing a
+                // byte, so a spent month is a clean JSON 402 rather than a half-started stream.
                 let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
-                let decoded = try? JSONDecoder().decode(APIErrorBody.self, from: errorBody)
-                let message = decoded?.error ?? "The server returned status \(status)."
-                continuation.finish(
-                    throwing: status == 401
-                        ? APIError.invalidCredentials
-                        : APIError.server(status: status, message: message))
+                continuation.finish(throwing: APIError.classify(status: status, body: errorBody))
                 return
             }
             // No sentinel and no terminator: end-of-body is the only completion signal.

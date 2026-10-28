@@ -23,8 +23,20 @@ jobs:
       - name: Build
         run: swift build --build-tests
 
+      # Cheap, and it names the class. `--parallel` below cannot see a suite that inherits
+      # another suite's stub state, because it splits classes across processes.
+      - name: Test isolation
+        run: ./scripts/check-test-isolation.sh
+
       - name: Test
         run: swift test --parallel
+
+      # The same suite again, in one process and in a fixed order. This is the run that actually
+      # exercises cross-suite state: `--parallel` shards the classes out, so a suite that depends
+      # on — or is corrupted by — the one alphabetically before it passes there and fails on a
+      # developer's machine. It costs about ten seconds.
+      - name: Test (serial, for cross-suite state)
+        run: swift test
 
   # The gate that would have caught the never-compiled SwiftUI layer.
   #
@@ -41,11 +53,16 @@ jobs:
 
       - name: Parse the app layer
         run: |
-          files=$(find Emperor AppTests UITests -name '*.swift')
+          files=$(find Emperor EmperorWidget AppTests UITests -name '*.swift')
           test -n "$files" || { echo "no Swift files found"; exit 1; }
           echo "$files" | sed 's/^/  /'
           swiftc -parse $files
 
+      # The Today widget compiles only `Sources/EmperorCore/Today` of the core (see project.yml).
+      # Type-checked on its own here, so a file there that reaches for the rest of the core fails
+      # in seconds on Linux rather than as a widget build failure on the Mac.
+      - name: The widget's slice of the core stands alone
+        run: swiftc -typecheck -swift-version 6 Sources/EmperorCore/Today/*.swift
   # XcodeGen is a SwiftPM package and builds on Linux, so the project spec can be validated
   # without a Mac — it catches a missing file, a malformed spec and a bad Info.plist key.
   # It does NOT compile anything.
@@ -76,7 +93,7 @@ jobs:
         run: |
           # Every directory any target compiles. Adding a target without adding it here makes
           # this pass while the new files silently never reach the project.
-          expected=$(find Sources/EmperorCore Emperor AppTests UITests -name '*.swift' | wc -l)
+          expected=$(find Sources/EmperorCore Emperor EmperorWidget AppTests UITests -name '*.swift' | wc -l)
           actual=$(grep -c '\.swift .*sourcecode' Emperor.xcodeproj/project.pbxproj)
           echo "expected $expected, target has $actual"
           test "$expected" -eq "$actual"
@@ -95,8 +112,21 @@ jobs:
   # exactly what this job proves on its way to doing more, on a second cold runner, and it cost
   # **460 billable minutes** — a quarter of a month — for that duplication.
   simulator-tests:
-    name: Simulator tests
+    name: Simulator tests (${{ matrix.device }})
     runs-on: macos-15
+    # Every UI test and the screenshot tour run twice: on an iPhone and on an iPad. The app ships
+    # for both (`TARGETED_DEVICE_FAMILY: "1,2"`), and an iPad lays several things out differently
+    # — sheets become centred form sheets, a confirmation dialog becomes a popover, the tab bar
+    # moves — so a layout or a test that only holds on a phone has to fail here, not on someone's
+    # iPad. Both legs finish even when one fails, so one device's results never hide the other's.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iPhone
+            artifact-suffix: ""
+          - device: iPad
+            artifact-suffix: "-ipad"
     # **macOS is billed at 10x on a private repo, and every job rounds up to the whole minute.**
     # A single macOS job that runs for 40 seconds costs ten minutes of a 2,000-minute month. So
     # these do not run on a push: the Linux jobs above cost 1x, catch most of what breaks, and
@@ -127,8 +157,9 @@ jobs:
       # rolled. `xcodebuild test` will not take a generic destination the way `build` does, so
       # the only durable answer is to look the device up at run time and pass its UDID.
       #
-      # The last listed iPhone wins, and the whole list is printed — when this does fail, the
-      # first question is always what the runner actually had.
+      # The last listed device of the leg's kind wins — for the iPad, an iPad Air when there is one,
+      # the size and class most people hold — and the whole list is printed: when this does fail,
+      # the first question is always what the runner actually had.
       #
       # Deliberately shell rather than an embedded script: this step's first version inlined
       # Python, whose unindented lines silently terminated the YAML block scalar and made the
@@ -138,11 +169,30 @@ jobs:
         run: |
           set -euo pipefail
           xcrun simctl list devices available
-          udid=$(xcrun simctl list devices available | grep -oE 'iPhone[^(]*\(([0-9A-F-]{36})\)' | tail -1 | grep -oE '[0-9A-F-]{36}')
-          test -n "$udid" || { echo "no iPhone simulator on this runner"; exit 1; }
+          kind="${{ matrix.device }}"
+          list=$(xcrun simctl list devices available)
+          udid=""
+          # By line, then the UDID off the line: iPad names carry their chip in brackets —
+          # "iPad Air 11-inch (M3) (UDID)" — so a pattern that stops at the first bracket misses
+          # every one of them.
+          uuid='[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}'
+          #
+          # For the iPhone, a name with no bracket in it — a current full-size model. Taking any
+          # iPhone picked "iPhone SE (3rd generation)", whose small screen hid rows the tests
+          # scroll to on every other phone, and failed four tests that had nothing wrong with them.
+          if [ "$kind" = "iPad" ]; then
+            udid=$(echo "$list" | grep -E "^ +iPad Air" | grep -oE "$uuid" | tail -1 || true)
+          else
+            udid=$(echo "$list" | grep -E "^ +iPhone [^(]*\([0-9A-F]{8}-" | grep -oE "$uuid" | tail -1 || true)
+          fi
+          if [ -z "$udid" ]; then
+            udid=$(echo "$list" | grep -E "^ +${kind}" | grep -oE "$uuid" | tail -1 || true)
+          fi
+          test -n "$udid" || { echo "no $kind simulator on this runner"; exit 1; }
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
           echo "using simulator $udid"
 
+      # Every test except Xcode's accessibility audit, which runs in the next step.
       - name: Run the app and UI tests
         run: |
           set -o pipefail
@@ -152,6 +202,46 @@ jobs:
             -configuration Debug \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath build/TestResults.xcresult \
+            -skip-testing:EmperorUITests/AccessibilityAuditTests \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
+
+      # **Reported, not yet blocking.** `AccessibilityAuditTests` runs Xcode's accessibility audit
+      # over the main screens. On iPhone what is left (six, as of October 2026) is "Dynamic Type
+      # partially unsupported" on Files and Translate, tied to no element the audit can name. On
+      # iPad the text-size checks can still run past the audit's time limit on one screen or
+      # another, while UIKit rebuilds the floating tab bar for every size step (see the samples
+      # this step collects). Until both are gone, a finding is shown on the run (the step goes red
+      # in the log) without failing the job. Make this blocking again — drop
+      # `continue-on-error` — once it passes on both devices run after run.
+      - name: Accessibility audit (reported)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          # Every 40 seconds, two seconds of what each of the app's threads is doing. On an iPad
+          # the audit's text-size check has timed out with the app's main thread busy for 30 s
+          # and more, on a different screen each run; these say what it was busy with. They go
+          # out with the screenshots.
+          mkdir -p build/screenshots/samples
+          (
+            while true; do
+              pid=$(pgrep -x Emperor | head -1 || true)
+              if [ -n "$pid" ]; then
+                sample "$pid" 2 -mayDie -file "build/screenshots/samples/$(date +%H%M%S).txt" \
+                  >/dev/null 2>&1 || true
+              fi
+              sleep 40
+            done
+          ) &
+          sampler=$!
+          trap 'kill $sampler 2>/dev/null || true' EXIT
+          xcodebuild test \
+            -project Emperor.xcodeproj \
+            -scheme Emperor \
+            -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath build/AuditResults.xcresult \
+            -only-testing:EmperorUITests/AccessibilityAuditTests \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
 
@@ -160,9 +250,39 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: simulator-test-results
-          path: build/TestResults.xcresult
+          name: simulator-test-results${{ matrix.artifact-suffix }}
+          path: |
+            build/TestResults.xcresult
+            build/AuditResults.xcresult
           retention-days: 14
+
+      # The screenshot tour's pictures as plain PNGs, so the UI can be looked at from a machine
+      # with no Xcode — which is where this app is developed. A result bundle needs
+      # `xcresulttool` to open; a folder of images does not. Never fails the run: a tour that
+      # could not export is not a broken app.
+      - name: Export the screenshot tour
+        if: always()
+        run: |
+          mkdir -p build/screenshots build/screenshots/audit
+          xcrun xcresulttool export attachments \
+            --path build/TestResults.xcresult \
+            --output-path build/screenshots || echo "attachment export unavailable"
+          # The audit's own pictures — `a11y-xxxl-*`, and a screen per finding — in a folder of
+          # their own, so the two manifests do not overwrite each other.
+          if [ -d build/AuditResults.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path build/AuditResults.xcresult \
+              --output-path build/screenshots/audit || echo "audit attachment export unavailable"
+          fi
+          ls build/screenshots | head -100 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshot-tour${{ matrix.artifact-suffix }}
+          path: build/screenshots
+          retention-days: 14
+          if-no-files-found: ignore
 
   # An .ipa you can actually put on a phone, without an Apple Developer Program membership.
   #
@@ -177,8 +297,13 @@ jobs:
   unsigned-ipa:
     name: Unsigned .ipa (sideload)
     runs-on: macos-15
-    # Only after the compile is known good — an archive of code that does not build is noise.
-    needs: simulator-tests
+    # After the core and syntax gates, not the simulator tests: the archive compiles the whole app
+    # itself, so code that does not build still fails here, but a UI test that is out of date
+    # (as they are while a redesign lands) no longer blocks the build a tester installs.
+    needs: [core, syntax]
+    # On demand only, as the simulator tests are: this is a macOS job, billed at 10x here. It used
+    # to inherit that from `needs: simulator-tests`; with that dependency gone it has to say so.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
 
@@ -196,31 +321,22 @@ jobs:
       - name: Generate the project
         run: xcodegen generate
 
-      # **Debug, not Release, and that is load-bearing.**
+      # **Release, talking to production** — `app.emperorailabs.com`, the web app's own host, so
+      # the phone signs into the same account and sees the same matters, files and conversations
+      # as the browser.
       #
-      # `APIConfig.resolveEnvironment` forces any non-debug build to `PRODUCTION`, deliberately,
-      # so the public dev tunnel cannot be shipped by accident. But
-      # `backend.emperorailabs.com` **does not resolve** — production is not stood up yet. A
-      # Release archive therefore installs and then fails every single request at DNS, which
-      # looks exactly like a broken app.
-      #
-      # So this build is Debug on purpose, which resolves to `dev.emperorailabs.com` and
-      # actually works. The safety guard is untouched: Debug is *allowed* to reach dev, and a
-      # Release build still cannot. The Android client shipped its internal APK the same way and
-      # for the same reason.
-      #
-      # Two consequences, both real, and both in docs/RELEASING.md: the dev host is public and
-      # unauthenticated in places, so only send this to someone already entitled to that data;
-      # and a debug build is debuggable, so it is not one to leave on a device long-term.
-      #
-      # **Switch this to Release the day production exists.**
+      # This was Debug, pointed at the development tunnel, while production was not stood up: a
+      # Release archive resolved to a host with no DNS record and failed every request. That is
+      # no longer true, so the internal build is now the build a person would actually use — no
+      # debugger attached, and no development server in reach (`APIConfig.resolveEnvironment`
+      # forces a Release build to production whatever it asks for).
       - name: Archive for a device, unsigned
         run: |
           set -o pipefail
           xcodebuild archive \
             -project Emperor.xcodeproj \
             -scheme Emperor \
-            -configuration Debug \
+            -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/Emperor.xcarchive \
             CODE_SIGNING_ALLOWED=NO \

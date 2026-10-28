@@ -39,6 +39,9 @@ enum APIError: LocalizedError, Equatable {
     /// The platform is down on purpose. Distinct from a server error because it is neither the
     /// user's fault nor a bug, and the operator wrote a message worth showing.
     case maintenance(message: String)
+    /// A refusal the server explained with a code this client recognises — a plan limit, a
+    /// suspended account, an account that signs in another way. See `Refusal`.
+    case refused(Refusal)
 
     var errorDescription: String? {
         switch self {
@@ -48,8 +51,69 @@ enum APIError: LocalizedError, Equatable {
         case .transport(let message): return message
         case .decoding(let message): return "Unexpected response from the server. \(message)"
         case .maintenance(let message): return message
+        case .refused(let refusal): return DisplayText.message(for: refusal)
         }
     }
+
+    /// The refusal this error carries, if it is one.
+    var refusal: Refusal? {
+        if case .refused(let refusal) = self { return refusal }
+        return nil
+    }
+
+    /// A request that failed before the server answered, as `.transport` — worded so that a
+    /// missing connection still reads as one.
+    ///
+    /// `.transport` keeps only text, and the screens decide from that text whether the network
+    /// was unreachable (`DisplayText.isOffline`) — which is what lets a saved copy stand in. A
+    /// `URLError`'s description cannot be relied on for it: iOS words it in the language the
+    /// phone is set to, and an error built from a bare code says only "NSURLErrorDomain error
+    /// -1009". So when the *code* means no connection and the wording does not say so, the
+    /// wording is replaced with this client's own. iOS's sentence is kept wherever it already
+    /// reads as offline, so what an English-language phone shows is unchanged.
+    static func transportFailure(_ error: Error) -> APIError {
+        let wrapped = APIError.transport(error.localizedDescription)
+        guard let urlError = error as? URLError, DisplayText.isOffline(urlError),
+              !DisplayText.isOffline(wrapped)
+        else { return wrapped }
+        return .transport(DisplayText.offlineMessage)
+    }
+
+    /// Classifies a non-2xx response the way every caller on this API should.
+    ///
+    /// One function for the two transports — `APIClient` for JSON and `ByteStream` for the chat
+    /// stream — because they used to classify separately, and a refusal recognised on one path
+    /// but not the other is exactly the inconsistency a person notices: the same limit worded one
+    /// way in the composer and another on the uploads screen.
+    ///
+    /// Order matters. A coded refusal is recognised **before** the 401 rule, because a wrong
+    /// one-time code is a 401 that says nothing about the session; reading it as "signed out"
+    /// would end a session that is fine.
+    static func classify(status: Int, body: Data) -> APIError {
+        if let refusal = Refusal.parse(status: status, body: body) {
+            return .refused(refusal)
+        }
+        if status == 401 { return .invalidCredentials }
+        let decoded = try? JSONDecoder().decode(APIErrorBody.self, from: body)
+        if decoded == nil, Self.gatewayStatuses.contains(status) {
+            // Nothing of the platform's answered: a bad gateway, a gateway timeout, or the
+            // front door's own 503 with an HTML page for a body. That is the platform being
+            // restarted or unreachable — the state the web shows its "backend down" page for —
+            // and it is worth saying so instead of "status 502", because it is neither the
+            // person's fault nor permanent, and a retry a minute later usually succeeds.
+            return .maintenance(message: Self.unreachableMessage)
+        }
+        return .server(
+            status: status,
+            message: decoded?.error ?? "The server returned status \(status).")
+    }
+
+    /// The statuses a gateway answers on its own when the platform behind it does not.
+    static let gatewayStatuses: Set<Int> = [502, 503, 504]
+
+    static let unreachableMessage =
+        "Emperor's server is not reachable right now. It is usually back within a minute — "
+        + "try again shortly."
 }
 
 /// The body the server sends while maintenance is on (`sync-server.js:6250-6260`).
@@ -85,6 +149,7 @@ actor APIClient {
             // Read-only on Linux, where this package is only compiled for tests.
             c.waitsForConnectivity = true
             #endif
+            APIClient.refuseCookies(c)
             self.session = URLSession(configuration: c)
         }
     }
@@ -101,7 +166,47 @@ actor APIClient {
         onAuthenticationLost = handler
     }
 
+    /// Told about every coded refusal, so the account's standing — no plan, paused — is learned
+    /// from whichever screen happened to meet it, rather than by each screen separately.
+    private var onRefusal: (@Sendable (Refusal) -> Void)?
+
+    func setRefusalObserver(_ observer: @escaping @Sendable (Refusal) -> Void) {
+        onRefusal = observer
+    }
+
+    /// For the transports that classify outside this actor — the chat stream.
+    func noteRefusal(_ refusal: Refusal) {
+        onRefusal?(refusal)
+    }
+
+    /// For callers that read a 401 themselves (the Library's coded errors): the session is over,
+    /// and the app signs out as it would from any other route.
+    func noteAuthenticationLost() {
+        onAuthenticationLost?()
+    }
+
     func currentCredentials() -> Credentials? { credentials }
+
+    /// No cookie jar for this API.
+    ///
+    /// The platform sets an httpOnly auth cookie on every sign-in, for browser requests that
+    /// cannot carry a header. This client authenticates every request with the bearer token, so
+    /// the cookie is never needed — and a URL session keeps cookies by default, which would leave
+    /// a second, ambient credential on the phone that outlives signing out. Refused at the
+    /// configuration instead of cleaned up after.
+    static func refuseCookies(_ configuration: URLSessionConfiguration) {
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+    }
+
+    /// Removes any cookie this host has left in the shared jar — from a build that accepted
+    /// them before `refuseCookies`, or from a web view. Part of signing out.
+    func clearCookies() {
+        let jar = HTTPCookieStorage.shared
+        for cookie in jar.cookies(for: config.baseURL) ?? [] {
+            jar.deleteCookie(cookie)
+        }
+    }
 
     // MARK: - Request building
 
@@ -169,7 +274,7 @@ actor APIClient {
         } catch let error as APIError {
             throw error
         } catch {
-            throw APIError.transport(error.localizedDescription)
+            throw APIError.transportFailure(error)
         }
     }
 
@@ -193,16 +298,15 @@ actor APIClient {
                 message: text ?? "Emperor is down for maintenance. Please try again shortly.")
         }
 
-        let body = try? decoder.decode(APIErrorBody.self, from: data)
-        let message = body?.error ?? "The server returned status \(response.statusCode)."
-        if response.statusCode == 401 {
+        let error = APIError.classify(status: response.statusCode, body: data)
+        if let refusal = error.refusal { onRefusal?(refusal) }
+        if error == .invalidCredentials {
             // The session is over. Told once, here, so every screen does not have to notice
             // independently — and so `requiresReauthentication` is acted on rather than merely
             // computed.
             onAuthenticationLost?()
-            throw APIError.invalidCredentials
         }
-        throw APIError.server(status: response.statusCode, message: message)
+        throw error
     }
 }
 

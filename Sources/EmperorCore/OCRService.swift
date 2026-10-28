@@ -7,46 +7,43 @@ protocol OCRProviding: Sendable {
     func submit(data: Data, fileName: String, language: OCRLanguage) async throws -> String
     func status(jobID: String) async throws -> OCRJob
     func download(outputFile: String) async throws -> Data
+    /// This account's jobs, newest first.
+    func history() async throws -> OCRHistory
+    /// Removes every job the history listing covers.
+    func clearHistory() async throws
 }
 
-/// Digitising and translating a scanned document.
+/// Digitising and translating a scanned document, and the account's history of doing so.
 ///
-/// ## What this service deliberately does not do
-///
-/// `GET /ocr-history` returns **every user's jobs** and `GET /ocr-download` serves **any user's
-/// output file to anyone**, with no auth and no ownership check
-/// (`sync-server.js:12325-12329`, `:12337-12348`). Output filenames are derived from the upload
-/// name plus the language, so they are guessable, and two users uploading the same filename in
-/// the same language silently overwrite each other (`:12266`).
-///
-/// So this app never lists server history. It tracks the job ids it created itself and shows
-/// only those. That does not fix the server — a determined caller can still read other
-/// people's documents — but it stops this client from *displaying* strangers' legal filings to
-/// a user as though they were their own.
+/// Every `/ocr-*` route answers for the signed-in account: the history lists that account's
+/// jobs, and status, logs and downloads are served for those jobs only
+/// (`sync-server.js:4462-4472`). This client sends its bearer token on every call, so the history
+/// it shows is the user's own — and it narrows the listing to jobs recorded against this account
+/// as well, so that is true for every kind of account (see `OCRHistory.listedOtherJobs`).
 struct OCRService: OCRProviding {
     let client: APIClient
 
     /// Submits a document.
     ///
     /// - Parameter language: always sent. Omitting `lang` makes the server translate to Hindi
-    ///   by default (`sync-server.js:12118`) — a "just digitise this" request would come back
+    ///   by default (`sync-server.js:15384`) — a "just digitise this" request would come back
     ///   in a language nobody asked for.
     func submit(data: Data, fileName: String, language: OCRLanguage) async throws -> String {
         var request = try await client.makeRequest("POST", "/ocr-translate")
 
         // A long random boundary, because `splitBuffer` scans the *whole* body including the
-        // PDF bytes (`sync-server.js:4314-4327`). A boundary that happens to occur inside the
-        // file silently truncates the upload — and still answers 200.
+        // PDF bytes (`sync-server.js:5252`). A boundary that happens to occur inside the file
+        // silently truncates the upload — and still answers 200.
         let boundary = "Boundary-\(UUID().uuidString)-\(UUID().uuidString)"
         // Exactly `multipart/form-data; boundary=<token>`: the server takes the raw remainder
-        // after `boundary=` (`:12112`), so a quoted value or a trailing `; charset=` breaks it.
+        // after `boundary=` (`:15378`), so a quoted value or a trailing `; charset=` breaks it.
         request.setValue(
             "multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         var body = Data()
         func append(_ string: String) { body.append(Data(string.utf8)) }
 
-        // `pageSetup` is `JSON.parse`d server-side (`sync-server.js:12140`), so a bare "A4"
+        // `pageSetup` is `JSON.parse`d server-side (`sync-server.js:15409`), so a bare "A4"
         // throws and is silently discarded. Send valid JSON, or the intent is an accident that
         // only works because the renderer defaults to A4 anyway.
         for (name, value) in [
@@ -58,9 +55,9 @@ struct OCRService: OCRProviding {
             append("\(value)\r\n")
         }
 
-        // Forward-compatible and currently ignored: the route reads no userId, so every job is
-        // billed to NULL (`sync-server.js:12243-12252`). Sending it costs nothing and means the
-        // client needs no change when the server grows the branch its own comment describes.
+        // The job is recorded against the account the bearer token names, which is what puts it
+        // in this user's history. `userId` is sent as well, as on every other call this client
+        // makes, so nothing changes here if the server ever reads it.
         if let credentials = await client.currentCredentials() {
             append("--\(boundary)\r\n")
             append("Content-Disposition: form-data; name=\"userId\"\r\n\r\n")
@@ -68,7 +65,7 @@ struct OCRService: OCRProviding {
         }
 
         // `name` before `filename`: the parser matches the first `name="` in the header, and
-        // `name="` is a substring of `filename="` (`sync-server.js:12131`). Reversed, the field
+        // `name="` is a substring of `filename="` (`sync-server.js:15397`). Reversed, the field
         // is read as the filename and the upload 500s with "Missing file".
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n")
@@ -90,12 +87,12 @@ struct OCRService: OCRProviding {
     /// Polling rather than the SSE log stream: `/ocr-logs` sets no heartbeat, no `retry:`, no
     /// `id:`, never reads `Last-Event-ID`, never closes on completion, and omits
     /// `X-Accel-Buffering: no` — so behind nginx it can be proxy-buffered and simply stop,
-    /// while still looking connected (`sync-server.js:12302-12323`). This route's body already
+    /// while still looking connected (`sync-server.js:15646-15670`). This route's body already
     /// carries the full log array plus the status and progress the stream does not provide.
     func status(jobID: String) async throws -> OCRJob {
         var request = try await client.makeRequest(
             "GET", "/ocr-status", query: ["jobId": jobID])
-        // The route sets no Cache-Control (`sync-server.js:12294`), so URLSession's heuristic
+        // The route sets no Cache-Control (`sync-server.js:15638`), so URLSession's heuristic
         // caching can replay a stale poll and make a live job look frozen.
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
@@ -107,15 +104,45 @@ struct OCRService: OCRProviding {
         return job
     }
 
+    /// Fetches a finished document by its stored name — `outputFile`, not `downloadName`.
     func download(outputFile: String) async throws -> Data {
-        let request = try await client.makeRequest(
+        var request = try await client.makeRequest(
             "GET", "/ocr-download", query: ["file": outputFile])
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await client.perform(request)
         guard (200..<300).contains(response.statusCode) else {
+            // A result is served only while its job is in this account's history and the file
+            // is still on the server (`sync-server.js:15696-15697`), so a 404 is "gone", not
+            // "broken" — and worth saying in those words.
             throw APIError.server(
                 status: response.statusCode,
-                message: "That document could not be downloaded.")
+                message: response.statusCode == 404
+                    ? "That document is no longer available. It may have been cleared from your history."
+                    : "That document could not be downloaded.")
         }
         return data
+    }
+
+    func history() async throws -> OCRHistory {
+        var request = try await client.makeRequest("GET", "/ocr-history")
+        // A history that replays from URLSession's cache would show a job as still running
+        // after it finished.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let response = try await client.send(request, as: OCRHistoryResponse.self)
+
+        let me = await client.currentCredentials()?.userIDString
+        let mine = response.jobs.filter { me != nil && $0.ownerID == me }
+        return OCRHistory(
+            jobs: mine,
+            listedOtherJobs: mine.count != response.jobs.count || response.unreadable > 0)
+    }
+
+    /// `POST /ocr-clear` (`sync-server.js:15682-15687`). It removes every job the history
+    /// listing covers, running ones included — which is why the screen withholds it whenever the
+    /// listing covered anything this screen does not show.
+    func clearHistory() async throws {
+        let request = try await client.makeRequest("POST", "/ocr-clear")
+        let response = try await client.send(request, as: OCRClearResponse.self)
+        try CaseService.throwIfUnsuccessful(success: response.success, error: response.error)
     }
 }

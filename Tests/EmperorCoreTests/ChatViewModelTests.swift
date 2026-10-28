@@ -221,6 +221,31 @@ final class ChatViewModelTests: XCTestCase {
         }
     }
 
+    /// A month's questions spent, or no plan at all: refused before anything is stored. The
+    /// question goes back to the composer and the refusal gets its own card — not a red error
+    /// inviting a retry that would only be refused again.
+    func testAPlanRefusalGivesTheQuestionBackAndExplainsItself() async {
+        await withModel { fake, model in
+            fake.sendError = APIError.classify(status: 402, body: Data(#"""
+                {"error":"You've used all 30 chat queries on your Free plan this month. Upgrade to keep going.","code":"QUERY_LIMIT","limit":30,"used":30,"resetsAt":"2026-10-31T18:30:00.000Z"}
+                """#.utf8))
+            model.send("What is the limitation for a s.34 petition?")
+            await settle(model)
+
+            XCTAssertEqual(model.refusal?.code, .queryLimit)
+            XCTAssertNil(model.errorMessage, "a refusal is not shown twice")
+            XCTAssertTrue(model.messages.isEmpty)
+            XCTAssertEqual(model.restoredDraft, "What is the limitation for a s.34 petition?")
+            XCTAssertFalse(model.isStreaming)
+
+            // The next send starts clean.
+            fake.sendError = nil
+            model.send("Again")
+            await settle(model)
+            XCTAssertNil(model.refusal)
+        }
+    }
+
     /// The server refuses a second run on a chat already generating and answers 200 with an
     /// explanation. That explanation is not an answer and must stay out of the transcript.
     ///
@@ -283,7 +308,9 @@ final class ChatViewModelTests: XCTestCase {
         }
     }
 
-    func testProgressSnapshotIsRecorded() async {
+    /// The finished panel moves onto the answer it explains, as the web's does, so it is drawn
+    /// from the answer from then on — the same way it is drawn when the conversation is reopened.
+    func testProgressSnapshotTravelsWithTheAnswer() async {
         await withModel { fake, model in
             let snapshot = ReasoningSnapshot(
                 plan: [PlanRow(title: "Read the record", status: .inProgress, subtasks: [])],
@@ -292,7 +319,26 @@ final class ChatViewModelTests: XCTestCase {
             model.send("Question")
             await settle(model)
 
+            XCTAssertEqual(model.messages.last?.storedWorkLog?.plan.first?.title, "Read the record")
+            XCTAssertEqual(model.messages.last?.storedWorkLog?.plan.first?.status, .completed,
+                           "a clean finish completes the plan")
+            XCTAssertTrue(model.progress.isEmpty, "drawn once, on the answer, not twice")
+        }
+    }
+
+    /// With no answer to carry it, the panel stays where it was — it is the only account of the
+    /// work the turn did.
+    func testProgressStaysWhenThereIsNoAnswer() async {
+        await withModel { fake, model in
+            let snapshot = ReasoningSnapshot(
+                plan: [PlanRow(title: "Read the record", status: .inProgress, subtasks: [])],
+                workLog: [], reasoning: [])
+            fake.events = [.progress(snapshot)]
+            model.send("Question")
+            await settle(model)
+
             XCTAssertEqual(model.progress.plan.first?.title, "Read the record")
+            XCTAssertEqual(model.messages.count, 1)
         }
     }
 
@@ -352,6 +398,788 @@ final class ChatViewModelTests: XCTestCase {
             await settle(model)
 
             XCTAssertFalse(model.wasInterrupted)
+        }
+    }
+}
+
+/// The two documents a matter is typically opened with.
+///
+/// A free function rather than a stored property: an `XCTestCase` is not `Sendable`, and these are
+/// read inside `@MainActor` closures — the same reason `withModel` is a free function.
+private func pickedDocuments() -> [ChatAttachment] {
+    [
+        ChatAttachment(name: "Charter_Party_2021.pdf", folderName: "Suvarnapatnam_Port_Terminals"),
+        ChatAttachment(name: "Evidence_Vol_2.pdf", folderName: "Suvarnapatnam_Port_Terminals"),
+    ]
+}
+
+/// The strip of documents above the composer, which is shown only before the first question.
+///
+/// The rule is one line — `messages.isEmpty` — and both halves of it carry weight, so both are
+/// pinned here. Wrong in one direction it costs a line of every screen for the rest of the
+/// conversation; wrong in the other the user cannot see the documents they just chose on a
+/// different screen, and has only a number in the toolbar to go on.
+final class ChatOpeningAttachmentsTests: XCTestCase {
+
+    /// The library picker's Done button opens a new conversation already carrying documents. This
+    /// is the only surface that names them before the question is asked.
+    func testANewChatNamesWhatItIsAboutToAsk() async {
+        await withModel { _, model in
+            model.attachments = pickedDocuments()
+
+            XCTAssertEqual(model.openingAttachments, pickedDocuments())
+        }
+    }
+
+    func testAChatWithNothingAttachedHasNoStrip() async {
+        await withModel { _, model in
+            XCTAssertTrue(model.openingAttachments.isEmpty)
+        }
+    }
+
+    /// The boundary is the send, not the answer: `send` appends the user's turn before the
+    /// request leaves, so the strip goes on the tap.
+    func testTheStripGoesOnceTheQuestionIsAsked() async {
+        await withModel { fake, model in
+            fake.events = [.content(StreamContent.parse("It runs from receipt."))]
+            model.attachments = pickedDocuments()
+            model.send("Does the cure period run from breach or from receipt?")
+            await settle(model)
+
+            XCTAssertTrue(model.openingAttachments.isEmpty)
+            XCTAssertEqual(
+                model.attachments, pickedDocuments(),
+                "the documents are still attached — only the strip that named them has gone")
+        }
+    }
+
+    /// "After the first question, no strip in that conversation" — including for a document
+    /// attached to a conversation already under way.
+    func testAttachingLaterDoesNotBringTheStripBack() async {
+        await withModel { fake, model in
+            fake.events = [.content(StreamContent.parse("Noted."))]
+            model.send("A question with nothing attached")
+            await settle(model)
+
+            model.attachments = pickedDocuments()
+
+            XCTAssertTrue(model.openingAttachments.isEmpty)
+        }
+    }
+
+    /// Opening a conversation from History loads turns into `messages`, so the strip must not
+    /// appear on turn nine. This is the case a flag remembered by the view would get wrong.
+    func testAConversationOpenedFromHistoryHasNoStrip() async {
+        await withModel { fake, model in
+            fake.history = [
+                ChatMessage(role: .user, content: "Is the suit barred?"),
+                ChatMessage(role: .assistant, content: "Yes, under Article 58."),
+            ]
+            await model.load()
+            model.attachments = pickedDocuments()
+
+            XCTAssertTrue(model.openingAttachments.isEmpty)
+        }
+    }
+}
+
+// MARK: - Reopening a conversation with its documents
+
+final class ChatAttachmentRestoreTests: XCTestCase {
+
+    /// A conversation reopened from History has to come back holding its documents. They are not
+    /// a field on the chat — the server keeps each turn's JSON verbatim and hands it back
+    /// untouched — so they exist only on the turns that carried them, and a load that reads only
+    /// `content` drops them.
+    func testReopeningAConversationBringsItsDocumentsBack() async {
+        await withModel { fake, model in
+            fake.history = [
+                turn("Is the suit barred?", attaching: [("Plaint.pdf", "Menon_vs_Union")]),
+                ChatMessage(role: .assistant, content: "See page 4 of Plaint.pdf."),
+            ]
+            await model.load()
+
+            XCTAssertEqual(model.attachments, [
+                ChatAttachment(name: "Plaint.pdf", folderName: "Menon_vs_Union"),
+            ])
+        }
+    }
+
+    /// The union across every turn, not the most recent one. A document attached on turn one is
+    /// still what turn seven is about, so reading only the last turn would drop the pleading the
+    /// matter rests on the moment a follow-up is asked without re-attaching it.
+    func testDocumentsFromEveryTurnAreKept() async {
+        await withModel { fake, model in
+            fake.history = [
+                turn("First", attaching: [("Plaint.pdf", "Menon")]),
+                ChatMessage(role: .assistant, content: "..."),
+                turn("Second", attaching: [("Evidence.pdf", "Menon")]),
+                ChatMessage(role: .assistant, content: "..."),
+                turn("Third, asked without re-attaching anything", attaching: []),
+            ]
+            await model.load()
+
+            XCTAssertEqual(model.attachments.map(\.name), ["Plaint.pdf", "Evidence.pdf"])
+        }
+    }
+
+    /// Deduplicated on the whole value, in first-seen order. The same file carried on five
+    /// consecutive turns is one document, and two matters may each hold an `Order.pdf`.
+    func testTheSameDocumentOnEveryTurnAppearsOnce() async {
+        await withModel { fake, model in
+            fake.history = [
+                turn("A", attaching: [("Order.pdf", "Menon"), ("Plaint.pdf", "Menon")]),
+                turn("B", attaching: [("Order.pdf", "Menon")]),
+                turn("C", attaching: [("Order.pdf", "Suvarnapatnam")]),
+            ]
+            await model.load()
+
+            XCTAssertEqual(
+                model.attachments,
+                [
+                    ChatAttachment(name: "Order.pdf", folderName: "Menon"),
+                    ChatAttachment(name: "Plaint.pdf", folderName: "Menon"),
+                    ChatAttachment(name: "Order.pdf", folderName: "Suvarnapatnam"),
+                ],
+                "same name, different matter — two documents, not one")
+        }
+    }
+
+    /// Merged into whatever is already chosen, never assigned over it. A conversation can be
+    /// opened with documents picked on the library screen, and that choice races this load —
+    /// assigning would let whichever finished last erase the other with nothing on screen to
+    /// say so.
+    func testALoadDoesNotEraseDocumentsAlreadyChosen() async {
+        await withModel { fake, model in
+            fake.history = [turn("Earlier", attaching: [("Plaint.pdf", "Menon")])]
+            model.attachments = [ChatAttachment(name: "Fresh.pdf", folderName: "Menon")]
+
+            await model.load()
+
+            XCTAssertEqual(model.attachments.map(\.name), ["Fresh.pdf", "Plaint.pdf"],
+                           "the standing choice leads, the restored ones follow")
+        }
+    }
+
+    /// An overlap between the two costs nothing.
+    func testAChoiceAlreadyHeldIsNotDuplicatedByTheRestore() async {
+        await withModel { fake, model in
+            fake.history = [turn("Earlier", attaching: [("Plaint.pdf", "Menon")])]
+            model.attachments = [ChatAttachment(name: "Plaint.pdf", folderName: "Menon")]
+
+            await model.load()
+
+            XCTAssertEqual(model.attachments.count, 1)
+        }
+    }
+
+    /// The web client writes a bare string for a document at the storage root, and a
+    /// conversation may hold turns written there.
+    func testABareStringTurnRestoresToo() async {
+        await withModel { fake, model in
+            var bare = ChatMessage(role: .user, content: "Q")
+            bare.attachments = [.string("Notice.pdf")]
+            fake.history = [bare]
+            await model.load()
+
+            XCTAssertEqual(model.attachments, [ChatAttachment(name: "Notice.pdf")])
+        }
+    }
+
+    /// A conversation that never had a document still has none.
+    func testAConversationWithNoDocumentsRestoresNothing() async {
+        await withModel { fake, model in
+            fake.history = [
+                ChatMessage(role: .user, content: "Q"),
+                ChatMessage(role: .assistant, content: "A"),
+            ]
+            await model.load()
+
+            XCTAssertTrue(model.attachments.isEmpty)
+        }
+    }
+
+    /// Restoring documents must not bring the composer's strip back. The strip is for the moment
+    /// before the first question, and a reopened conversation is long past it — which is why it
+    /// is derived from the transcript rather than from whether anything is attached.
+    func testRestoredDocumentsDoNotBringBackTheOpeningStrip() async {
+        await withModel { fake, model in
+            fake.history = [
+                turn("Is the suit barred?", attaching: [("Plaint.pdf", "Menon")]),
+                ChatMessage(role: .assistant, content: "Yes."),
+            ]
+            await model.load()
+
+            XCTAssertFalse(model.attachments.isEmpty, "the documents are back")
+            XCTAssertTrue(model.openingAttachments.isEmpty, "the strip is not")
+        }
+    }
+}
+
+// MARK: - Taking a document off a conversation, and having it stay off
+
+/// Removing a document sticks across a reopen.
+///
+/// `ChatAttachmentRestoreTests` fixed the opposite bug — a reopened conversation arriving with
+/// nothing attached — by rebuilding the documents from the turns that carried them. That rebuild
+/// cannot tell "attached on turn one" from "attached on turn one and since removed", so removal
+/// became impossible: the chip went, and the document was back on the next open.
+///
+/// The invariant underneath every test here is that **a document is never both attached and
+/// detached**. Wrong one way and it cannot be got rid of; wrong the other and it cannot be put
+/// back.
+final class DetachedDocumentTests: XCTestCase {
+
+    private static let plaint = ChatAttachment(name: "Plaint.pdf", folderName: "Menon")
+    private static let evidence = ChatAttachment(name: "Evidence.pdf", folderName: "Menon")
+
+    func testARemovedDocumentDoesNotComeBackOnTheNextOpen() async {
+        let store = InMemoryPreferenceStore()
+        let history = [turn("Q", attaching: [("Plaint.pdf", "Menon")])]
+
+        await withDetaching(store, history) { model in
+            await model.load()
+            XCTAssertEqual(model.attachments, [Self.plaint])
+            model.detach(Self.plaint)
+            XCTAssertTrue(model.attachments.isEmpty)
+        }
+        // A second view model over the same store is the reopen.
+        await withDetaching(store, history) { model in
+            await model.load()
+            XCTAssertTrue(model.attachments.isEmpty, "it stayed off")
+        }
+    }
+
+    /// Removing one leaves the others alone.
+    func testRemovingOneDocumentKeepsTheRest() async {
+        let store = InMemoryPreferenceStore()
+        let history = [
+            turn("Q", attaching: [("Plaint.pdf", "Menon"), ("Evidence.pdf", "Menon")]),
+        ]
+
+        await withDetaching(store, history) { model in
+            await model.load()
+            model.detach(Self.plaint)
+        }
+        await withDetaching(store, history) { model in
+            await model.load()
+            XCTAssertEqual(model.attachments, [Self.evidence])
+        }
+    }
+
+    /// The other half of the invariant. Remove a pleading, change your mind, put it back — and it
+    /// has to still be there next time. A record that only ever grows would drop it again.
+    func testADocumentPutBackStaysBack() async {
+        let store = InMemoryPreferenceStore()
+        let history = [turn("Q", attaching: [("Plaint.pdf", "Menon")])]
+
+        await withDetaching(store, history) { model in
+            await model.load()
+            model.detach(Self.plaint)
+            model.setAttachments([Self.plaint])
+        }
+        await withDetaching(store, history) { model in
+            await model.load()
+            XCTAssertEqual(model.attachments, [Self.plaint])
+        }
+    }
+
+    /// The picker's Done is both directions at once: what it dropped is removed, what it added is
+    /// no longer removed.
+    func testThePickersSelectionRecordsBothDirections() async {
+        let store = InMemoryPreferenceStore()
+        let history = [
+            turn("Q", attaching: [("Plaint.pdf", "Menon"), ("Evidence.pdf", "Menon")]),
+        ]
+
+        await withDetaching(store, history) { model in
+            await model.load()
+            model.setAttachments([Self.evidence])
+        }
+        await withDetaching(store, history) { model in
+            await model.load()
+            XCTAssertEqual(model.attachments, [Self.evidence])
+            model.setAttachments([Self.plaint, Self.evidence])
+        }
+        await withDetaching(store, history) { model in
+            await model.load()
+            XCTAssertEqual(Set(model.attachments), [Self.plaint, Self.evidence])
+        }
+    }
+
+    /// The record is per conversation. Removing a document from one matter must not remove it
+    /// from another that happens to hold the same file.
+    func testARemovalIsScopedToItsConversation() async {
+        let store = InMemoryPreferenceStore()
+        let history = [turn("Q", attaching: [("Plaint.pdf", "Menon")])]
+
+        await withDetaching(store, history, chatID: "chat-1") { model in
+            await model.load()
+            model.detach(Self.plaint)
+        }
+        await withDetaching(store, history, chatID: "chat-2") { model in
+            await model.load()
+            XCTAssertEqual(model.attachments, [Self.plaint], "a different matter is untouched")
+        }
+    }
+
+    /// The record can be emptied again, which is what the un-removing above relies on.
+    ///
+    /// Named for what it checks rather than for `edit()`, which routes through `setAttachments`
+    /// for this reason but is covered here only by way of that shared path.
+    func testTheRecordCanBeClearedAgain() async {
+        let store = InMemoryPreferenceStore()
+        let detached = StoredDetachedDocuments(store: store)
+        detached.setDetached([Self.plaint], inChat: "chat-1")
+
+        XCTAssertEqual(detached.detached(inChat: "chat-1"), [Self.plaint])
+        detached.setDetached([], inChat: "chat-1")
+        XCTAssertTrue(detached.detached(inChat: "chat-1").isEmpty, "and it can be cleared")
+    }
+
+    /// Without a store, a removal lasts the session — which is what this screen did before, and
+    /// is the behaviour every other test in this file relies on.
+    func testWithoutAStoreARemovalIsSessionOnly() async {
+        await withModel { fake, model in
+            fake.history = [turn("Q", attaching: [("Plaint.pdf", "Menon")])]
+            await model.load()
+            model.detach(Self.plaint)
+            XCTAssertTrue(model.attachments.isEmpty)
+
+            await model.load()
+            XCTAssertEqual(model.attachments, [Self.plaint], "back, with nowhere to record it")
+        }
+    }
+}
+
+/// A fresh view model over a shared store, so a second call is a reopen of the same conversation.
+@MainActor
+private func withDetaching(
+    _ store: InMemoryPreferenceStore,
+    _ history: [ChatMessage],
+    chatID: String = "chat-1",
+    _ body: @MainActor (ChatViewModel) async -> Void
+) async {
+    let fake = FakeChat()
+    fake.history = history
+    await body(ChatViewModel(
+        chatID: chatID,
+        service: fake,
+        detached: StoredDetachedDocuments(store: store)))
+}
+
+/// A user turn carrying documents in the object wire form.
+///
+/// Built in two steps because `ChatMessage` declares `init(role:content:id:)`, which suppresses
+/// the memberwise initialiser — `attachments` is set after, as `send(_:)` does on the real path.
+private func turn(_ content: String, attaching files: [(String, String?)]) -> ChatMessage {
+    var message = ChatMessage(role: .user, content: content)
+    message.attachments = files.map { name, folder in
+        var object: [String: JSONValue] = ["name": .string(name)]
+        if let folder { object["folderName"] = .string(folder) }
+        return JSONValue.object(object)
+    }
+    return message
+}
+
+// MARK: - A run's lifecycle: stop, follow, adopt
+
+@MainActor
+private func withScripted(
+    stepped clock: SteppedClock? = nil,
+    _ body: @MainActor (ScriptedChat, ChatViewModel) async -> Void
+) async {
+    let fake = ScriptedChat()
+    let model = ChatViewModel(chatID: "chat-1", service: fake)
+    if let clock { model.followTiming = clock.timing }
+    await body(fake, model)
+}
+
+/// Waits for a turn or a followed run to end, and for any stop to finish.
+@MainActor
+private func settleRun(_ model: ChatViewModel) async {
+    for _ in 0..<1000 {
+        if !model.isStreaming, !model.isStopping { return }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    XCTFail("run did not settle")
+}
+
+private func question(_ text: String, id: String = "q1") -> ChatMessage {
+    ChatMessage(role: .user, content: text, id: id)
+}
+
+/// An answer as the server saves it at the end of a run.
+private func savedAnswer(_ text: String) -> ChatMessage {
+    var answer = ChatMessage(role: .assistant, content: text)
+    answer.done = true
+    answer.isTyping = false
+    answer.extra["serverRun"] = .bool(true)
+    return answer
+}
+
+/// A run in progress, as `/stream-status` reports it.
+private func liveStatus(
+    content: String = "", fromLiveRun: Bool = false, lines: [String]? = nil
+) -> StreamStatus {
+    var status = StreamStatus(active: true, done: false, incomplete: false, isTyping: true)
+    status.running = true
+    status.phase = "research"
+    status.content = content
+    status.contentLength = content.count
+    status.fromLiveRun = fromLiveRun
+    status.statusLines = lines
+    return status
+}
+
+private func endedStatus() -> StreamStatus {
+    var status = StreamStatus(active: false, done: true, incomplete: false, isTyping: false)
+    status.running = false
+    return status
+}
+
+final class ChatRunLifecycleTests: XCTestCase {
+
+    // MARK: Stop
+
+    /// Stop reaches the server, which saves the run as a stopped answer; that saved
+    /// conversation is what the screen shows afterwards.
+    func testStopTellsTheServerAndAdoptsTheStoppedTurn() async {
+        await withScripted { fake, model in
+            var stopped = ChatMessage(role: .assistant, content: "Half a draft\n\n_Stopped by you._")
+            stopped.extra["stopped"] = .bool(true)
+            stopped.extra["stoppedBy"] = .string("user")
+            let saved = [question("Draft a plaint"), stopped]
+            fake.scriptHistories([[question("Draft a plaint")], saved])
+            fake.scriptStatuses([liveStatus(content: "Half a draft", fromLiveRun: true)])
+            await model.load()
+            XCTAssertTrue(model.isFollowing)
+
+            model.stop()
+            XCTAssertTrue(model.isStopping)
+            model.stop()   // a second tap while stopping does nothing
+            await settleRun(model)
+
+            XCTAssertEqual(fake.stopCalls, 1)
+            XCTAssertEqual(model.messages, saved)
+            XCTAssertTrue(model.wasStopped)
+            XCTAssertFalse(model.isFollowing)
+            XCTAssertNil(model.live)
+        }
+    }
+
+    /// The server cannot be reached: the partial on screen is kept, marked the way the web marks
+    /// a reader's Stop.
+    func testStopWithTheServerUnreachableKeepsThePartialMarked() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Draft a plaint")]])
+            fake.scriptStatuses([liveStatus(content: "The draft so far", fromLiveRun: true)])
+            await model.load()
+
+            model.stop()
+            await settleRun(model)
+
+            let last = model.messages.last
+            XCTAssertEqual(model.messages.count, 2)
+            XCTAssertEqual(last?.role, .assistant)
+            XCTAssertEqual(last?.content, "The draft so far")
+            XCTAssertEqual(last?.extra["stopped"], .bool(true))
+            XCTAssertEqual(last?.extra["stoppedBy"], .string("user"))
+            XCTAssertEqual(fake.messagesCalls, 1, "nothing to adopt without the server")
+        }
+    }
+
+    /// Stopped before a word was written, with no server: a one-line note answers the question
+    /// rather than leaving it looking unanswered.
+    func testStopBeforeAnyTextLeavesTheStoppedNote() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Draft a plaint")]])
+            fake.scriptStatuses([liveStatus()])
+            await model.load()
+
+            model.stop()
+            await settleRun(model)
+
+            XCTAssertEqual(model.messages.count, 2)
+            XCTAssertEqual(model.messages.last?.content, ChatViewModel.stoppedEmptyNote)
+            XCTAssertEqual(model.messages.last?.extra["stoppedBy"], .string("user"))
+        }
+    }
+
+    /// Stop pressed before the server has stored the new question: its copy of the chat still
+    /// ends with the previous answer, which does not answer this question. The question and
+    /// the partial stay on screen, marked stopped; the server's copy is not adopted.
+    func testStopBeforeTheServerHoldsTheQuestionKeepsTheQuestion() async {
+        await withScripted { fake, model in
+            let earlierAnswer = ChatMessage(role: .assistant, content: "Earlier answer", id: "a0")
+            fake.stopReply = StopReply(
+                success: true, running: false, stopped: nil, savedBy: "stop", error: nil)
+            fake.scriptHistories([
+                [question("Earlier", id: "q0"), earlierAnswer, question("New question", id: "q1")],
+                [question("Earlier", id: "q0"), earlierAnswer],
+            ])
+            fake.scriptStatuses([liveStatus(content: "The draft so far", fromLiveRun: true)])
+            await model.load()
+
+            model.stop()
+            await settleRun(model)
+
+            XCTAssertTrue(
+                model.messages.contains { $0.role == .user && $0.content == "New question" },
+                "the stopped question must not be replaced by the server's older copy")
+            XCTAssertEqual(model.messages.last?.extra["stoppedBy"], .string("user"))
+        }
+    }
+
+    /// A poll still on its way when Stop was pressed must not draw over the stopped turn or add
+    /// the answer a second time.
+    func testALatePollAfterStopDoesNotAppendTwice() async {
+        await withScripted { fake, model in
+            var stopped = ChatMessage(role: .assistant, content: "Partial")
+            stopped.extra["stoppedBy"] = .string("user")
+            fake.scriptHistories([[question("Q")], [question("Q"), stopped]])
+            fake.scriptStatuses([liveStatus(content: "Partial", fromLiveRun: true)])
+            await model.load()
+            await model.becameActive()   // a poll now in flight
+            model.stop()
+            await settleRun(model)
+            let afterStop = model.messages.count
+
+            try? await Task.sleep(for: .milliseconds(80))
+
+            XCTAssertEqual(afterStop, 2)
+            XCTAssertEqual(model.messages.count, afterStop, "the turn is there once")
+            XCTAssertNil(model.live)
+            XCTAssertFalse(model.isStreaming)
+        }
+    }
+
+    // MARK: Following
+
+    /// A first turn: no answer row exists yet, so the status carries no text — but the run is
+    /// live, and the screen follows it to the saved answer.
+    func testAFirstTurnWithTheRunLiveIsFollowed() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([
+                [question("Is the suit barred?")],
+                [question("Is the suit barred?"), savedAnswer("Yes, under Article 58.")],
+            ])
+            fake.scriptStatuses([liveStatus(), endedStatus()])
+            await model.load()
+
+            XCTAssertTrue(model.isFollowing)
+            XCTAssertTrue(model.isStreaming, "the composer stays in its Stop state")
+            XCTAssertNil(model.runIssue)
+            await settleRun(model)
+
+            XCTAssertEqual(model.messages.map(\.content),
+                           ["Is the suit barred?", "Yes, under Article 58."])
+            XCTAssertNil(model.runIssue)
+            XCTAssertFalse(model.wasInterrupted)
+        }
+    }
+
+    /// Until the run writes, the status carries the previous turn's answer, which must never be
+    /// shown as the one being written.
+    func testThePreviousAnswerIsNotShownAsLive() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[
+                question("First", id: "q1"), savedAnswer("Old answer"), question("Second", id: "q2"),
+            ]])
+            fake.scriptStatuses([liveStatus(content: "Old answer", fromLiveRun: false)])
+            await model.load()
+
+            XCTAssertTrue(model.isFollowing)
+            XCTAssertNil(model.live, "the previous answer is not the live one")
+            model.stop()
+            await settleRun(model)
+        }
+    }
+
+    /// The run's own text and its recent tool calls are drawn while it is followed.
+    func testTheLiveTextAndWorkLogAreDrawn() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus(
+                content: "Possession passed", fromLiveRun: true,
+                lines: ["Reading pages 1–4 of Sale Deed", "Thinking",
+                        "Searching the record for: possession"])])
+            await model.load()
+
+            XCTAssertEqual(model.live?.prose, "Possession passed")
+            guard case .group(let round)? = model.progress.workLog.first else {
+                return XCTFail("no log")
+            }
+            XCTAssertEqual(round.steps.map(\.label),
+                           ["Reading pages 1–4 of Sale Deed", "Searching the record for: possession"])
+            XCTAssertEqual(round.steps.map(\.status), [.completed, .inProgress])
+            model.stop()
+            await settleRun(model)
+        }
+    }
+
+    /// Two seconds, then half as long again each time nothing changed, up to ten.
+    func testPollingBacksOff() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")], [question("Q"), savedAnswer("Done.")]])
+            fake.scriptStatuses(Array(repeating: liveStatus(), count: 7) + [endedStatus()])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(clock.waits, [2000, 3000, 4500, 6750, 10000, 10000, 10000])
+            XCTAssertEqual(model.messages.last?.content, "Done.")
+        }
+    }
+
+    /// Something changed: the wait goes back to two seconds.
+    func testAChangeResetsTheBackOff() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")], [question("Q"), savedAnswer("Done.")]])
+            fake.scriptStatuses([
+                liveStatus(), liveStatus(), liveStatus(),
+                liveStatus(content: "Writ", fromLiveRun: true), endedStatus(),
+            ])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(clock.waits, [2000, 3000, 4500, 2000])
+        }
+    }
+
+    /// A run that never ends is watched for 35 minutes, then reported with Retry.
+    func testFollowingGivesUpAfterThirtyFiveMinutes() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus()])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(model.runIssue, LiveRun.failureText("timeout"))
+            XCTAssertFalse(model.isFollowing)
+            let waited = clock.waits.reduce(0, +)
+            XCTAssertGreaterThanOrEqual(waited, LiveRun.watchMaxMs)
+            XCTAssertLessThanOrEqual(waited, LiveRun.watchMaxMs + LiveRun.pollMaxMs)
+        }
+    }
+
+    /// Eight unreadable status answers in a row, and the screen says it lost touch.
+    func testFollowingGivesUpAfterEightFailedReads() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([.success(liveStatus()), .failure(APIError.transport("offline"))])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertEqual(model.runIssue, LiveRun.failureText("lost"))
+            XCTAssertEqual(fake.statusCalls, 1 + LiveRun.maxPollFailures)
+        }
+    }
+
+    /// The run ended without saving an answer: said so, with Retry, which asks the question again.
+    func testARunThatSavedNothingOffersRetry() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus(), endedStatus()])
+            fake.events = [.content(StreamContent.parse("An answer."))]
+            await model.load()
+            await settleRun(model)
+            XCTAssertEqual(model.runIssue, LiveRun.failureText("no-answer"))
+
+            model.retryRun()
+            await settleRun(model)
+            XCTAssertNil(model.runIssue)
+            XCTAssertEqual(fake.sent.last?.map(\.content), ["Q"])
+            XCTAssertEqual(model.messages.last?.content, "An answer.")
+        }
+    }
+
+    /// A run the server marked interrupted is adopted and flagged.
+    func testAnInterruptedRunIsFlaggedWhenItEnds() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            var cut = savedAnswer("Half of it")
+            cut.incomplete = true
+            fake.scriptHistories([[question("Q")], [question("Q"), cut]])
+            fake.scriptStatuses([liveStatus(), endedStatus()])
+            await model.load()
+            await settleRun(model)
+
+            XCTAssertTrue(model.wasInterrupted)
+            XCTAssertEqual(model.messages.last?.content, "Half of it")
+        }
+    }
+
+    // MARK: Refused as busy
+
+    /// A question refused because a run is live keeps its text for the composer, and the screen
+    /// follows that run to its saved answer instead of going idle.
+    func testABusyRefusalFollowsTheLiveRun() async {
+        let clock = SteppedClock()
+        await withScripted(stepped: clock) { fake, model in
+            fake.events = [.busy("Your draft for this chat is still being generated.")]
+            fake.scriptStatuses([liveStatus(content: "Drafting", fromLiveRun: true), endedStatus()])
+            fake.scriptHistories([[question("Earlier"), savedAnswer("The earlier answer.")]])
+            model.send("Another question")
+            await settleRun(model)
+
+            XCTAssertEqual(model.restoredDraft, "Another question")
+            XCTAssertEqual(model.messages.map(\.content), ["Earlier", "The earlier answer."])
+            XCTAssertNil(model.busyNotice, "the run it was waiting for has answered")
+            XCTAssertEqual(fake.statusCalls, 2)
+        }
+    }
+
+    // MARK: Coming back to the foreground
+
+    /// Idle, and a run has started elsewhere: coming back reads the conversation and follows it.
+    func testComingBackFollowsARunStartedElsewhere() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Q"), savedAnswer("A")]])
+            fake.scriptStatuses([endedStatus()])
+            await model.load()
+            XCTAssertFalse(model.isFollowing)
+
+            fake.scriptHistories([[
+                question("Q"), savedAnswer("A"), question("Asked on the web", id: "q2"),
+            ]])
+            fake.scriptStatuses([liveStatus()])
+            await model.becameActive()
+
+            XCTAssertTrue(model.isFollowing)
+            XCTAssertEqual(model.messages.last?.content, "Asked on the web",
+                           "the question the run belongs to is read first")
+            model.stop()
+            await settleRun(model)
+        }
+    }
+
+    /// Already following: coming back polls at once rather than sitting out the back-off.
+    func testComingBackWhileFollowingPollsAtOnce() async {
+        await withScripted { fake, model in
+            fake.stopReply = nil
+            fake.scriptHistories([[question("Q")]])
+            fake.scriptStatuses([liveStatus()])
+            await model.load()
+            XCTAssertEqual(fake.statusCalls, 1)
+
+            await model.becameActive()
+            for _ in 0..<200 where fake.statusCalls < 2 {
+                try? await Task.sleep(for: .milliseconds(5))
+            }
+            XCTAssertEqual(fake.statusCalls, 2, "polled without waiting two seconds")
+            model.stop()
+            await settleRun(model)
         }
     }
 }
