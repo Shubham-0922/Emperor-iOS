@@ -10,6 +10,8 @@ struct CaseLawCollectionView: View {
 
     let category: LibraryCategoryCount
     var query = ""
+    /// Opens on the words inside judgments ("See all" under the home's passages).
+    var inText = false
     @Binding var path: [LibraryRoute]
 
     @State private var model: LibraryCollectionViewModel?
@@ -27,7 +29,7 @@ struct CaseLawCollectionView: View {
         .background(theme.canvas)
         .task {
             guard model == nil else { return }
-            let created = LibraryCollectionViewModel(category: category, query: query, service: session.library)
+            let created = LibraryCollectionViewModel(category: category, query: query, inText: inText, service: session.library)
             model = created
             await created.load()
         }

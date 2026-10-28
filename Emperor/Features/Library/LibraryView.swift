@@ -10,14 +10,20 @@ import SwiftUI
 
 /// Where the Library can go from its home.
 enum LibraryRoute: Hashable {
-    /// A collection, opened with the home's search carried along (as the web keeps `?q=`).
-    case collection(LibraryCategoryCount, query: String = "")
+    /// A collection, opened with the home's search carried along (as the web keeps `?q=`) —
+    /// on the words inside judgments when `inText` (the web's `in=text`).
+    case collection(LibraryCategoryCount, query: String = "", inText: Bool = false)
     case act(id: Int, seed: CatalogueDocument?)
     case document(CatalogueDocument)
 
     /// An Act opens its Act page; everything else the reading room.
     static func open(_ doc: CatalogueDocument) -> LibraryRoute {
         doc.opensAsAct ? .act(id: doc.id, seed: doc) : .document(doc)
+    }
+
+    /// A collection as the home opens it (`LibraryViewModel.opening`, `.passagesOpening`).
+    static func opening(_ opening: LibraryViewModel.CollectionOpening) -> LibraryRoute {
+        .collection(opening.category, query: opening.query, inText: opening.inText)
     }
 }
 
@@ -69,11 +75,11 @@ struct LibraryRouteView: View {
 
     var body: some View {
         switch route {
-        case .collection(let category, let query):
+        case .collection(let category, let query, let inText):
             if category.key == LibraryCollection.bareActs.rawValue {
                 BareActsIndexView(category: category, query: query, path: $path)
             } else if category.key == LibraryCollection.caseLaw.rawValue {
-                CaseLawCollectionView(category: category, query: query, path: $path)
+                CaseLawCollectionView(category: category, query: query, inText: inText, path: $path)
             } else {
                 LibraryCollectionView(category: category, query: query, path: $path)
             }
@@ -108,7 +114,7 @@ struct LibraryHomeBody: View {
                         VStack(alignment: .leading, spacing: 0) {
                             LibraryHero(model: model)
                             LibraryCategoryStrip(categories: model.orderedCategories, active: nil) { category in
-                                path.append(.collection(category))
+                                path.append(.opening(model.opening(category)))
                             }
                             if model.isSearching {
                                 LibrarySearchResultsList(model: model, path: $path)
@@ -346,8 +352,6 @@ private struct LibrarySearchResultsList: View {
     }
 
     private func openCaseLaw() {
-        let category = model.categories.first { $0.key == LibraryCollection.caseLaw.rawValue }
-            ?? LibraryCategoryCount(key: LibraryCollection.caseLaw.rawValue, label: "Case law", count: nil)
-        path.append(.collection(category, query: model.searchedFor))
+        path.append(.opening(model.passagesOpening))
     }
 }

@@ -31,11 +31,12 @@ private func withHome(_ body: @MainActor (FakeLibrary, LibraryViewModel) async -
 
 @MainActor
 private func withCollection(
-    _ key: String, query: String = "", _ body: @MainActor (FakeLibrary, LibraryCollectionViewModel) async -> Void
+    _ key: String, query: String = "", inText: Bool = false,
+    _ body: @MainActor (FakeLibrary, LibraryCollectionViewModel) async -> Void
 ) async {
     let service = FakeLibrary()
     let category = LibraryCategoryCount(key: key, label: LibraryCollectionTheme.theme(for: key).label, count: 100)
-    await body(service, LibraryCollectionViewModel(category: category, query: query, service: service, todayKey: { "2026-10-19" }))
+    await body(service, LibraryCollectionViewModel(category: category, query: query, inText: inText, service: service, todayKey: { "2026-10-19" }))
 }
 
 final class LibraryHomeViewModelTests: XCTestCase {
@@ -149,6 +150,40 @@ final class LibraryHomeViewModelTests: XCTestCase {
             XCTAssertTrue(model.searchUnreachable)
             XCTAssertFalse(model.searchFoundNothing)
             XCTAssertTrue(model.passagesFailed)
+        }
+    }
+
+    /// A collection opened from the home carries the search on screen — from a chip as from a
+    /// "See all" — and "See all" under the passages opens Case law on the words inside.
+    func testACollectionOpenedFromTheHomeCarriesTheSearch() async {
+        await withHome { service, model in
+            service.categories = [.init(key: "case-law", label: "Case law", count: 271_480), .init(key: "bare-acts", label: "Bare acts", count: 10)]
+            await model.load()
+            let acts = model.orderedCategories[0]
+            XCTAssertEqual(model.opening(acts), .init(category: acts, query: "", inText: false), "no search, nothing carried")
+            XCTAssertFalse(model.passagesOpening.inText)
+
+            await model.runSearch("bona fide")
+            XCTAssertEqual(model.opening(acts), .init(category: acts, query: "bona fide", inText: false),
+                           "a chip tapped during a search keeps it")
+            let passages = model.passagesOpening
+            XCTAssertEqual(passages.category.key, "case-law")
+            XCTAssertEqual(passages.category.count, 271_480, "the strip's own row, with its count")
+            XCTAssertEqual(passages.query, "bona fide")
+            XCTAssertTrue(passages.inText)
+
+            model.clearSearch()
+            XCTAssertEqual(model.opening(acts).query, "")
+        }
+    }
+
+    func testThePassagesOpenCaseLawBeforeTheStripHasLoaded() async {
+        await withHome { _, model in
+            await model.runSearch("res judicata")
+            let opening = model.passagesOpening
+            XCTAssertEqual(opening.category.key, "case-law")
+            XCTAssertEqual(opening.category.theme.label, "Case law")
+            XCTAssertTrue(opening.inText)
         }
     }
 
@@ -267,6 +302,34 @@ final class LibraryCollectionViewModelTests: XCTestCase {
             XCTAssertTrue(model.countLine?.hasSuffix("· Delhi High Court") ?? false)
             XCTAssertEqual(model.activeFilters.map(\.label), ["Delhi HC"])
             XCTAssertEqual(model.emptyTitle, "No judgments contain “bona fide”")
+        }
+    }
+
+    /// Opened from the home's passages: straight onto the words inside, ordered by match.
+    func testCaseLawCanOpenOnTheWordsInside() async {
+        await withCollection("case-law", query: "bona fide", inText: true) { service, model in
+            service.searchPages = [LibraryPage(items: [doc(5, "Words v. Inside")], total: 1, page: 1, pageSize: 25)]
+            await model.load()
+            XCTAssertTrue(model.inText)
+            XCTAssertNil(model.filters.sort)
+            XCTAssertEqual(model.currentSort, "")
+            XCTAssertEqual(service.searchCalls.count, 1)
+            XCTAssertEqual(service.searchCalls.first?.query, "bona fide")
+            XCTAssertTrue(service.browseCalls.isEmpty, "names are not searched first")
+            XCTAssertEqual(model.documents.map(\.id), [5])
+            XCTAssertEqual(model.countLine, "1 judgment with “bona fide” in the text")
+        }
+        await withCollection("case-law", inText: true) { service, model in
+            await model.load()
+            XCTAssertFalse(model.inText, "with nothing to search for there are no words inside")
+            XCTAssertEqual(model.filters.sort, "date_desc")
+            XCTAssertTrue(service.searchCalls.isEmpty)
+        }
+        await withCollection("tribunals", query: "spectrum", inText: true) { service, model in
+            await model.load()
+            XCTAssertFalse(model.inText, "only case law searches full text")
+            XCTAssertTrue(service.searchCalls.isEmpty)
+            XCTAssertEqual(service.browseCalls.first?.query, "spectrum")
         }
     }
 
