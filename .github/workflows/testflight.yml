@@ -28,10 +28,17 @@ concurrency:
   group: testflight-${{ github.ref }}
   cancel-in-progress: false
 
+# It reads the code and uploads to Apple; it never writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   testflight:
     name: Archive, sign and upload
     runs-on: macos-15
+    # Only what has landed on main, or a v* release tag, goes to testers. A run started from
+    # any other branch skips at once instead of spending macOS minutes on unreviewed code.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     env:
       # The names given to the profiles in the developer portal; manual signing refers to them.
       APP_PROFILE: Emperor App Store

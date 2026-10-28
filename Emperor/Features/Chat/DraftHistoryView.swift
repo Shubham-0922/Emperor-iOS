@@ -181,10 +181,12 @@ struct DraftReaderView: View {
                     ToolbarItemGroup(placement: .primaryAction) {
                         // A saved draft filed as it is, its annexures and a cover made into
                         // one bundle — as from the web's Filing Assembly.
-                        Button("Assemble filing", systemImage: "books.vertical") {
-                            isAssemblingFiling = true
+                        if draft.canAssembleFiling {
+                            Button("Assemble filing", systemImage: "books.vertical") {
+                                isAssemblingFiling = true
+                            }
+                            .accessibilityIdentifier("draft-assemble-filing")
                         }
-                        .accessibilityIdentifier("draft-assemble-filing")
                         DocumentExportMenu(
                             content: draft.content,
                             isHTML: draft.format == .html,

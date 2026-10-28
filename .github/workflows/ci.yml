@@ -132,8 +132,8 @@ jobs:
     # these do not run on a push: the Linux jobs above cost 1x, catch most of what breaks, and
     # run on everything. This runs when it is asked for.
     #
-    #   Actions -> CI -> Run workflow      (or push a tag)
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    #   Actions -> CI -> Run workflow      (or push a v* release tag; no other tag starts it)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
@@ -303,7 +303,7 @@ jobs:
     needs: [core, syntax]
     # On demand only, as the simulator tests are: this is a macOS job, billed at 10x here. It used
     # to inherit that from `needs: simulator-tests`; with that dependency gone it has to say so.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
