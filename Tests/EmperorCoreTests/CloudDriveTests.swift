@@ -80,7 +80,10 @@ final class CloudDriveServiceTests: XCTestCase {
     func testAConnectAnswerThatIsNotAWebPageIsRefused() async throws {
         let service = await makeService()
         for body in [#"{"success":true}"#, #"{"success":true,"url":"javascript:alert(1)"}"#,
-                     #"{"success":true,"url":"http://example.com/x"}"#] {
+                     #"{"success":true,"url":"http://example.com/x"}"#,
+                     // A web page, but not the drive's own sign-in host.
+                     #"{"success":true,"url":"https://example.com/o/oauth2/v2/auth"}"#,
+                     #"{"success":true,"url":"https://accounts.google.com/o/oauth2/v2/auth"}"#] {
             HTTPStub.always(.json(body))
             do {
                 _ = try await service.connectURL(for: .microsoft)
@@ -89,6 +92,17 @@ final class CloudDriveServiceTests: XCTestCase {
                 guard case .decoding = error else { return XCTFail("\(error)") }
             }
         }
+    }
+
+    /// Each drive's consent page is on its own host, as the platform builds it.
+    func testEachDrivesSignInPageIsOnItsOwnHost() {
+        let microsoft = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=x"
+        XCTAssertNotNil(CloudDriveService.signInPage(microsoft, for: .microsoft))
+        XCTAssertNil(CloudDriveService.signInPage(microsoft, for: .google))
+        XCTAssertNotNil(CloudDriveService.signInPage(
+            " https://ACCOUNTS.google.com/o/oauth2/v2/auth?state=1 ", for: .google))
+        XCTAssertNil(CloudDriveService.signInPage("https://accounts.google.com.evil.test/auth", for: .google))
+        XCTAssertNil(CloudDriveService.signInPage(nil, for: .google))
     }
 
     /// `/cloud/connect` answers a drive that is not set up with a 400 and a sentence.

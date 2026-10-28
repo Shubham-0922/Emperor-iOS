@@ -20,6 +20,15 @@ enum CloudDrive: String, CaseIterable, Codable, Identifiable, Sendable {
         case .microsoft: return "OneDrive"
         }
     }
+
+    /// The host the drive's own consent page is on (`lib/googleOauth.js`, `lib/onedrive.js`):
+    /// the only place a sign-in page for it may be opened.
+    var signInHost: String {
+        switch self {
+        case .google: return "accounts.google.com"
+        case .microsoft: return "login.microsoftonline.com"
+        }
+    }
 }
 
 /// One drive's row of `GET /cloud/connections`.
@@ -180,12 +189,19 @@ struct CloudDriveService: CloudDriveProviding {
             "GET", "/cloud/connect", query: ["provider": drive.rawValue])
         let body = try await client.send(request, as: ConnectBody.self)
         try CaseService.throwIfUnsuccessful(success: body.success ?? (body.url != nil), error: body.error)
-        // Only ever a web page: anything else is not something to hand a browser.
-        guard let raw = body.url?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let url = URL(string: raw), url.scheme?.lowercased() == "https", url.host != nil
-        else {
+        guard let url = Self.signInPage(body.url, for: drive) else {
             throw APIError.decoding("The server sent no sign-in page for \(drive.label).")
         }
+        return url
+    }
+
+    /// The page to open: an `https` page on the drive's own sign-in host, and nothing else — a
+    /// browser opened from here is where the person types their drive password.
+    static func signInPage(_ raw: String?, for drive: CloudDrive) -> URL? {
+        guard let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = URL(string: text), url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased(), host == drive.signInHost
+        else { return nil }
         return url
     }
 

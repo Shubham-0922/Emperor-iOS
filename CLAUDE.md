@@ -91,7 +91,7 @@ as possible into `Sources/EmperorCore/`**, which builds and tests here.
 
 ```bash
 sudo apt install swiftlang     # Swift 6.1.3 on Ubuntu; no iOS SDK, but the core builds
-cd emperor-ios && swift test    # ~2,100 tests
+cd emperor-ios && swift test    # ~3,100 tests
 ```
 
 View models live in the core for this reason — turn state, recovery and error handling are
@@ -131,7 +131,7 @@ that makes no sense against the current source, `rm -rf .build` before investiga
 ## How to work on this repo
 
 - **Put logic in `Sources/EmperorCore/`.** It is Foundation-only — no UIKit, no SwiftUI — so it
-  compiles and tests anywhere, including Linux and CI. `swift test` runs about 2,100 tests in
+  compiles and tests anywhere, including Linux and CI. `swift test` runs about 3,100 tests in
   half a minute. Anything that could plausibly live there should.
 - **A view should hold no logic worth testing.** Everything a screen does other than lay itself
   out — loading, error wording, selection, empty-state rules — belongs in a `@MainActor` view
@@ -333,10 +333,14 @@ Full detail in `README.md`. The short list:
     sent as `""` or `null`. `POST /project-from-case` is idempotent per user and case.
     `POST /project-attach` is the only way a document enters a matter (a copy from My Files;
     uploads into `_projects/…` are refused), and `/project-case-refresh` answers 429 with
-    `retryAfter` inside five minutes of the last ask.
+    `retryAfter` inside five minutes of the last ask — and may itself take 150 s, so it is waited
+    on longer than that. `DELETE /project?confirm=` is read with `URLSearchParams`, where a bare
+    "+" is a space: the name is sent strictly percent-encoded (`ProjectService.strictQuery`).
 34. **`POST /court/lookup` saves nothing and needs a verified sign-in.** It takes the same card
-    `/save-case` does, nested under `card` (`CourtSearchResult.cardFields` builds both), answers
-    honest status codes with a `code`, and caches a record for ten minutes. See `CourtLookup`.
+    `/save-case` does, nested under `card` (`CourtSearchResult.cardFields`, which
+    `lookupCardFields` extends with the bench, stage and next date the lookup reads), answers
+    honest status codes with a `code`, and caches a record for ten minutes. `NOT_FOUND` and
+    `BAD_REQUEST` are final for that card — a new search, never "Try again". See `CourtLookup`.
 35. **The Library is `/library/catalogue/*`** (`lib/library/routes.js`), not the older
     `/library/{categories,browse,file}`. Any signed-in user may read it; every route answers
     `401 auth_required` to a dead token, which this client treats as a sign-out like any other.
@@ -344,7 +348,9 @@ Full detail in `README.md`. The short list:
     (+ `Retry-After`) while it renders and `no_cover` when it never will — only the first is
     worth retrying; `/judgment` says `file_missing` for a row whose text is not on the host and
     `too_large` past 8 MB; a row's `ext` carries the dot (`.pdf`). `/file` answers a JSON 404 for
-    a missing file, so the reading room HEADs first and sniffs the bytes. See `LibraryService`.
+    a missing file, so the reading room HEADs first and sniffs the bytes. `/search` answers
+    `503 search_busy` with `Retry-After` under load; it is asked once more. A shelf's `day` is a
+    number, and a row's `anomalies` are `{kind, …}` objects, not strings. See `LibraryService`.
 36. **`searchMode: "web"` is a request, not a switch.** The server searches on keywords anyway,
     and skips the search on a turn that carries attachments. The web's research Sources reach no
     request; only Web search does, and only from this client (`ResearchSources`).
@@ -356,7 +362,8 @@ Full detail in `README.md`. The short list:
     the *web* app's Settings page. Read `/cloud/connections` again when the in-app Safari view
     closes — that is the only signal. The `/cloud/*` refusals are sentences meant for the person
     (409 not connected or too little access, 404 no such document) that name the web's Settings;
-    `CloudDriveWording` points them at You → Connected services. See `CloudDriveService`.
+    `CloudDriveWording` points them at You → Connected services. A consent page is opened only on
+    the drive's own sign-in host (`CloudDrive.signInHost`). See `CloudDriveService`.
 39. **`POST /download-files` leaves out what it cannot find and still answers 200** — 404 only
     when none is found. Count the zip's entries (`FileDownloadWording.zipEntryCount`) rather than
     trusting the status. `/download-searchable` answers its errors in plain text, and sends a PDF
