@@ -155,8 +155,15 @@ extension LibraryProviding {
 /// The cover widths the server renders are 160, 320 and 640; anything else is `400 bad_width`.
 struct LibraryService: LibraryProviding {
     let client: APIClient
+    /// How a busy search waits before its one retry; injected so tests do not spend seconds
+    /// asleep. Defaulted, so `LibraryService(client:)` is unchanged.
+    var sleep: @Sendable (TimeInterval) async throws -> Void = { seconds in
+        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
 
     static let coverWidths = [160, 320, 640]
+    /// The longest a busy search waits before it is asked again. The server says five seconds.
+    static let busyRetryCeiling: TimeInterval = 5
     /// The reader opens judgments up to this; the server refuses to format past 8 MB anyway.
     static let maxReaderBytes = 4 * 1024 * 1024
     static let shelfLimit = 14
@@ -188,10 +195,28 @@ struct LibraryService: LibraryProviding {
         ])
     }
 
+    /// Body search runs on the server's worker pool, which answers `503 search_busy` (queue full)
+    /// or `search_timeout` with `Retry-After: 5` (`searchPool.js`, `routes.js`). One busy answer
+    /// is asked again once, after the wait it names (at most five seconds); a second is the
+    /// refusal. Without it a busy moment emptied "Inside judgments" on the Library home.
     func search(_ filters: LibraryBrowseFilters) async throws -> LibraryPage {
         var items = filters.queryItems
         items["pageSize"] = String(min(max(filters.pageSize, 1), 50))
-        return try await get("/search", query: items)
+        do {
+            return try await get("/search", query: items)
+        } catch let busy as LibraryCatalogueError where busy.isBusy {
+            // A search the reader has moved on from is not asked again.
+            try Task.checkCancellation()
+            try await sleep(Self.busyRetryDelay(busy))
+            return try await get("/search", query: items)
+        }
+    }
+
+    /// The wait before a busy search's one retry: the server's `Retry-After`, five seconds when
+    /// it names none, never more than `busyRetryCeiling`.
+    static func busyRetryDelay(_ error: LibraryCatalogueError) -> TimeInterval {
+        let named = TimeInterval(error.retryAfter ?? Int(busyRetryCeiling))
+        return min(max(named, 0), busyRetryCeiling)
     }
 
     func shelf(category: String, limit: Int) async throws -> LibraryShelf {
