@@ -205,7 +205,7 @@ still builds and keeps the signed `.ipa` as an artifact and skips only the uploa
 
 `.github/workflows/testflight.yml`, separate from CI so a release does not wait behind the
 simulator suites. It runs on a `v*` tag, a push to a `release/**` branch, or a deliberate run;
-the build number is the workflow's run number.
+the build number is the workflow's run number plus 100.
 
 ```bash
 git tag v0.1.0 && git push github v0.1.0

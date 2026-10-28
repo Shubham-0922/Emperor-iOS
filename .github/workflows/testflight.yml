@@ -118,7 +118,8 @@ jobs:
           xcodegen generate
 
       # Both targets carry the same build number (App Store validation refuses a pair that
-      # differ); the run number keeps every upload unique and increasing.
+      # differ); the run number keeps every upload unique and increasing. The offset clears the
+      # builds already uploaded from the repository's earlier home, whose run numbers started at 1.
       - name: Archive
         run: |
           set -o pipefail
@@ -128,7 +129,7 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/Emperor.xcarchive \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CURRENT_PROJECT_VERSION=$(( ${{ github.run_number }} + 100 )) \
             | xcbeautify --renderer github-actions
 
       - name: Export a signed .ipa
