@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    # release/** branches run testflight.yml only; the code on them has been through CI already.
+    # release/** branches only carry code that has already been through CI on its own branch.
     branches-ignore: ['release/**']
   pull_request:
   # Lets you produce a build without pushing — Actions tab → CI → Run workflow.

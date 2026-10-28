@@ -4,8 +4,8 @@ name: TestFlight
 #
 # Separate from CI on purpose. CI's simulator suites take hours; this needs none of them and
 # runs on the code it is pointed at, so a release does not wait behind (or burn) a full test
-# cycle. Run it from the Actions tab (Run workflow) on `main`, push a `v*` tag, or push a
-# `release/**` branch.
+# cycle. Run it from the Actions tab (Run workflow) or push a `v*` tag. Never on an ordinary
+# push: this is a macOS job, billed at 10x on a private repo, so a build is always asked for.
 #
 # Secrets (Settings → Secrets and variables → Actions), see docs/RELEASING.md:
 #   APPLE_TEAM_ID                       the 10-character team id
@@ -23,7 +23,6 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
-    branches: ['release/**']
 
 concurrency:
   group: testflight-${{ github.ref }}
