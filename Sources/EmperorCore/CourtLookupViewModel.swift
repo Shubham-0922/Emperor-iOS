@@ -202,8 +202,36 @@ final class CourtLookupViewModel {
 
     // MARK: - Loading
 
+    /// Set when the last load failed with an answer that is final for this card — the court has
+    /// nothing under that number, or the card cannot be read (`CourtLookupService.finalAnswer`).
+    private(set) var finalAnswer: CourtLookupService.FinalAnswer?
+
+    /// What the screen says in place of the record when the court's answer is final.
+    struct DeadEnd: Equatable, Sendable {
+        let title: String
+        let message: String
+    }
+
+    /// The failure as a dead end — its heading, its sentence, and only one way on, a new search
+    /// (`searchAgain`), never "Try again", since the same card gets the same answer — when the
+    /// answer is final and there is no record to show. Nil otherwise, and the failure is shown as
+    /// any other, "Try again" and all.
+    var deadEnd: DeadEnd? {
+        guard record == nil, let finalAnswer, let failure = state.failure else { return nil }
+        return DeadEnd(title: finalAnswer.title, message: failure.message)
+    }
+
+    /// A successful answer with no record in it, which the server never sends (it says
+    /// `NOT_FOUND` instead) — worded as one, with the same way on.
+    static let nothingCameBack = DeadEnd(
+        title: "Nothing came back", message: "The court returned no details for this case.")
+
+    /// The way on from a dead end: back to the search.
+    static let searchAgain = "Search again"
+
     func load() async {
         state = .loading
+        finalAnswer = nil
         do {
             let fetched = try await lookup.lookup(card)
             record = fetched
@@ -212,6 +240,7 @@ final class CourtLookupViewModel {
             recent?.remember(card, title: fetched.case.title ?? fetched.displayTitle)
             await findExistingMatter()
         } catch {
+            finalAnswer = CourtLookupService.finalAnswer(error)
             state = .failed(LoadFailure(error))
         }
     }
@@ -328,7 +357,9 @@ final class CourtLookupViewModel {
             lines.append("Orders")
             for order in record.orders {
                 let day = order.date.map(DisplayText.longDay) ?? "Undated"
-                lines.append("- \(day): \(order.displayTitle)\(order.url.map { " \($0)" } ?? "")")
+                // Only a link someone can open; a forum's order marker means nothing pasted.
+                let link = order.pdfURL.map { " \($0.absoluteString)" } ?? ""
+                lines.append("- \(day): \(order.displayTitle)\(link)")
             }
         }
         if !record.hearings.isEmpty {

@@ -69,7 +69,7 @@ struct CourtRecordView: View {
                 let created = CourtLookupViewModel(
                     card: card, lookup: session.courtLookup,
                     tracker: session.courtSearch, projects: session.projects,
-                    cases: session.cases, recent: RecentLookups(store: Preferences()))
+                    cases: session.cases, recent: session.recentLookups)
                 model = created
                 await created.load()
             }
@@ -90,6 +90,23 @@ struct CourtRecordView: View {
 
     @ViewBuilder
     private func content(_ model: CourtLookupViewModel) -> some View {
+        if let end = model.deadEnd {
+            searchAgain(end)
+        } else {
+            recordContent(model)
+        }
+    }
+
+    /// The court's answer is final for this card: the way on is a new search, never "Try again".
+    private func searchAgain(_ end: CourtLookupViewModel.DeadEnd) -> some View {
+        EmptyStateView(end.title, systemImage: "building.columns", message: end.message, tone: .neutral) {
+            Button(CourtLookupViewModel.searchAgain) { dismiss() }
+                .buttonStyle(.primaryAction)
+                .accessibilityIdentifier("fetch-search-again")
+        }
+    }
+
+    private func recordContent(_ model: CourtLookupViewModel) -> some View {
         ListStateView(presentation: model.presentation, retry: { await model.load() }) {
             List {
                 CourtRecordHead(model: model, onKeep: { keep(model) })
@@ -114,13 +131,7 @@ struct CourtRecordView: View {
             .scrollContentBackground(.hidden)
             .background(theme.groupedBackground)
         } empty: {
-            EmptyStateView(
-                "Nothing came back", systemImage: "building.columns",
-                message: "The court returned no details for this case.", tone: .neutral
-            ) {
-                Button("Try again") { Task { await model.load() } }
-                    .buttonStyle(.primaryAction)
-            }
+            searchAgain(CourtLookupViewModel.nothingCameBack)
         }
         .refreshable { await model.load() }
         .onChange(of: model.notice) { _, notice in

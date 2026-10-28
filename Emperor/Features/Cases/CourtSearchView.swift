@@ -54,7 +54,7 @@ struct CourtSearchView: View {
                     service: session.courtSearch,
                     metadata: session.courtMetadata,
                     onSaved: onSaved,
-                    recent: RecentLookups(store: Preferences()))
+                    recent: session.recentLookups)
             }
             .sheet(item: $reading, onDismiss: { model?.refreshRecent() }) { result in
                 CourtRecordView(card: result) { _ in
