@@ -42,7 +42,12 @@ final class DraftHistoryViewModel {
     struct OpenedDraft: Equatable, Identifiable {
         let item: DraftedItem
         let content: String
+        /// The segment it was opened from. Filing applies to a drafted document, never a table,
+        /// as in the conversation's own viewer.
+        var kind: DraftKind = .document
         var id: String { item.id }
+
+        var canAssembleFiling: Bool { kind == .document }
 
         /// How to draw it — read from the content, never taken from the row's `type`.
         ///
@@ -215,7 +220,8 @@ final class DraftHistoryViewModel {
         defer { loadingID = nil }
 
         do {
-            opened = OpenedDraft(item: item, content: try await service.content(id: item.id))
+            opened = OpenedDraft(
+                item: item, content: try await service.content(id: item.id), kind: kind)
         } catch {
             // An empty body is the server's answer for a row that is gone, so this is the
             // ordinary "you deleted the conversation" case, not an exceptional one.

@@ -343,6 +343,9 @@ private struct AccountLifecycle: ViewModifier {
                 if hasAcknowledgedDisclaimer == nil {
                     hasAcknowledgedDisclaimer = Disclaimer.hasAcknowledged(preferences)
                 }
+                // Recent lookups are kept per account now; the one list earlier builds kept for
+                // the whole device named whoever had signed in last. See `RecentLookups`.
+                RecentLookups.dropDeviceWideList(from: preferences)
             }
             // URLs handed to the app, through one handler: the app's own `emperor://` links (the
             // Today widget's tap, chiefly — see `AppLinks`) and shared-conversation links, both the

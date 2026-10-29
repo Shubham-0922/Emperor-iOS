@@ -3,7 +3,8 @@ import SwiftUI
 /// One matter's workspace — the web's Matters page on a phone: where things stand, what is set
 /// up, and the sections behind a row of chips: Ask Emperor, Files, Drafts, Chronology, Court,
 /// Tasks, Fees, People. The newer sections are their own views (`MatterAskSection`,
-/// `MatterDraftsSection`, `ChronologyBuildSheet`, `MatterBannerView`, `MatterDeleteSheet`).
+/// `MatterDraftsSection`, `ChronologyBuildSheet`, `MatterBannerView`, `MatterDeleteSheet`,
+/// `MatterWorkspaceMenu` — Edit details, Archive or Restore, Delete).
 ///
 /// Every rule on this screen lives in `ProjectDetailViewModel`; the view lays it out. Writes are
 /// a sheet each (`MatterWriteSheet`) and every one is followed by a re-read, so a total or a
@@ -23,6 +24,9 @@ struct ProjectDetailView: View {
     let projectID: String
     /// Told when the matter has been deleted from here, so the list behind it can refresh.
     var onDeleted: (() -> Void)?
+    /// Told when the matter's details or status were changed from here (Edit details, Archive,
+    /// Restore), so the list behind it can refresh.
+    var onChanged: (() -> Void)?
 
     @State private var model: ProjectDetailViewModel?
     @State private var writing: MatterWriteSheet.Kind?
@@ -42,8 +46,10 @@ struct ProjectDetailView: View {
     @State private var renameText = ""
     /// The List of Dates & Events sheet, from the Chronology.
     @State private var isExportingChronology = false
-    /// A ledger entry's attached slip, open in the viewer.
+    /// A ledger entry's attached slip, or one of the matter's documents, open in the viewer.
     @State private var openedFile: MatterOpenedFile?
+    /// The matter being edited from the bar's menu (`MatterWorkspaceMenu`).
+    @State private var editing: Project?
 
     var body: some View {
         Group {
@@ -114,10 +120,17 @@ struct ProjectDetailView: View {
             if model.section == .files { await model.loadFiles() }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 addMenu(model)
+                MatterWorkspaceMenu(
+                    model: model,
+                    onEdit: { editing = $0 },
+                    onDelete: { isConfirmingDelete = true },
+                    onChanged: { onChanged?() })
             }
         }
+        .modifier(MatterEditPresenter(
+            model: model, editing: $editing, toast: $toast, onChanged: { onChanged?() }))
         .sheet(item: $writing) { kind in
             MatterWriteSheet(kind: kind, destinations: model.attachDestinations) { draft in
                 await save(draft, on: model)
@@ -776,10 +789,13 @@ struct ProjectDetailView: View {
     }
 
     private func fileRow(_ file: FileNode.StoredFile, _ model: ProjectDetailViewModel) -> some View {
-        MatterDocumentRow(file: file, model: model) { chosen in
-            renameText = chosen.name
-            renamingFile = chosen
-        }
+        MatterDocumentRow(
+            file: file, model: model,
+            onRename: { chosen in
+                renameText = chosen.name
+                renamingFile = chosen
+            },
+            onOpen: { openedFile = MatterOpenedFile(attachment: $0) })
     }
 
     // MARK: - Pieces

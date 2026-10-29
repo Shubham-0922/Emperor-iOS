@@ -61,6 +61,9 @@ let package = Package(
                 // A matter's merged record, its List of Dates & Events and its Overview timeline,
                 // from the platform's `projectRecord.js` — `scripts/generate-matter-record-fixtures.mjs`.
                 .copy("Resources/matter-record"),
+                // The parity packages' golden fixtures, one folder per package, each written by
+                // its own `scripts/generate-*-fixtures.mjs`; read with `parityFixture(_:_:)`.
+                .copy("Resources/parity"),
             ]),
     ]
 )

@@ -1,31 +1,42 @@
 import SwiftUI
 
 /// One of the matter's documents in its Files section: the name, its status while it is still
-/// being read, and — as on the web's matter Files — Rename and Delete, by swipe, long press and
-/// VoiceOver action. Every rule is `ProjectDetailViewModel`'s; the confirmation is the one My
-/// Files uses, worded for the matter (`FileDeletion.init(matterFile:)`).
+/// being read, and — as on the web's matter Files — a tap opens it in the viewer, with Rename and
+/// Delete by swipe, long press and VoiceOver action. Every rule is `ProjectDetailViewModel`'s
+/// (`viewerAttachment(for:)` says where the document is); the confirmation is the one My Files
+/// uses, worded for the matter (`FileDeletion.init(matterFile:)`).
 struct MatterDocumentRow: View {
     @Environment(\.theme) private var theme
     let file: FileNode.StoredFile
     let model: ProjectDetailViewModel
     /// Opens the rename prompt for this document.
     let onRename: (FileNode.StoredFile) -> Void
+    /// Opens the document in the viewer, addressed inside the matter.
+    let onOpen: (ChatAttachment) -> Void
 
     var body: some View {
-        HStack(spacing: Spacing.sm) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(DisplayText.fileName(file.name)).font(.brand(.subheadline))
-                if !file.isReadable, let status = file.status, !status.isEmpty {
-                    Text(status).font(.brand(.caption2)).foregroundStyle(theme.textTertiary)
+        Button {
+            onOpen(model.viewerAttachment(for: file))
+        } label: {
+            HStack(spacing: Spacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(DisplayText.fileName(file.name)).font(.brand(.subheadline))
+                    if !file.isReadable, let status = file.status, !status.isEmpty {
+                        Text(status).font(.brand(.caption2)).foregroundStyle(theme.textTertiary)
+                    }
+                }
+                Spacer(minLength: 0)
+                if model.isBusy(file) {
+                    ProgressView().controlSize(.small)
                 }
             }
-            Spacer(minLength: 0)
-            if model.isBusy(file) {
-                ProgressView().controlSize(.small)
-            }
+            .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .combine)
-        .modifier(MatterDocumentEditing(file: file, model: model, onRename: onRename))
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the document")
+        .modifier(MatterDocumentEditing(
+            file: file, model: model, onRename: onRename,
+            onOpen: { onOpen(model.viewerAttachment(for: file)) }))
     }
 }
 
@@ -36,6 +47,7 @@ private struct MatterDocumentEditing: ViewModifier {
     let file: FileNode.StoredFile
     let model: ProjectDetailViewModel
     let onRename: (FileNode.StoredFile) -> Void
+    let onOpen: () -> Void
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -56,6 +68,12 @@ private struct MatterDocumentEditing: ViewModifier {
                     .tint(theme.accent)
                 }
                 .contextMenu {
+                    // The same actions again, reachable without knowing swipes exist.
+                    Button {
+                        onOpen()
+                    } label: {
+                        Label("Open", systemImage: "doc.text.magnifyingglass")
+                    }
                     Button {
                         onRename(file)
                     } label: {

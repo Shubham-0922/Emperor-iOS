@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Saved analysis runs, newest first — of one tool, or of every tool for `nil`. A row opens its
-/// run; a swipe deletes it.
+/// run; a swipe deletes it, once confirmed — as the web asks before it deletes a run.
 ///
 /// Lives inside a caller's `NavigationStack`: pushed from the hub, or in the tool screen's
 /// History sheet.
@@ -13,6 +13,8 @@ struct AnalysisHistoryView: View {
     let onOpen: (AnalysisRunSummary) -> Void
 
     @State private var model: AnalysisHistoryViewModel?
+    /// The run a swipe asked to delete, waiting for the confirmation.
+    @State private var deleting: AnalysisRunSummary?
 
     var body: some View {
         Group {
@@ -47,7 +49,7 @@ struct AnalysisHistoryView: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task { await model.delete(run.id) }
+                                deleting = run
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -76,6 +78,19 @@ struct AnalysisHistoryView: View {
         }
         .refreshable { await model.load() }
         .modifier(AnalysisHistorySearch(enabled: model.offersSearch, query: $bindable.query))
+        .confirmationDialog(
+            "Delete this run?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            titleVisibility: .visible,
+            presenting: deleting
+        ) { run in
+            Button("Delete", role: .destructive) {
+                Task { await model.delete(run.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { run in
+            Text(run.displayTitle)
+        }
     }
 }
 

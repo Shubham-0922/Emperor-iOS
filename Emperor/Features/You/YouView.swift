@@ -239,7 +239,7 @@ struct YouView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             StatusPill(
-                text: "\(session.currentUser?.planLabel ?? "PRO") plan",
+                text: planPill,
                 tone: .accent,
                 systemImage: "star")
         }
@@ -250,7 +250,7 @@ struct YouView: View {
     }
 
     /// The design's guide card. The tour itself is not built yet — the row is the promise, the
-    /// same stand-in the More tab's case-tool cards are.
+    /// same stand-in the composer's wand and mic are.
     private var demoTourRow: some View {
         Button {
             // A later step: the walkthrough of research, cause lists and citations.
@@ -281,6 +281,12 @@ struct YouView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Start Demo Tour")
         .accessibilityHint("Walkthrough research, cause lists and citations")
+    }
+
+    /// The plan in the account card's pill — never an internal tier or a placeholder name
+    /// (`PlanLabel`).
+    private var planPill: String {
+        PlanLabel.accountPill(session: session.currentUser?.planLabel)
     }
 
     private func displayName(_ user: User) -> String {

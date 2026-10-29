@@ -418,12 +418,18 @@ struct ProjectService: ProjectProviding {
         return try await unwrapProject(try await client.send(request, as: ProjectWriteResponse.self))
     }
 
+    /// How long the court refresh is waited for. The server gives the court up to 150 seconds
+    /// (`REFRESH_TIMEOUT_MS`, `lib/projects/routes.js`) before it answers; giving up sooner shows
+    /// a failure while the server is still finishing — and its five-minute 429 window has started
+    /// all the same, so the person cannot simply try again.
+    static let refreshTimeout: TimeInterval = 170
+
     /// A 429 carries `retryAfter` in seconds; it is worded here, because "Too many requests"
     /// says nothing about the five-minute rule behind it.
     func refreshLinkedCase(projectID: String) async throws {
         var request = try await client.makeRequest(
             "POST", "/project-case-refresh", body: try await signed(["projectId": .string(projectID)]))
-        request.timeoutInterval = 120
+        request.timeoutInterval = Self.refreshTimeout
         let (data, http) = try await client.perform(request)
         let decoded = try? JSONDecoder().decode(ProjectCaseRefreshResponse.self, from: data)
         if http.statusCode == 429 {
@@ -507,12 +513,35 @@ struct ProjectService: ProjectProviding {
 
     /// `DELETE /project`. `confirm` must be the matter's exact stored name — the screen asks for
     /// it to be typed, and refuses locally before this is reached (`deleteMatter(confirmName:)`).
+    /// The query is strictly encoded (`strictQuery`), or a name with a `+` in it never matches.
     func deleteProject(id: String, confirm: String) async throws {
         var request = try await client.makeRequest(
             "DELETE", "/project", query: ["id": id, "confirm": confirm])
+        request.url = Self.strictQuery(request.url)
         request.timeoutInterval = 120
         let response = try await client.send(request, as: WriteResponse.self)
         try CaseService.throwIfUnsuccessful(success: response.success, error: response.error)
+    }
+
+    /// The URL with its query re-encoded so every value arrives exactly as it was given.
+    ///
+    /// `URLComponents` leaves a `+` as it is in a query, and the server reads the query with
+    /// `URLSearchParams`, which turns a `+` into a space — so a matter named "Bhalla+Sons" could
+    /// never be deleted, its name never matching. Everything outside the unreserved ASCII set is
+    /// percent-encoded instead (`+` as `%2B`, `&` as `%26`, a space as `%20`, every non-ASCII
+    /// letter as its UTF-8 bytes), which `URLSearchParams` decodes back to the name as typed.
+    static func strictQuery(_ url: URL?) -> URL? {
+        guard let url, var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = components.queryItems, !items.isEmpty else { return url }
+        let allowed = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        func encode(_ text: String) -> String {
+            text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text
+        }
+        components.percentEncodedQuery = items
+            .map { "\(encode($0.name))=\(encode($0.value ?? ""))" }
+            .joined(separator: "&")
+        return components.url ?? url
     }
 
     // MARK: - Plumbing

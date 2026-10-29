@@ -30,7 +30,7 @@ out of the screens for the stated reason · **n/a** = web-only by nature.
 | Web feature | Web source | iOS status |
 |---|---|---|
 | Streaming chat with status, thinking, plan/work log, citations, artifacts (document/table), follow-ups, usage | `src/tools/ToolWorkspace.jsx`, `src/lib/api.js`, `src/lib/output.js`, `streamManager.js`, `citations.js` | done — `ChatViewModel`, `ChatStreamParser`, `ReasoningTracker`, `AnswerCitations`, `ArtifactView` |
-| Fast / deep-thinking mode, web search on purpose | `src/tools/ToolWorkspace.jsx` | done — `ChatModel`, `webSearch` |
+| Fast / deep-thinking mode, web search on purpose | `src/tools/ToolWorkspace.jsx`, `src/lib/store.js` | done — `ChatModel`, `webSearch`; the mode chosen on Home or Ask becomes the account's starting mode, as the web's toggle sets it (`POST /set-preferred-model`, `FileRouteService`) |
 | Attach documents (Submit Files drawer, My Files picker) | `src/tools/AttachControl.jsx`, `useAttachments.js` | done — `FileLibraryView` picker, scans via `DocumentScannerView` |
 | Prompt enhancer with `{{PLACEHOLDER}}` fill-in fields | `src/lib/usePromptEnhancer.js`, `src/tools/EnhancedPromptFields.jsx` | done — `PromptEnhancerViewModel` (restores the original on the 200-on-failure quirk), `EnhancedPromptSheet` |
 | Edit and re-answer a question | `ToolWorkspace.jsx` | done — `ChatViewModel.edit` |
@@ -95,11 +95,11 @@ out of the screens for the stated reason · **n/a** = web-only by nature.
 | Upload dialog: per-file rows, speed, estimates, closes itself 5 s after a clean batch | `src/components/upload/UploadTray.jsx` | done + built now — `UploadBatch.finishedCleanly`, `UploadAutoClose` |
 | Duplicate check before upload | `/check-duplicates` | done — `DuplicateCheck` |
 | Photos stored as PDF (`storedName`) | `docs/searchable-pdf.md` | done — `StoredUpload` |
-| Open a document: PDF, office preview, searchable text layer, click-to-source citations | `FileViewerModal`, `PdfCitePane`, `/page-words`, `/resolve-file` | done — `SourceDocumentView`, `OfficePreview`, `CitationViews` |
+| Open a document: PDF, office preview, searchable text layer, click-to-source citations | `FileViewerModal`, `PdfCitePane`, `/page-words`, `/resolve-file` | done — `SourceDocumentView`, `OfficePreview`, `CitationViews`; a reference line's document opens at its quoted words (`/resolve-file` via `CitedSourceService`, the words placed from `/page-words` or the PDF's own text and marked by `PDFQuoteHighlighter`), and the line under an answer says whether its quotes were found (`CitationCheck`). A Word document the server cannot convert shows its extracted text (`/file-text`, `ExtractedText`) |
 | Download several files as a zip | `POST /download-files` | built now — Select, "Download N as zip", and a folder's "Download as zip" (`FileDownloadService`); also searchable PDF copies (`GET /download-searchable`) and folder upload (`FolderUploadPlan`) |
 | Cloud import/export (Google Drive, OneDrive) | `/cloud/*`, `MyFilesPage.jsx`, `Settings.jsx` | built now — You → Connected services (`CloudConnectionsViewModel`), Import from Google Drive/OneDrive (`CloudImportSheet`), Save to a drive from a document's menu. The consent flow opens in an in-app Safari view and ends on the web app, so connections are re-read when it closes |
-| Doc tools: OCR, Translate, PDF to DOCX, Split, Merge, Rearrange, Compress PDF, Image to PDF, Compress image | `src/pages/tools/*`, `OCRTranslate.jsx` | done — `PDFToolsView` (on-device), `OCRView` (server) |
-| Library (catalogue, documents, acts) and Fetch Orders | `src/pages/Library.jsx`, `FetchOrders.jsx` | owned by the sibling branch `web-parity-library`; Fetch Orders was already on `web-parity-oct` (`CourtSearchView(purpose: .lookup)`) |
+| Doc tools: OCR, Translate, PDF to DOCX, Split, Merge, Rearrange, Compress PDF, Image to PDF, Compress image | `src/pages/tools/*`, `OCRTranslate.jsx` | done — `PDFToolsView` (on-device), `OCRView` (server; a job's pages, digital and scanned, and the engine's notes are shown — `OCRJob.pageSummary`, `OCRJob.notes`) |
+| Library (catalogue, documents, acts) and Fetch Orders | `src/pages/Library.jsx`, `FetchOrders.jsx` | owned by the sibling branch `web-parity-library`; Fetch Orders was already on `web-parity-oct` (`CourtSearchView(purpose: .lookup)`). A High Court on its own portal (Delhi, Punjab & Haryana, Bombay, Karnataka, Madras, Allahabad) is searched on `/court/hc/dedicated/search`; an eCourts one by its bench (`CourtSearchQuery.searchPath`, CLAUDE.md gotcha 45) |
 
 ## Calendars, auctions, registries
 
@@ -113,7 +113,7 @@ out of the screens for the stated reason · **n/a** = web-only by nature.
 | Auction watchlists | `Liquidations.jsx`, `McaRegistry.jsx` | held back — README, "Built and deliberately held back" |
 | MCA Registry (CIN decoder, companies from notices, gaps) | `src/pages/McaRegistry.jsx` | built now — `McaRegistryView` (the web hides its sidebar row; the page is address-only there) |
 | Limitation Landmine Radar | `src/pages/LimitationRadarPage.jsx`, `POST /limitation-radar` | built now — `LimitationRadarView`, golden-pinned to `features/limitation-radar/audit.js` |
-| Filing Assembly page (`/filing`: annexure registry, paperbook assembler, bundles, checklist) | `src/pages/FilingAssembly.jsx`, `lib/filing/*` | n/a — the web removed its sidebar row (address-only, `Sidebar.jsx:361`); the bundle is rendered server-side for a desktop download. The parts that surface in chat (annexures card, filing-ready package) are built now |
+| Filing Assembly page (`/filing`: annexure registry, paperbook assembler, bundles, checklist) | `src/pages/FilingAssembly.jsx`, `lib/filing/*` | built — `FilingAssemblyScreen` (You → Tools, More's Filing Assembly card): a saved draft's annexures (add from My Files, rename, original or typed copy, verify, reorder), the cover, the checklist, assembly and the bundles. Address-only on the web (`Sidebar.jsx:361`), whose draft menu still offers it: so "Assemble filing" is in a conversation's draft and a saved draft too (`FilingScope`). The parts that surface in chat (annexures card, filing-ready package) are built as well |
 
 ## Account, settings, notifications
 
@@ -126,10 +126,10 @@ out of the screens for the stated reason · **n/a** = web-only by nature.
 | Daily cause-list briefing opt-in, email briefing, test delivery | `Settings.jsx`, `/notif/*` | done — `NotificationSettingsView` |
 | Browser push alerts | `Settings.jsx`, `public/sw.js` | n/a — no push channel to an iPhone; local reminders planned by `NotificationPlanner` instead (gotcha 28) |
 | Active role / change role | `Settings.jsx` | done — `RolePickerView` |
-| Plan and usage meter, plan refusals, "View plans" | `src/components/billing/UsageMeter.jsx`, `UsageLimit.jsx` | done — `PlanUsageSection`, `Refusal`, `WebPlans` |
+| Plan and usage meter, plan refusals, "View plans" | `src/components/billing/UsageMeter.jsx`, `UsageLimit.jsx` | done — `PlanUsageSection`, `Refusal`, `WebPlans`; the meter's rows and binary storage units as the web's (`AccountUsage`, golden-pinned by `generate-usage-meter-fixtures.mjs`), and a plan's name never an internal tier (`PlanLabel`) |
 | Buy / billing checkout (Razorpay) | `Buy.jsx`, `Billing.jsx`, `BillingDashboard.jsx` | built now (Billing page) — plan and standing, payment history, invoices, plans on offer, redeem a coupon that owes nothing (`BillingViewModel`); n/a (purchase) — payments happen on the web |
 | Admin: hub, users, usage, usage costs, feedback, feature requests, integrations, billing admin | `AdminHub.jsx`, `UsersAdmin.jsx`, `Usage.jsx`, `UsageCosts.jsx`, `FeedbackAdmin.jsx`, `FeatureRequestsAdmin.jsx`, `AdminSettings.jsx`, `BillingAdmin.jsx` | n/a — administrator consoles |
-| Landing / scrolling page, maintenance and backend-down pages, 404 | `Maintenance.jsx`, `BackendDown.jsx`, `NotFound.jsx` | n/a — marketing and hosting pages; the app words maintenance itself (`APIError.maintenance`) |
+| Landing / scrolling page, maintenance and backend-down pages, 404 | `Maintenance.jsx`, `BackendDown.jsx`, `NotFound.jsx` | n/a — marketing and hosting pages; the app words maintenance itself (`APIError.maintenance`) and shows the operator's notice on Home (`GET /maintenance`, `MaintenanceNotice`) |
 | App lock, offline copies, Spotlight, widget, Siri | — | iOS-only additions (README) |
 
 ## Pages with no route or no importer (not counted)
@@ -151,4 +151,4 @@ Counts were not re-tallied row by row after the final merge; the statuses in the
   compliance history; auction watchlists.
 - Not applicable, each with its reason above: browser-only shell affordances, the desktop
   canvas editor, browser push, the purchase step of billing, admin consoles, hosting pages,
-  the address-only Filing Assembly page, the sample-only Highlighter page, dead code.
+  the sample-only Highlighter page, dead code.

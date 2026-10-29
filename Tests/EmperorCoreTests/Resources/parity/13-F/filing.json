@@ -1,0 +1,965 @@
+{
+ "forumOptions": [
+  "NCLT",
+  "NCLAT",
+  "High Court",
+  "Supreme Court",
+  "District Court",
+  "Debts Recovery Tribunal (DRT)",
+  "DRAT",
+  "Consumer Commission (NCDRC / State / District)",
+  "Arbitral Tribunal",
+  "Data Protection Board of India",
+  "Competition Commission of India (CCI)",
+  "SAT (Securities Appellate Tribunal)",
+  "Registrar of Companies (RoC)",
+  "Adjudicating Officer"
+ ],
+ "marks": {
+  "parse": [
+   {
+    "input": "P-1",
+    "side": "P",
+    "number": 1
+   },
+   {
+    "input": "p-12",
+    "side": "P",
+    "number": 12
+   },
+   {
+    "input": "R-3",
+    "side": "R",
+    "number": 3
+   },
+   {
+    "input": "A-10",
+    "side": "A",
+    "number": 10
+   },
+   {
+    "input": "P1",
+    "side": "P1",
+    "number": 0
+   },
+   {
+    "input": "",
+    "side": "",
+    "number": 0
+   },
+   {
+    "input": null,
+    "side": "",
+    "number": 0
+   },
+   {
+    "input": "PX-2",
+    "side": "PX",
+    "number": 2
+   },
+   {
+    "input": "P-01",
+    "side": "P",
+    "number": 1
+   },
+   {
+    "input": "Annexure",
+    "side": "Annexure",
+    "number": 0
+   },
+   {
+    "input": "P-1a",
+    "side": "P-1a",
+    "number": 0
+   },
+   {
+    "input": " P-1",
+    "side": " P-1",
+    "number": 0
+   },
+   {
+    "input": "AB-3",
+    "side": "AB",
+    "number": 3
+   },
+   {
+    "input": "R-0",
+    "side": "R",
+    "number": 0
+   },
+   {
+    "input": "P--1",
+    "side": "P--1",
+    "number": 0
+   },
+   {
+    "input": "P-1-2",
+    "side": "P-1-2",
+    "number": 0
+   }
+  ],
+  "compare": [
+   {
+    "a": "P-1",
+    "b": "P-2",
+    "sign": -1
+   },
+   {
+    "a": "P-2",
+    "b": "P-1",
+    "sign": 1
+   },
+   {
+    "a": "P-10",
+    "b": "P-2",
+    "sign": 1
+   },
+   {
+    "a": "R-1",
+    "b": "P-5",
+    "sign": 1
+   },
+   {
+    "a": "P-5",
+    "b": "R-1",
+    "sign": -1
+   },
+   {
+    "a": "P-3",
+    "b": "P-3",
+    "sign": 0
+   },
+   {
+    "a": "p-1",
+    "b": "P-1",
+    "sign": 0
+   },
+   {
+    "a": "X",
+    "b": "P-1",
+    "sign": 1
+   },
+   {
+    "a": "P-1",
+    "b": "X",
+    "sign": -1
+   },
+   {
+    "a": "A-1",
+    "b": "a-2",
+    "sign": -1
+   },
+   {
+    "a": "Annexure",
+    "b": "Annexure",
+    "sign": 0
+   },
+   {
+    "a": "P-01",
+    "b": "P-1",
+    "sign": 0
+   },
+   {
+    "a": "",
+    "b": "P-1",
+    "sign": -1
+   }
+  ],
+  "sort": [
+   {
+    "input": [
+     "P-1",
+     "P-2",
+     "P-3"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2",
+     "P-3"
+    ],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "P-2",
+     "P-1"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-10",
+     "P-9",
+     "P-1"
+    ],
+    "sorted": [
+     "P-1",
+     "P-9",
+     "P-10"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "R-2",
+     "P-1",
+     "R-1",
+     "P-2"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2",
+     "R-1",
+     "R-2"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-1",
+     "p-1",
+     "P-1"
+    ],
+    "sorted": [
+     "P-1",
+     "p-1",
+     "P-1"
+    ],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "p-1",
+     "P-1"
+    ],
+    "sorted": [
+     "p-1",
+     "P-1"
+    ],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "X-1",
+     "Annexure",
+     "P-2"
+    ],
+    "sorted": [
+     "Annexure",
+     "P-2",
+     "X-1"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-1",
+     "R-1",
+     "P-2"
+    ],
+    "sorted": [
+     "P-1",
+     "P-2",
+     "R-1"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [
+     "P-3",
+     "P-01",
+     "P-2"
+    ],
+    "sorted": [
+     "P-01",
+     "P-2",
+     "P-3"
+    ],
+    "inOrder": false
+   },
+   {
+    "input": [],
+    "sorted": [],
+    "inOrder": true
+   },
+   {
+    "input": [
+     "P-1"
+    ],
+    "sorted": [
+     "P-1"
+    ],
+    "inOrder": true
+   }
+  ]
+ },
+ "forums": [
+  {
+   "input": "NCLT",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "NCLAT",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "High Court",
+   "normalized": "High Court"
+  },
+  {
+   "input": "Supreme Court",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "District Court",
+   "normalized": null
+  },
+  {
+   "input": "Debts Recovery Tribunal (DRT)",
+   "normalized": null
+  },
+  {
+   "input": "DRAT",
+   "normalized": null
+  },
+  {
+   "input": "Consumer Commission (NCDRC / State / District)",
+   "normalized": null
+  },
+  {
+   "input": "Arbitral Tribunal",
+   "normalized": null
+  },
+  {
+   "input": "Data Protection Board of India",
+   "normalized": null
+  },
+  {
+   "input": "Competition Commission of India (CCI)",
+   "normalized": null
+  },
+  {
+   "input": "SAT (Securities Appellate Tribunal)",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "Registrar of Companies (RoC)",
+   "normalized": null
+  },
+  {
+   "input": "Adjudicating Officer",
+   "normalized": null
+  },
+  {
+   "input": "nclt",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "NCLAT",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": " hc ",
+   "normalized": "High Court"
+  },
+  {
+   "input": "SC",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "sc ",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "Hc",
+   "normalized": "High Court"
+  },
+  {
+   "input": "s.c.",
+   "normalized": null
+  },
+  {
+   "input": "National Company Law Tribunal",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "National Company Law Tribunal, Mumbai Bench",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "National Company Law Tribunal Mumbai",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "National Company Law Appellate Tribunal",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "High Court of Delhi",
+   "normalized": "High Court"
+  },
+  {
+   "input": "IN THE HIGH COURT OF JUDICATURE AT BOMBAY",
+   "normalized": "High Court"
+  },
+  {
+   "input": "Supreme Court of India",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "supreme",
+   "normalized": "Supreme Court"
+  },
+  {
+   "input": "Debts Recovery Appellate Tribunal",
+   "normalized": "NCLAT"
+  },
+  {
+   "input": "Company Law Tribunal ",
+   "normalized": "NCLT"
+  },
+  {
+   "input": "",
+   "normalized": null
+  },
+  {
+   "input": "   ",
+   "normalized": null
+  },
+  {
+   "input": null,
+   "normalized": null
+  },
+  {
+   "input": "DRT",
+   "normalized": null
+  }
+ ],
+ "errorLists": [
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     "cover.forum is required"
+    ],
+    "warnings": []
+   },
+   "output": [
+    "cover.forum is required"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     "P-1: source file missing",
+     "P-2: append treatment needs a PDF source"
+    ]
+   },
+   "output": [
+    "P-1: source file missing",
+    "P-2: append treatment needs a PDF source"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "error": "internal error: boom"
+   },
+   "output": [
+    "internal error: boom"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": null,
+    "error": "nothing to assemble"
+   },
+   "output": [
+    "nothing to assemble"
+   ]
+  },
+  {
+   "input": {
+    "success": false
+   },
+   "output": []
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": []
+   },
+   "output": []
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     "a",
+     {
+      "message": "b"
+     },
+     {
+      "error": "c"
+     },
+     {
+      "code": "X"
+     },
+     ""
+    ]
+   },
+   "output": [
+    "a",
+    "b",
+    "c",
+    "{\"code\":\"X\"}"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     {
+      "message": ""
+     },
+     {
+      "code": "E1",
+      "detail": "d"
+     },
+     null,
+     false,
+     5
+    ]
+   },
+   "output": [
+    "{\"message\":\"\"}",
+    "{\"code\":\"E1\",\"detail\":\"d\"}",
+    "null",
+    "false",
+    "5"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "error": {
+     "message": "object error"
+    }
+   },
+   "output": [
+    "object error"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": "single string"
+   },
+   "output": [
+    "single string"
+   ]
+  },
+  {
+   "input": {
+    "success": false,
+    "errors": [
+     {
+      "message": "path a/b"
+     },
+     {
+      "mark": "P-1",
+      "reason": "missing"
+     }
+    ]
+   },
+   "output": [
+    "path a/b",
+    "{\"mark\":\"P-1\",\"reason\":\"missing\"}"
+   ]
+  }
+ ],
+ "covers": [
+  {
+   "html": "<p style=\"text-align:center\"><strong>IN THE NATIONAL COMPANY LAW TRIBUNAL</strong></p><p>MUMBAI BENCH</p><p>C.P. (IB) No. 123 of 2026</p><p>IN THE MATTER OF:</p><p>ABC Steel Pvt. Ltd. …Petitioner</p><p>versus</p><p>XYZ Traders Ltd. …Respondent</p>",
+   "cover": {
+    "forum": "NCLT",
+    "caseType": "C.P. (IB)",
+    "caseNumber": "C.P. (IB) No. 123 of 2026",
+    "parties": "Petitioner versus XYZ Traders Ltd.",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<h2>BEFORE THE NATIONAL COMPANY LAW APPELLATE TRIBUNAL, NEW DELHI</h2><p>IN THE NATIONAL COMPANY LAW APPELLATE TRIBUNAL</p><p>Company Appeal (AT) (Insolvency) No. 45 of 2025</p><p>Rajesh Kumar vs. State Bank of India</p>",
+   "cover": {
+    "forum": "NCLAT",
+    "caseType": "ompany Appeal (AT) (Insolvency)",
+    "caseNumber": "ompany Appeal (AT) (Insolvency) No. 45 of 2025",
+    "parties": "E TRIBUNAL Company Appeal (AT) (Insolvency) No. 45 of 2025 Rajesh Kumar versus State Bank of India",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE HIGH COURT OF DELHI AT NEW DELHI</p><p>W.P.(C) 1234/2024</p><p>Anil Kumar Goel v. Union of India</p>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "Anil Kumar Goel versus Union of India",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE HIGH COURT OF DELHI AT NEW DELHI</p><p>W.P.(C) No. 1234/2024</p><p>Anil Kumar Goel v. Union of India</p>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "W.P.(C)",
+    "caseNumber": "W.P.(C) No. 1234/2024",
+    "parties": "Anil Kumar Goel versus Union of India",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE SUPREME COURT OF INDIA</p><p>CIVIL APPELLATE JURISDICTION</p><p>SLP (C) No. 9876 of 2025</p><p>Union of India versus M/s Popular Construction Co.</p>",
+   "cover": {
+    "forum": "Supreme Court",
+    "caseType": "SLP (C)",
+    "caseNumber": "SLP (C) No. 9876 of 2025",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE Data Protection Board of India</p><p>Complaint No. 12 of 2026</p><p>Priya Sharma versus Acme Fintech Pvt. Ltd.</p>",
+   "cover": {
+    "forum": "Data Protection Board of India",
+    "caseType": "ia Complaint",
+    "caseNumber": "ia Complaint No. 12 of 2026",
+    "parties": "HE Data Protection Board of India Complaint No. 12 of 2026 Priya Sharma versus Acme Fintech Pvt. Ltd.",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>in the high court of judicature at bombay</p><p>Writ Petition No. 55 of 2023</p>",
+   "cover": {
+    "forum": "High Court",
+    "caseType": "cature at bombay Writ Petition",
+    "caseNumber": "cature at bombay Writ Petition No. 55 of 2023",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE DEBTS RECOVERY TRIBUNAL-I, CHENNAI</p><p>O.A. No. 77 of 2022</p><p>Canara Bank v. Ravi Enterprises</p>",
+   "cover": {
+    "forum": "DEBTS RECOVERY TRIBUNAL",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "THE DEBTS RECOVERY TRIBUNAL-I, CHENNAI O.A. No. 77 of 2022 Canara Bank versus Ravi Enterprises",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE COURT OF THE DISTRICT JUDGE, SAKET</p><p>CS No. 301/2021</p><p>Mehta &amp; Sons versus Kapoor Textiles</p>",
+   "cover": {
+    "forum": "",
+    "caseType": "CS",
+    "caseNumber": "CS No. 301/2021",
+    "parties": "Mehta & Sons versus Kapoor Textiles",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE STATE CONSUMER DISPUTES REDRESSAL COMMISSION</p><p>Consumer Complaint No. 14 of 2024</p><p>Ramesh Gupta Vs Builder Ltd</p>",
+   "cover": {
+    "forum": "STATE CONSUMER DISPUTES REDRESSAL COMMISSION",
+    "caseType": "Complaint",
+    "caseNumber": "Complaint No. 14 of 2024",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE NATIONAL COMPANY LAW TRIBUNAL, NEW DELHI BENCH</p><p>I.A. No. 3 of 2026 in C.P. (IB) No. 123 of 2026</p>",
+   "cover": {
+    "forum": "NCLT",
+    "caseType": "I.A.",
+    "caseNumber": "I.A. No. 3 of 2026",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<div>IN&nbsp;THE&nbsp;HIGH&nbsp;COURT&nbsp;OF&nbsp;KARNATAKA</div><div>Criminal Petition No. 5512 of 2025</div><div>State of Karnataka &lt;Complainant&gt; versus Suresh</div>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "Petition",
+    "caseNumber": "Petition No. 5512 of 2025",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>MEMORANDUM OF APPEAL</p><p>Appeal No. XII of 2019</p><p>Before the Appellate Authority</p>",
+   "cover": {
+    "forum": "",
+    "caseType": "APPEAL Appeal",
+    "caseNumber": "APPEAL Appeal No. XII of 2019",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE ARBITRAL TRIBUNAL</p><p>Application No. : 4 / 2026</p>",
+   "cover": {
+    "forum": "ARBITRAL TRIBUNAL",
+    "caseType": "Application",
+    "caseNumber": "Application No. : 4 / 2026",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>Synopsis and list of dates for the petitioner.</p>",
+   "cover": {
+    "forum": "",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "",
+   "cover": {
+    "forum": "",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE HIGH COURT OF PUNJAB AND HARYANA AT CHANDIGARH</p><p>CWP-1234-2024</p><p>Harjit Singh   versus   State of Punjab and others</p>",
+   "cover": {
+    "forum": "HIGH COURT",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "GH COURT OF PUNJAB AND HARYANA AT CHANDIGARH CWP-1234-2024 Harjit Singh versus State of Punjab and others",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE COMPANY LAW TRIBUNAL</p><p>Petition No. 9 of 2020</p>",
+   "cover": {
+    "forum": "NCLT",
+    "caseType": "OMPANY LAW TRIBUNAL Petition",
+    "caseNumber": "OMPANY LAW TRIBUNAL Petition No. 9 of 2020",
+    "parties": "",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE SECURITIES APPELLATE TRIBUNAL, MUMBAI</p><p>Appeal No. 201 of 2025</p><p>Karvy Ltd. v. SEBI</p>",
+   "cover": {
+    "forum": "SECURITIES APPELLATE TRIBUNAL",
+    "caseType": "I Appeal",
+    "caseNumber": "I Appeal No. 201 of 2025",
+    "parties": "SECURITIES APPELLATE TRIBUNAL, MUMBAI Appeal No. 201 of 2025 Karvy Ltd. versus SEBI",
+    "filingType": ""
+   }
+  },
+  {
+   "html": "<p>IN THE SUPREME COURT OF INDIA</p><p>Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet. </p><p>Civil Appeal No. 1 of 2026</p>",
+   "cover": {
+    "forum": "Supreme Court",
+    "caseType": "",
+    "caseNumber": "",
+    "parties": "",
+    "filingType": ""
+   }
+  }
+ ],
+ "seeds": [
+  {
+   "attachedFiles": [
+    {
+     "name": "Plaint.pdf",
+     "folderName": "Bakshi"
+    },
+    {
+     "name": "Reply.pdf",
+     "folderName": "Bakshi"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/Bakshi/Plaint.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "Reply.pdf",
+     "folderName": "Bakshi"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "EVIDENCE_LIST.pdf",
+     "folderName": "Vijay Kumar Goel"
+    },
+    {
+     "name": "EVIDENCE_LIST.pdf",
+     "folderName": "Anil Kumar Goel"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/Vijay Kumar Goel/EVIDENCE_LIST.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "EVIDENCE_LIST.pdf",
+     "folderName": "Anil Kumar Goel"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Order.pdf"
+    },
+    {
+     "name": "Notice.pdf",
+     "folderName": ""
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/Some Folder/Order.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "Notice.pdf",
+     "folderName": ""
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Order.pdf",
+     "folderName": "Orders/2026"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "Orders/2026/Order.pdf"
+    }
+   ],
+   "seed": []
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Order.pdf",
+     "folderName": "Orders"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": "/storage/1/OldOrders/Order.pdf"
+    }
+   ],
+   "seed": [
+    {
+     "name": "Order.pdf",
+     "folderName": "Orders"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "",
+     "folderName": "X"
+    },
+    {
+     "name": "A.pdf",
+     "folderName": "X"
+    }
+   ],
+   "annexures": [],
+   "seed": [
+    {
+     "name": "A.pdf",
+     "folderName": "X"
+    }
+   ]
+  },
+  {
+   "attachedFiles": [],
+   "annexures": [
+    {
+     "source_file_path": "/a/b.pdf"
+    }
+   ],
+   "seed": []
+  },
+  {
+   "attachedFiles": [
+    {
+     "name": "Plaint.pdf",
+     "folderName": "Bakshi"
+    }
+   ],
+   "annexures": [
+    {
+     "source_file_path": null
+    }
+   ],
+   "seed": [
+    {
+     "name": "Plaint.pdf",
+     "folderName": "Bakshi"
+    }
+   ]
+  }
+ ],
+ "mentions": [
+  {
+   "input": "Annexure P-2: True copy of the order <@Final_Appeal.pdf:P-2:41-45> is filed.",
+   "output": "Annexure P-2: True copy of the order  is filed."
+  },
+  {
+   "input": "See <@Board Resolution.pdf:P-1> and <@Notice.pdf:R-3:7>.",
+   "output": "See  and ."
+  },
+  {
+   "input": "No mention here.",
+   "output": "No mention here."
+  },
+  {
+   "input": "<@bad:P2> stays, <@x.pdf:P-1:> stays, <@:P-1> stays",
+   "output": "<@bad:P2> stays, <@x.pdf:P-1:> stays, <@:P-1> stays"
+  },
+  {
+   "input": "<@a.pdf:AB-12:1-2><@b.pdf:p-3>",
+   "output": ""
+  },
+  {
+   "input": "",
+   "output": ""
+  }
+ ]
+}

@@ -16,6 +16,10 @@ import WebKit
 /// itself into editing, with a formatting bar above the keyboard, and Done folds what was typed
 /// back into the conversation and stores it (`DraftEditViewModel`). The outline lists the
 /// draft's headings and jumps to each.
+///
+/// A drafted document in a stored conversation can also be filed from here, as from the web's
+/// draft menu: "Assemble filing" opens Filing Assembly on this draft, its conversation's
+/// annexures and the files the conversation carried (`FilingAssemblyScreen(scope: .chat)`).
 struct ArtifactDetailView: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
@@ -23,6 +27,8 @@ struct ArtifactDetailView: View {
     /// The conversation the draft was written in, which is what its annexures are kept under.
     /// Without one — a draft opened from history — there is no filing-ready package to offer.
     var chatID: String?
+    /// The files the conversation has carried, offered as annexures when the draft is filed.
+    var filingAttachments: [ChatAttachment]
     @Environment(\.dismiss) private var dismiss
 
     @State private var showsCitations = true
@@ -31,6 +37,7 @@ struct ArtifactDetailView: View {
     @State private var editor: DraftEditViewModel
     @State private var bridge: DraftWebBridge
     @State private var showsOutline = false
+    @State private var filing: FilingChatContext?
     private let preferences = Preferences()
 
     /// - Parameters:
@@ -42,10 +49,12 @@ struct ArtifactDetailView: View {
         artifact: StreamArtifact,
         chatID: String? = nil,
         editTarget: DraftEditTarget? = nil,
-        conversation: (any DraftEditCommitting)? = nil
+        conversation: (any DraftEditCommitting)? = nil,
+        filingAttachments: [ChatAttachment] = []
     ) {
         self.artifact = artifact
         self.chatID = chatID
+        self.filingAttachments = filingAttachments
         _editor = State(initialValue: DraftEditViewModel(
             artifact: artifact, target: editTarget, conversation: conversation))
         _bridge = State(initialValue: DraftWebBridge())
@@ -91,6 +100,9 @@ struct ArtifactDetailView: View {
             }
             .sheet(isPresented: $showsOutline) {
                 DraftOutlineSheet(outline: editor.outline) { jump(to: $0) }
+            }
+            .sheet(item: $filing) { context in
+                FilingAssemblyScreen(scope: .chat(context))
             }
             .filingPackageStatus(packageExport, title: artifact.title)
             .onAppear {
@@ -199,6 +211,12 @@ struct ArtifactDetailView: View {
             .accessibilityLabel("Edit")
             .accessibilityHint("Edits this draft in place")
         }
+        if canAssembleFiling {
+            Button("Assemble filing", systemImage: "books.vertical") {
+                filing = filingContext()
+            }
+            .accessibilityIdentifier("artifact-assemble-filing")
+        }
         ArtifactFeedbackButton(artifact: artifact, chatID: chatID)
         // Was a share of the raw body, which handed over markup rather than a document. A
         // drafted pleading is something an advocate files — as it now reads, edits and all.
@@ -213,6 +231,19 @@ struct ArtifactDetailView: View {
 }
 
 extension ArtifactDetailView {
+    /// Filing applies to a drafted document in a stored conversation, not a table.
+    fileprivate var canAssembleFiling: Bool {
+        artifact.kind == .canvas && !(chatID ?? "").isEmpty
+    }
+
+    /// The draft as it now reads, edits and all, with its conversation's files.
+    fileprivate func filingContext() -> FilingChatContext? {
+        var current = artifact
+        current.body = editor.body
+        current.format = editor.format
+        return FilingChatScope.context(for: current, chatID: chatID, attachments: filingAttachments)
+    }
+
     /// Reads the draft's annexures, so the download menu knows whether to offer the package.
     /// Drafts only: a table is not filed.
     fileprivate func loadAnnexures() async {

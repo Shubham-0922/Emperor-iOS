@@ -596,6 +596,34 @@ final class ProjectDetailViewModel {
         await write { _ = try await service.patch(projectID: projectID, fields: [key: .string(value)]) }
     }
 
+    // MARK: - Archive
+
+    /// Whether the matter is archived — the workspace's menu then offers Restore, not Archive.
+    var isArchived: Bool { project?.isArchived ?? false }
+
+    /// The menu's word for the next step: "Archive", or "Restore" for an archived matter.
+    var archiveActionTitle: String { isArchived ? "Restore" : "Archive" }
+
+    /// Archives the matter, or restores it, as the web's matter menu does: `/project-patch` with
+    /// `status` alone. Restoring lands on Active — the status it had before it was archived is not
+    /// kept, on the web or here. What happened is said in `notice`, in the web's words.
+    @discardableResult
+    func setArchived(_ archived: Bool) async -> Bool {
+        guard let project else { return false }
+        let name = project.displayName
+        notice = nil
+        let ok = await write {
+            _ = try await service.patch(
+                projectID: projectID, fields: ["status": .string(archived ? "archived" : "active")])
+        }
+        if ok {
+            notice = archived
+                ? "Archived “\(name)” — it is under Status: Archived."
+                : "“\(name)” is active again."
+        }
+        return ok
+    }
+
     /// Copies documents from My Files into the matter, then lists the matter's files again. The
     /// report says what happened to each, because a skip is silent otherwise.
     @discardableResult
@@ -608,7 +636,16 @@ final class ProjectDetailViewModel {
         return ok
     }
 
-    // MARK: - The matter's documents: rename and delete
+    // MARK: - The matter's documents: open, rename and delete
+
+    /// A matter's document as the viewer opens it: its name and the folder the server listed it
+    /// in, relative to the user's root (`_projects/<id>/Pleadings`) — the same address a turn
+    /// attaches it by (`MatterFile`), so a document of the same name in My Files or in another
+    /// matter is never the one shown. A file listed with no folder is at the matter's root.
+    func viewerAttachment(for file: FileNode.StoredFile) -> ChatAttachment {
+        MatterFile.flatten([.file(file)], projectID: projectID).first?.attachment
+            ?? ChatAttachment(name: file.name, folderName: MatterFile.root(projectID: projectID))
+    }
 
     /// Whether a matter's document can be renamed and deleted from here.
     var offersFileEditing: Bool { fileManager != nil }

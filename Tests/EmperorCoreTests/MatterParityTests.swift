@@ -25,6 +25,8 @@ private final class FakeWorkspace: ProjectProviding, @unchecked Sendable {
     var failingSaves: Set<Int> = []
     var banner: Data? = Data([0xFF, 0xD8, 0xFF])
     var deleteError: Error?
+    var patchError: Error?
+    private(set) var patches: [[String: JSONValue]] = []
 
     private(set) var loads = 0
     private(set) var extracted: [[ChatAttachment]?] = []
@@ -58,6 +60,15 @@ private final class FakeWorkspace: ProjectProviding, @unchecked Sendable {
     func deleteProject(id: String, confirm: String) async throws {
         deletes.append((id, confirm))
         if let deleteError { throw deleteError }
+    }
+    /// Applies a `status` to the matter the next read returns, as the server would.
+    func patch(projectID: String, fields: [String: JSONValue]) async throws -> Project {
+        patches.append(fields)
+        if let patchError { throw patchError }
+        guard var current = detail else { throw APIError.server(status: 404, message: ProjectService.projectGoneMessage) }
+        if case .string(let status)? = fields["status"] { current.project.status = status }
+        detail = current
+        return current.project
     }
 }
 
@@ -713,6 +724,102 @@ final class MatterDeleteTests: XCTestCase {
     }
 }
 
+// MARK: - The workspace's menu: archive and restore
+
+final class MatterArchiveTests: XCTestCase {
+
+    func testArchivingSendsTheStatusAloneAndSaysWhereTheMatterWent() async {
+        await withWorkspace { fake, model in
+            await model.load()
+            XCTAssertFalse(model.isArchived)
+            XCTAssertEqual(model.archiveActionTitle, "Archive")
+
+            let done = await model.setArchived(true)
+            XCTAssertTrue(done)
+            XCTAssertEqual(fake.patches, [["status": .string("archived")]])
+            XCTAssertTrue(model.isArchived, "the matter is read again after the write")
+            XCTAssertEqual(model.archiveActionTitle, "Restore")
+            XCTAssertEqual(model.notice, "Archived “Helios v. Northgrid” — it is under Status: Archived.")
+            XCTAssertNil(model.writeError)
+        }
+    }
+
+    /// The status before archiving is not kept anywhere, so Restore always means Active.
+    func testRestoringLandsOnActive() async {
+        await withWorkspace { fake, model in
+            var archived = matter()
+            archived.status = "archived"
+            fake.detail = detail(archived)
+            await model.load()
+            XCTAssertEqual(model.archiveActionTitle, "Restore")
+
+            let done = await model.setArchived(false)
+            XCTAssertTrue(done)
+            XCTAssertEqual(fake.patches, [["status": .string("active")]])
+            XCTAssertFalse(model.isArchived)
+            XCTAssertEqual(model.notice, "“Helios v. Northgrid” is active again.")
+        }
+    }
+
+    func testARefusedArchiveIsShownAndNothingIsSaidToHaveHappened() async {
+        await withWorkspace { fake, model in
+            await model.load()
+            fake.patchError = APIError.server(status: 400, message: "status must be one of active, on_hold, disposed, archived")
+            let done = await model.setArchived(true)
+            XCTAssertFalse(done)
+            XCTAssertNil(model.notice)
+            XCTAssertNotNil(model.writeError)
+            XCTAssertFalse(model.isArchived)
+        }
+    }
+
+    func testNothingIsSentBeforeTheMatterHasLoaded() async {
+        await withWorkspace { fake, model in
+            let done = await model.setArchived(true)
+            XCTAssertFalse(done)
+            XCTAssertTrue(fake.patches.isEmpty)
+        }
+    }
+}
+
+// MARK: - Opening a matter's document
+
+final class MatterDocumentOpenTests: XCTestCase {
+
+    /// Addressed by the folder inside the matter, never by name alone — a document of the same
+    /// name in My Files is a different document.
+    func testADocumentOpensFromItsFolderInsideTheMatter() async {
+        await withWorkspace { _, model in
+            let filed = model.viewerAttachment(for: readyFile("_projects/prj_1/Pleadings/Plaint.pdf"))
+            XCTAssertEqual(filed, ChatAttachment(name: "Plaint.pdf", folderName: "_projects/prj_1/Pleadings"))
+
+            let nested = model.viewerAttachment(for: readyFile("_projects/prj_1/Orders/2026/Order 1.pdf"))
+            XCTAssertEqual(nested, ChatAttachment(name: "Order 1.pdf", folderName: "_projects/prj_1/Orders/2026"))
+        }
+    }
+
+    func testALooseDocumentOpensFromTheMattersRoot() async {
+        await withWorkspace { _, model in
+            let loose = model.viewerAttachment(for: readyFile("_projects/prj_1/Note.pdf"))
+            XCTAssertEqual(loose, ChatAttachment(name: "Note.pdf", folderName: "_projects/prj_1"))
+
+            let unplaced = model.viewerAttachment(
+                for: FileNode.StoredFile(name: "Bare.pdf", path: "", status: "ready"))
+            XCTAssertEqual(unplaced, ChatAttachment(name: "Bare.pdf", folderName: "_projects/prj_1"))
+        }
+    }
+
+    /// The same address the matter's conversations attach the document by.
+    func testTheViewerAndATurnNameTheSameDocument() async {
+        await withWorkspace { fake, model in
+            fake.tree = [folder("_projects/prj_1/Pleadings", [.file(readyFile("_projects/prj_1/Pleadings/Plaint.pdf"))])]
+            await model.loadFiles()
+            guard let file = model.allFiles.first else { return XCTFail("the matter's file was not listed") }
+            XCTAssertEqual(model.viewerAttachment(for: file), model.readyFiles.first?.attachment)
+        }
+    }
+}
+
 // MARK: - The wire
 
 final class MatterParityWireTests: XCTestCase {
@@ -825,6 +932,52 @@ final class MatterParityWireTests: XCTestCase {
             try await service.deleteProject(id: "prj_1", confirm: "x")
             XCTFail("expected a refusal")
         } catch {}
+    }
+
+    /// The server reads the query with `URLSearchParams`, which turns a bare `+` into a space —
+    /// so a `+` left as it is meant a matter named "Bhalla+Sons" could never be deleted.
+    func testDeletingAMatterPercentEncodesAPlusInItsName() async throws {
+        let service = ProjectService(client: await client())
+        HTTPStub.always(.json(#"{"success":true}"#))
+        try await service.deleteProject(id: "prj_1", confirm: "Bhalla+Sons & Co = 1")
+
+        let request = try XCTUnwrap(HTTPStub.lastRequest)
+        let url = try XCTUnwrap(request.url)
+        let raw = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery)
+        XCTAssertTrue(raw.contains("confirm=Bhalla%2BSons%20%26%20Co%20%3D%201"), raw)
+        XCTAssertFalse(raw.contains("+"), raw)
+        XCTAssertTrue(raw.contains("id=prj_1"), raw)
+        XCTAssertTrue(raw.contains("userId=42"), raw)
+        XCTAssertEqual(query(request), ["id": "prj_1", "confirm": "Bhalla+Sons & Co = 1", "userId": "42"])
+    }
+
+    /// A name in another script travels as its UTF-8 bytes and decodes back unchanged.
+    func testDeletingAMatterKeepsANonLatinNameExact() async throws {
+        let service = ProjectService(client: await client())
+        HTTPStub.always(.json(#"{"success":true}"#))
+        try await service.deleteProject(id: "prj_1", confirm: "भल्ला बनाम राज्य")
+        let request = try XCTUnwrap(HTTPStub.lastRequest)
+        let raw = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.percentEncodedQuery } ?? ""
+        XCTAssertTrue(raw.contains("confirm=%E0%A4%AD"), raw)
+        XCTAssertEqual(query(request)["confirm"], "भल्ला बनाम राज्य")
+    }
+
+    func testTheStrictQueryLeavesAURLWithNoQueryAlone() throws {
+        let url = try XCTUnwrap(URL(string: "https://example.test/api/project"))
+        XCTAssertEqual(ProjectService.strictQuery(url), url)
+        XCTAssertNil(ProjectService.strictQuery(nil))
+    }
+
+    /// The server waits up to 150 seconds on the court; the request has to outlast that, or a
+    /// slow court shows a failure while the server finishes and starts its five-minute window.
+    func testACourtRefreshWaitsLongerThanTheServerWaitsOnTheCourt() async throws {
+        let service = ProjectService(client: await client())
+        HTTPStub.always(.json(#"{"success":true}"#))
+        try await service.refreshLinkedCase(projectID: "prj_1")
+        let request = try XCTUnwrap(HTTPStub.lastRequest)
+        XCTAssertEqual(request.url?.path, "/api/project-case-refresh")
+        XCTAssertEqual(request.timeoutInterval, ProjectService.refreshTimeout)
+        XCTAssertGreaterThan(ProjectService.refreshTimeout, 150)
     }
 
     func testAnAcceptedEventIsSavedAsTheAIsWithItsPage() async throws {

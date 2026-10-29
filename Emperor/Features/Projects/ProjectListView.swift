@@ -48,9 +48,10 @@ struct ProjectListView: View {
                 }
             }
             .navigationDestination(for: String.self) { projectID in
-                ProjectDetailView(projectID: projectID) {
-                    Task { await model?.load() }
-                }
+                ProjectDetailView(
+                    projectID: projectID,
+                    onDeleted: { Task { await model?.load() } },
+                    onChanged: { Task { await model?.load() } })
             }
             .sheet(item: $editing) { project in
                 EditMatterSheet(project: project) { saved, message in
@@ -224,9 +225,7 @@ struct ProjectListView: View {
             NavigationLink(value: row.id) {
                 MatterListRowView(row: row, isOpening: false)
             }
-            // TODO: offer "Edit details" from the matter workspace's toolbar menu too, as the
-            // web's workspace header does. That screen is being changed elsewhere; until then a
-            // long press here is the way in.
+            // A long press, as well as the workspace's own menu (`MatterWorkspaceMenu`).
             .contextMenu {
                 if let project = row.project {
                     Button {

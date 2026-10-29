@@ -415,6 +415,7 @@ final class Session {
         store.remove(Self.tokenKey)
         store.remove(Self.userKey)
         cache.clear()
+        CitationCheckCache.shared.clear()
         await auth.signOut()
         signInFlow.reset()
         isAwaitingPlanPurchase = false

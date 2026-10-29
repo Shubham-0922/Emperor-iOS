@@ -23,8 +23,14 @@ struct MarkdownContentView: View {
     /// then; see `CitationMarkup.linked`.
     var isStreaming = false
 
+    /// Set inside a conversation: a reference naming one of the reader's documents opens it.
+    @Environment(\.openCitedDocument) private var openCitedDocument
+
     /// The reference whose card is showing, after a tap on its number.
     @State private var shownCitation: CitationReference?
+    /// A document asked for from the card, opened once the card has gone — a sheet cannot be
+    /// presented while another is still leaving.
+    @State private var openAfterCard: DocumentReference?
 
     var body: some View {
         content(CitedMarkdown.parse(markdown))
@@ -52,15 +58,36 @@ struct MarkdownContentView: View {
         // A card rather than a scroll to the References, which is what the web does
         // (`citations.js:317`): the transcript's scroll view belongs to the screen, not to this
         // answer, and a card can be read and dismissed without losing one's place.
+        //
+        // A reference naming one of the reader's own documents opens that document at the quoted
+        // words instead, as the web's does (`citations.js:346-351`) — inside a conversation, the
+        // one place that can find it.
         .environment(\.openURL, OpenURLAction { url in
             guard let number = CitationLink.number(from: url) else { return .systemAction }
             guard let reference = cited.index.reference(for: number) else { return .discarded }
+            if let openCitedDocument, let document = CitedSource.parse(reference.text) {
+                // A link is opened on the main thread; said so, for the action's isolation.
+                MainActor.assumeIsolated { openCitedDocument(document) }
+                return .handled
+            }
             shownCitation = reference
             return .handled
         })
-        .sheet(item: $shownCitation) { reference in
-            CitationReferenceSheet(reference: reference)
+        .sheet(item: $shownCitation, onDismiss: {
+            if let document = openAfterCard, let openCitedDocument {
+                openAfterCard = nil
+                openCitedDocument(document)
+            }
+        }) { reference in
+            CitationReferenceSheet(reference: reference, onOpenDocument: cardOpener())
         }
+    }
+
+    /// What the card's "Open document" does: remember the document, for the card's dismissal to
+    /// open. `nil` outside a conversation, where there is no document to open.
+    private func cardOpener() -> ((DocumentReference) -> Void)? {
+        guard openCitedDocument != nil else { return nil }
+        return { document in openAfterCard = document }
     }
 
     @ViewBuilder
@@ -73,7 +100,11 @@ struct MarkdownContentView: View {
         case .table(let table):
             MarkdownTableView(table: table, citations: citations)
         case .references(let references):
-            CitationReferenceList(references: references, citations: citations)
+            // The number keeps its card to copy, even for a document reference: the chip
+            // beside it is the way to the document.
+            CitationReferenceList(
+                references: references, citations: citations,
+                onShowReference: { shownCitation = $0 })
         }
     }
 
@@ -181,6 +212,9 @@ struct MarkdownArtifactView: View {
                 // Centres the capped column rather than pinning it to the leading edge.
                 .frame(maxWidth: .infinity)
         }
+        // Full screen over the conversation, which could not present a document above it: a
+        // reference here shows its card.
+        .environment(\.openCitedDocument, nil)
     }
 }
 

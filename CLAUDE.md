@@ -45,8 +45,9 @@ The reference copy is **source only** — no `node_modules`, no `Data/`, no `chr
 
 `ChatWindow.jsx`, `ChatWindow_original.jsx`, `Canvas.jsx`, `clerkConfig.js` (its
 `supportedRoles` is **not** the wire contract), `models_registry.json`,
-`convertTemplateTags()`, `src/pages/Library.jsx`, `FeedbackWidget.jsx`, `POST /draft`,
-`/library-books/*`, `/bare-acts/*`.
+`convertTemplateTags()`, `FeedbackWidget.jsx`, `POST /draft`, `/library-books/*`,
+`/bare-acts/*`. (`src/pages/Library.jsx` is live again: it is the Library page the app's Library
+screens follow, over `/library/catalogue/*` — see gotcha 35.)
 
 **Always `grep` for an importer before treating a component as specification.** The live chat
 surface is `src/tools/ToolWorkspace.jsx`, rendering through `src/tools/renderers/Markdown.jsx`.
@@ -90,7 +91,7 @@ as possible into `Sources/EmperorCore/`**, which builds and tests here.
 
 ```bash
 sudo apt install swiftlang     # Swift 6.1.3 on Ubuntu; no iOS SDK, but the core builds
-cd emperor-ios && swift test    # ~2,100 tests
+cd emperor-ios && swift test    # ~3,100 tests
 ```
 
 View models live in the core for this reason — turn state, recovery and error handling are
@@ -130,7 +131,7 @@ that makes no sense against the current source, `rm -rf .build` before investiga
 ## How to work on this repo
 
 - **Put logic in `Sources/EmperorCore/`.** It is Foundation-only — no UIKit, no SwiftUI — so it
-  compiles and tests anywhere, including Linux and CI. `swift test` runs about 2,100 tests in
+  compiles and tests anywhere, including Linux and CI. `swift test` runs about 3,100 tests in
   half a minute. Anything that could plausibly live there should.
 - **A view should hold no logic worth testing.** Everything a screen does other than lay itself
   out — loading, error wording, selection, empty-state rules — belongs in a `@MainActor` view
@@ -164,8 +165,13 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   `generate-phone-fixtures.mjs`, `generate-tile-fixtures.mjs` (tool tile colours and symbols),
   `generate-cause-list-fixtures.mjs`, `generate-compliance-feed-fixture.mjs`,
   `generate-compliance-schedule-fixtures.mjs`, `generate-fee-receipt-fixtures.mjs`,
-  `generate-matter-record-fixtures.mjs` and `generate-file-date-fixtures.mjs`. When a golden test fails after a platform change,
-  regenerate; do not edit the fixture to match.
+  `generate-matter-record-fixtures.mjs`, `generate-file-date-fixtures.mjs`, and those writing
+  `Tests/EmperorCoreTests/Resources/parity/<package>/` (read with `parityFixture(_:_:)`):
+  `generate-cited-source-fixtures.mjs` (a reference line and its quote),
+  `generate-filing-fixtures.mjs` (Filing Assembly's marks, forums, errors, covers and seeds),
+  `generate-usage-meter-fixtures.mjs` (the plan meter's rows) and
+  `generate-court-catalogue-fixtures.mjs` (`courts.js`' lists). When a golden test fails after a
+  platform change, regenerate; do not edit the fixture to match.
 - **The UI is seen through CI, on an iPhone and an iPad.** Every UI test and
   `UITests/ScreenshotTour.swift` (every main screen, both themes) run on both devices. The
   `screenshot-tour` and `screenshot-tour-ipad` artifacts hold the pictures as plain PNGs —
@@ -188,10 +194,13 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   calendars behind one segmented switch — **My calendar** (the matters day by day, the diary,
   Subscribe in the bar) and **Corporate calendar** (`ComplianceCalendarView(embedded:)`, no stack
   of its own). **More** is workspace management — Files, History, All Notifications, Library,
-  each a sheet — then the web sidebar's Case tools as drawn cards (not yet wired) and Doc tools
-  wired to OCR and the PDF tools, under a search field that filters the screen. UI tests sign in
+  each a sheet — then the web sidebar's Case tools as cards (Fetch Orders, the three Analysis
+  tools, Limitation Radar, Filing Assembly; each opens its `ToolDestination`, `case-tool-<key>`)
+  and Doc tools wired to OCR and the PDF tools, under a search field that filters the screen. UI tests sign in
   through the shared `signInWithACode` helper and reach tabs through `app.tab(_:)`, both in
-  `UITests/Tabs.swift`.
+  `UITests/Tabs.swift`. A feature with routes of its own answers them from its own file in
+  `Emperor/App/UITestStubs/` (`StubReply`, with a status and type), asked before the inline
+  fixtures (`StubHooks.packageReply`); its UI tests use `UITests/ParityKit.swift`'s helpers.
 - **iPad layouts.** At regular width History's conversation list (`ChatListView` — presented
   from More → History) shows the list beside what it opens (`ListBesideDetail`,
   reading one navigation path, `ListDetailPath`); Matters is a single stack on every device. A UI
@@ -324,10 +333,14 @@ Full detail in `README.md`. The short list:
     sent as `""` or `null`. `POST /project-from-case` is idempotent per user and case.
     `POST /project-attach` is the only way a document enters a matter (a copy from My Files;
     uploads into `_projects/…` are refused), and `/project-case-refresh` answers 429 with
-    `retryAfter` inside five minutes of the last ask.
+    `retryAfter` inside five minutes of the last ask — and may itself take 150 s, so it is waited
+    on longer than that. `DELETE /project?confirm=` is read with `URLSearchParams`, where a bare
+    "+" is a space: the name is sent strictly percent-encoded (`ProjectService.strictQuery`).
 34. **`POST /court/lookup` saves nothing and needs a verified sign-in.** It takes the same card
-    `/save-case` does, nested under `card` (`CourtSearchResult.cardFields` builds both), answers
-    honest status codes with a `code`, and caches a record for ten minutes. See `CourtLookup`.
+    `/save-case` does, nested under `card` (`CourtSearchResult.cardFields`, which
+    `lookupCardFields` extends with the bench, stage and next date the lookup reads), answers
+    honest status codes with a `code`, and caches a record for ten minutes. `NOT_FOUND` and
+    `BAD_REQUEST` are final for that card — a new search, never "Try again". See `CourtLookup`.
 35. **The Library is `/library/catalogue/*`** (`lib/library/routes.js`), not the older
     `/library/{categories,browse,file}`. Any signed-in user may read it; every route answers
     `401 auth_required` to a dead token, which this client treats as a sign-out like any other.
@@ -335,7 +348,9 @@ Full detail in `README.md`. The short list:
     (+ `Retry-After`) while it renders and `no_cover` when it never will — only the first is
     worth retrying; `/judgment` says `file_missing` for a row whose text is not on the host and
     `too_large` past 8 MB; a row's `ext` carries the dot (`.pdf`). `/file` answers a JSON 404 for
-    a missing file, so the reading room HEADs first and sniffs the bytes. See `LibraryService`.
+    a missing file, so the reading room HEADs first and sniffs the bytes. `/search` answers
+    `503 search_busy` with `Retry-After` under load; it is asked once more. A shelf's `day` is a
+    number, and a row's `anomalies` are `{kind, …}` objects, not strings. See `LibraryService`.
 36. **`searchMode: "web"` is a request, not a switch.** The server searches on keywords anyway,
     and skips the search on a turn that carries attachments. The web's research Sources reach no
     request; only Web search does, and only from this client (`ResearchSources`).
@@ -347,7 +362,8 @@ Full detail in `README.md`. The short list:
     the *web* app's Settings page. Read `/cloud/connections` again when the in-app Safari view
     closes — that is the only signal. The `/cloud/*` refusals are sentences meant for the person
     (409 not connected or too little access, 404 no such document) that name the web's Settings;
-    `CloudDriveWording` points them at You → Connected services. See `CloudDriveService`.
+    `CloudDriveWording` points them at You → Connected services. A consent page is opened only on
+    the drive's own sign-in host (`CloudDrive.signInHost`). See `CloudDriveService`.
 39. **`POST /download-files` leaves out what it cannot find and still answers 200** — 404 only
     when none is found. Count the zip's entries (`FileDownloadWording.zipEntryCount`) rather than
     trusting the status. `/download-searchable` answers its errors in plain text, and sends a PDF
@@ -374,6 +390,18 @@ Full detail in `README.md`. The short list:
 44. **A court row's `data` is a string on `/case` and an object on `/project`.** `GET /project`'s
     `courtHistory` parses `case_items.data` before sending it; a strict `String?` threw and the
     whole matter failed to load. `CaseItem`'s decoder keeps either as text.
+45. **A High Court is searched one of two ways, and `/court/hc/config` says which.** `kind:
+    "dedicated"` (Delhi, Punjab & Haryana, Bombay, Karnataka, Madras, Allahabad) is the court's
+    own portal: its case types come with the config, a seat only where its contract asks, and it
+    is searched on `/court/hc/dedicated/search` by case number alone, slowly. `kind: "generic"`
+    goes through eCourts: a bench first, which is also the `courtCode` the search needs, then that
+    bench's case types. `/court/hc/search` is eCourts only and ignores `courtId`. See
+    `CourtSearchQuery.searchPath` and `HCDedicatedSearchTests`.
+46. **`planLabel` is sometimes an internal tier.** `/auth/session` sends the plan's name (Junior
+    Associate…), `/preferred-model` the capability tier (`Lite`, `Premium`, `Ultra`), and the
+    account keeps whichever answered last. The web never shows a tier; neither does this client
+    (`PlanLabel`). A plan's storage is binary — "50 GB" is 50 GiB (`planLimits.js`) — and is
+    drawn that way (`AccountUsage.bytes`).
 
 ## Runtime connectivity
 

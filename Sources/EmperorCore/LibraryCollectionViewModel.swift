@@ -162,7 +162,10 @@ final class LibraryCollectionViewModel {
     private var generation = 0
     #endif
 
-    init(category: LibraryCategoryCount, query: String = "", service: any LibraryProviding,
+    /// `inText` opens on the words inside rather than titles and parties — "See all" under the
+    /// home's passages (the web's `in=text`). It holds only where the collection searches full
+    /// text and a query came along, as `setInText` would allow.
+    init(category: LibraryCategoryCount, query: String = "", inText: Bool = false, service: any LibraryProviding,
          todayKey: @escaping () -> String = { WireDate.todayKey() }) {
         self.key = category.key
         self.category = category
@@ -171,15 +174,18 @@ final class LibraryCollectionViewModel {
         self.service = service
         self.todayKey = todayKey
         self.layout = profile.layout
+        let opensInText = inText && profile.fullText && !query.trimmingCharacters(in: .whitespaces).isEmpty
+        self.inText = opensInText
         var f = LibraryBrowseFilters(category: category.key)
-        f.sort = profile.defaultSort
+        // Words inside are ordered by match, as `setInText` leaves them.
+        f.sort = opensInText ? nil : profile.defaultSort
         f.pageSize = profile.layout == .list ? 25 : 36
         self.filters = f
     }
 
-    convenience init(key: String, query: String = "", service: any LibraryProviding) {
+    convenience init(key: String, query: String = "", inText: Bool = false, service: any LibraryProviding) {
         self.init(category: LibraryCategoryCount(key: key, label: LibraryCollectionTheme.theme(for: key).label, count: nil),
-                  query: query, service: service)
+                  query: query, inText: inText, service: service)
     }
 
     var theme: LibraryCollectionTheme { category.theme }

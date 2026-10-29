@@ -166,6 +166,10 @@ final class OCRViewModel {
         /// True when the log shows the translation step reported a problem — the job still
         /// says "completed", but the text may be wholly or partly untranslated.
         let translationMayBeIncomplete: Bool
+        /// What the engine said about pages it could not read or passages it left untranslated.
+        var notes: [String] = []
+        /// "12 pages · 3 scanned", when the job reported pages.
+        var pageSummary: String? = nil
     }
 
     /// How long a job may sit with no observable change before this gives up.
@@ -426,7 +430,9 @@ final class OCRViewModel {
             result = OCRResult(
                 data: data,
                 fileName: named ?? finished.downloadName ?? outputFile,
-                translationMayBeIncomplete: finished.translationMayBeIncomplete)
+                translationMayBeIncomplete: finished.translationMayBeIncomplete,
+                notes: finished.notes,
+                pageSummary: finished.pageSummary)
         } catch {
             errorMessage = DisplayText.message(for: error)
         }
@@ -444,6 +450,9 @@ final class OCRViewModel {
             be in its original language. Check it before relying on it.
             """
     }
+
+    /// The engine's notes on the finished document, shown under it.
+    var resultNotes: [String] { result?.notes ?? [] }
 
     // MARK: - History
 
@@ -522,7 +531,9 @@ final class OCRViewModel {
             opened = OCRResult(
                 data: data,
                 fileName: historyJob.downloadName ?? outputFile,
-                translationMayBeIncomplete: historyJob.translationMayBeIncomplete)
+                translationMayBeIncomplete: historyJob.translationMayBeIncomplete,
+                notes: historyJob.notes,
+                pageSummary: historyJob.pageSummary)
         } catch {
             errorMessage = DisplayText.message(for: error)
         }

@@ -221,8 +221,7 @@ struct AddToMattersDraft: Equatable, Sendable {
 
 // MARK: - Looked up recently
 
-/// The last few cases looked up on this device, newest first — a shortcut back, not a record.
-/// Held in the preference store under one key, as the web keeps them in `localStorage`.
+/// One of the last few cases looked up, newest first — a shortcut back, not a record.
 struct RecentLookup: Codable, Equatable, Identifiable, Sendable {
     var key: String
     var card: CourtSearchResult
@@ -247,20 +246,33 @@ struct RecentLookup: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// The cases one account looked up lately on this device, newest first (`fetchOrdersApi.js`
+/// `readRecent` / `rememberCase`).
+///
+/// Kept per account in the response cache's store, so signing out — which clears that store —
+/// forgets them with everything else the account left on the phone, and the next person to sign
+/// in on it never sees whose cases were read. `Session.recentLookups` is the signed-in account's.
 struct RecentLookups: Sendable {
-    static let key = "ex-fetch-orders-recent"
+    /// Where earlier builds kept one list for the whole device, in the preference store, which
+    /// outlives a sign-out. Emptied at launch (`dropDeviceWideList`); never read.
+    static let deviceWideKey = "ex-fetch-orders-recent"
     static let limit = 6
 
-    let store: any PreferenceStore
+    let store: any CacheStore
+    let userID: Int
     let now: @Sendable () -> Date
 
-    init(store: any PreferenceStore, now: @escaping @Sendable () -> Date = { Date() }) {
+    init(store: any CacheStore, userID: Int, now: @escaping @Sendable () -> Date = { Date() }) {
         self.store = store
+        self.userID = userID
         self.now = now
     }
 
+    /// This account's list, and no one else's.
+    var storageKey: String { "fetch-orders-recent-\(userID)" }
+
     func read() -> [RecentLookup] {
-        guard let raw = store.string(for: Self.key), let data = raw.data(using: .utf8),
+        guard let data = store.read(storageKey),
               let list = try? JSONDecoder().decode([RecentLookup].self, from: data) else { return [] }
         return Array(list.prefix(Self.limit))
     }
@@ -276,17 +288,29 @@ struct RecentLookups: Sendable {
         let rest = read().filter { $0.key != key }
         let stamp = ISO8601DateFormatter().string(from: now())
         let entry = RecentLookup(key: key, card: card, title: title ?? card.title ?? "", at: stamp)
-        let list = Array(([entry] + rest).prefix(Self.limit))
-        if let data = try? JSONEncoder().encode(list), let raw = String(data: data, encoding: .utf8) {
-            store.setString(raw, for: Self.key)
-        }
+        write(Array(([entry] + rest).prefix(Self.limit)))
     }
 
     func forget(_ key: String) {
-        let list = read().filter { $0.key != key }
-        if let data = try? JSONEncoder().encode(list), let raw = String(data: data, encoding: .utf8) {
-            store.setString(raw, for: Self.key)
-        }
+        write(read().filter { $0.key != key })
+    }
+
+    private func write(_ list: [RecentLookup]) {
+        if let data = try? JSONEncoder().encode(list) { store.write(data, for: storageKey) }
+    }
+
+    /// Empties the device-wide list earlier builds kept, which named the cases of whoever had
+    /// signed in last. The preference store has no removal, so the value is blanked.
+    static func dropDeviceWideList(from preferences: any PreferenceStore) {
+        guard let raw = preferences.string(for: deviceWideKey), !raw.isEmpty else { return }
+        preferences.setString("", for: deviceWideKey)
+    }
+}
+
+extension Session {
+    /// The signed-in account's recent lookups; none for nobody.
+    var recentLookups: RecentLookups? {
+        currentUser.map { RecentLookups(store: cache.store, userID: $0.id) }
     }
 }
 

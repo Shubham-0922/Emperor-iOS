@@ -3,8 +3,8 @@ import SwiftUI
 /// "Edit matter details" — every field a matter has, as the web's form lists them, saved with
 /// `POST /project`. Everything it decides is `EditMatterViewModel`'s and `MatterEditDraft`'s.
 ///
-/// Reached from a row's context menu in the matter list. The matter workspace's toolbar menu is
-/// the other place the web offers it.
+/// Reached from a row's context menu in the matter list, and from the matter workspace's own
+/// menu in its bar (`MatterWorkspaceMenu`), as the web offers it in both places.
 struct EditMatterSheet: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session

@@ -262,6 +262,18 @@ final class DraftHistoryViewModelTests: XCTestCase {
             XCTAssertEqual(fake.requestedIDs, ["d1"])
             XCTAssertEqual(model.opened?.content, "# Writ Petition")
             XCTAssertNil(model.errorMessage)
+            XCTAssertEqual(model.opened?.canAssembleFiling, true)
+        }
+    }
+
+    func testATableIsNeverOfferedForFiling() async {
+        await withHistory { fake, model in
+            model.kind = .table
+            fake.content = "| Date | Event |\n|---|---|\n| 1 Jan | Filed |"
+            await model.runOpen(item("t1"))
+
+            XCTAssertEqual(model.opened?.kind, .table)
+            XCTAssertEqual(model.opened?.canAssembleFiling, false)
         }
     }
 

@@ -210,6 +210,9 @@ struct CatalogueDocument: Codable, Equatable, Identifiable, Hashable, Sendable {
     var render: String?
     var hasChildren: Int?
     var parentId: Int?
+    /// The kinds of the catalogue's review flags (`future_year`, `court_mismatch`,
+    /// `unrecoverable_title`). The wire sends objects (`{kind, …}`); only the kinds are kept,
+    /// because all a screen asks is whether a row carries any (`LibraryTitles.isShelfWorthy`).
     var anomalies: [String]?
     var coverUrl: String?
     /// `/doc` only: whether the bytes are on this host, and for judgments whether the text is.
@@ -285,7 +288,7 @@ struct CatalogueDocument: Codable, Equatable, Identifiable, Hashable, Sendable {
         render = try? c.decodeIfPresent(String.self, forKey: .render)
         hasChildren = Self.flexibleInt(c, .hasChildren)
         parentId = Self.flexibleInt(c, .parentId)
-        anomalies = try? c.decodeIfPresent([String].self, forKey: .anomalies)
+        anomalies = Self.anomalyKinds(c)
         coverUrl = try? c.decodeIfPresent(String.self, forKey: .coverUrl)
         hasFile = try? c.decodeIfPresent(Bool.self, forKey: .hasFile)
         hasText = try? c.decodeIfPresent(Bool.self, forKey: .hasText)
@@ -322,6 +325,33 @@ struct CatalogueDocument: Codable, Equatable, Identifiable, Hashable, Sendable {
         if let s = try? c.decodeIfPresent(String.self, forKey: .bench) { return s }
         if let list = try? c.decodeIfPresent([String].self, forKey: .bench) { return list.joined(separator: ", ") }
         return nil
+    }
+
+    /// `anomalies` as `build-library-catalogue.mjs` writes it and `toItem` parses it: a list of
+    /// objects, each naming its `kind` (`{kind: "future_year", year, limit}`). A bare string is
+    /// taken as its own kind, and an entry with no readable kind still counts as a flag — the web
+    /// keeps a row off a shelf on `d.anomalies?.length` alone. Nothing here can fail the row.
+    private static func anomalyKinds(_ c: KeyedDecodingContainer<CodingKeys>) -> [String]? {
+        if let list = try? c.decodeIfPresent([AnomalyFlag].self, forKey: .anomalies) { return list.map(\.kind) }
+        if let one = try? c.decodeIfPresent(String.self, forKey: .anomalies) { return one.isEmpty ? [] : [one] }
+        return nil
+    }
+
+    private struct AnomalyFlag: Decodable {
+        var kind: String
+
+        init(from decoder: Decoder) throws {
+            if let single = try? decoder.singleValueContainer(), let text = try? single.decode(String.self) {
+                kind = text
+            } else if let c = try? decoder.container(keyedBy: Key.self),
+                      let named = try? c.decode(String.self, forKey: .kind), !named.isEmpty {
+                kind = named
+            } else {
+                kind = "unknown"
+            }
+        }
+
+        private enum Key: String, CodingKey { case kind }
     }
 
     // MARK: Derived
@@ -555,14 +585,25 @@ struct LibraryGroupedSearch: Codable, Equatable, Sendable {
     }
 }
 
+/// A count the wire sends as a number — or, from an older or hand-edited backend, as digits in a
+/// string. Anything else reads as absent rather than failing what holds it.
+private func lenientInt<Key: CodingKey>(_ c: KeyedDecodingContainer<Key>, _ key: Key) -> Int? {
+    if let n = try? c.decodeIfPresent(Int.self, forKey: key) { return n }
+    if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(exactly: d.rounded(.towardZero)) }
+    if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Int(s.trimmingCharacters(in: .whitespaces)) }
+    return nil
+}
+
 /// `GET /shelf?category=` → a day's pick for the home shelf.
 struct LibraryShelf: Codable, Equatable, Sendable {
     var category: String?
     var label: String?
-    var day: String?
+    /// The IST day the pick is for, as the server's seed: the number `20261019` (`shelf.js`
+    /// `daySeed`), not a date string.
+    var day: Int?
     var items: [CatalogueDocument]
 
-    init(category: String? = nil, label: String? = nil, day: String? = nil, items: [CatalogueDocument] = []) {
+    init(category: String? = nil, label: String? = nil, day: Int? = nil, items: [CatalogueDocument] = []) {
         self.category = category
         self.label = label
         self.day = day
@@ -573,12 +614,16 @@ struct LibraryShelf: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         category = try? c.decodeIfPresent(String.self, forKey: .category)
         label = try? c.decodeIfPresent(String.self, forKey: .label)
-        day = try? c.decodeIfPresent(String.self, forKey: .day)
+        day = lenientInt(c, .day)
         items = (try? c.decodeIfPresent([CatalogueDocument].self, forKey: .items)) ?? []
     }
 }
 
 /// `GET /shelf?category=books-and-law-reports&by=series` → the law reports by series.
+///
+/// Decoded by hand, as every catalogue shape is: `day` is a number on the wire (`shelf.js`), and
+/// when it was read as a string the whole answer failed and Books said "These shelves could not
+/// be loaded" on every visit.
 struct LibrarySeriesShelves: Codable, Equatable, Sendable {
     struct SeriesShelf: Codable, Equatable, Identifiable, Sendable {
         var series: String
@@ -597,13 +642,43 @@ struct LibrarySeriesShelves: Codable, Equatable, Sendable {
     var seriesTotal: Int?
     var shelves: [SeriesShelf]
     var standalone: Standalone?
-    var day: String?
+    /// The IST day the standalone pick is for (`20261019`), as on `LibraryShelf`.
+    var day: Int?
 
-    init(seriesTotal: Int? = nil, shelves: [SeriesShelf] = [], standalone: Standalone? = nil, day: String? = nil) {
+    init(seriesTotal: Int? = nil, shelves: [SeriesShelf] = [], standalone: Standalone? = nil, day: Int? = nil) {
         self.seriesTotal = seriesTotal
         self.shelves = shelves
         self.standalone = standalone
         self.day = day
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        seriesTotal = lenientInt(c, .seriesTotal)
+        shelves = (try? c.decodeIfPresent([SeriesShelf].self, forKey: .shelves)) ?? []
+        standalone = try? c.decodeIfPresent(Standalone.self, forKey: .standalone)
+        day = lenientInt(c, .day)
+    }
+}
+
+// In extensions so the memberwise initialisers stay.
+extension LibrarySeriesShelves.SeriesShelf {
+    /// A shelf is its series' name; the rest is optional, and a bad count costs only the count.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        series = try c.decode(String.self, forKey: .series)
+        count = lenientInt(c, .count)
+        yearMin = lenientInt(c, .yearMin)
+        yearMax = lenientInt(c, .yearMax)
+        items = (try? c.decodeIfPresent([CatalogueDocument].self, forKey: .items)) ?? []
+    }
+}
+
+extension LibrarySeriesShelves.Standalone {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        count = lenientInt(c, .count)
+        items = (try? c.decodeIfPresent([CatalogueDocument].self, forKey: .items)) ?? []
     }
 }
 

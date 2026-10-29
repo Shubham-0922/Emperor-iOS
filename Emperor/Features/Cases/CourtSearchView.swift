@@ -54,7 +54,7 @@ struct CourtSearchView: View {
                     service: session.courtSearch,
                     metadata: session.courtMetadata,
                     onSaved: onSaved,
-                    recent: RecentLookups(store: Preferences()))
+                    recent: session.recentLookups)
             }
             .sheet(item: $reading, onDismiss: { model?.refreshRecent() }) { result in
                 CourtRecordView(card: result) { _ in
@@ -102,12 +102,14 @@ struct CourtSearchView: View {
                 // Only where there is a choice. Ten tribunals and three consumer fora publish no
                 // pre-registration lookup, so offering the pill and refusing it would be worse
                 // than never showing it.
-                if model.query.forum.availableModes.count > 1 {
+                // A High Court on its own portal is searched by case number only, so it offers
+                // no choice either.
+                if model.query.availableModes.count > 1 {
                     Picker("Search by", selection: Binding(
                         get: { model.query.mode },
                         set: { model.setMode($0) }
                     )) {
-                        ForEach(model.query.forum.availableModes) { mode in
+                        ForEach(model.query.availableModes) { mode in
                             Text(mode.label(for: model.query.forum)).tag(mode)
                         }
                     }
@@ -228,7 +230,7 @@ struct CourtSearchView: View {
                     SectionHeader(title: court.name)
                 } footer: {
                     if model.expectsLongWait {
-                        Text(CourtSearchViewModel.Copy.captchaWait)
+                        Text(model.longWaitNote)
                             .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                     }

@@ -90,11 +90,22 @@ struct CourtRecord: Codable, Equatable, Sendable {
         var title: String?
         /// The court's own PDF address, or null when the court serves orders only through a
         /// session — then "No copy online" until the case is tracked, where the order proxy can
-        /// fetch it.
+        /// fetch it. Not always an address: a consumer forum's order arrives as a marker
+        /// (`ejagriti-order:77`) that only the tracked case's order proxy understands.
         var url: String?
 
         var id: String { [date, title, url].compactMap { $0 }.joined(separator: "|") }
-        var pdfURL: URL? { url.flatMap { URL(string: $0) } }
+
+        /// The order's copy when a browser can open it — `http` or `https` with a host, nothing
+        /// else. `URL(string:)` takes any scheme, so a forum's marker would otherwise become a
+        /// "Read" link that opens nothing; without one the row says "No copy online".
+        var pdfURL: URL? {
+            let text = (url ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let found = URL(string: text), let scheme = found.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https", found.host?.isEmpty == false
+            else { return nil }
+            return found
+        }
         var displayTitle: String { title?.nilIfEmpty ?? "Order" }
     }
 
@@ -208,6 +219,21 @@ extension CourtSearchResult {
         if let scrapeRef { card["scrapeRef"] = scrapeRef }
         return card
     }
+
+    /// The card as `/court/lookup` alone takes it: `cardFields`, plus what the search route said
+    /// that the court's own record may not — `judge` and `stage`, which the record falls back to
+    /// for its bench and stage (`lookup.js` `recordFromBundle`) and which are part of the
+    /// server's cache key, and `nextHearingDate`, which the web's `casePayload` sends beside
+    /// them (`lookup.js` does not read it). `/save-case` keeps `cardFields` as it is.
+    var lookupCardFields: [String: JSONValue] {
+        var card = cardFields
+        let extras: [(String, String?)] = [("judge", judge), ("stage", stage), ("nextHearingDate", nextHearingDate)]
+        for (key, value) in extras {
+            guard let value, !value.isEmpty else { continue }
+            card[key] = .string(value)
+        }
+        return card
+    }
 }
 
 // MARK: - The service
@@ -225,15 +251,18 @@ protocol CourtLookupProviding: Sendable {
 struct CourtLookupService: CourtLookupProviding {
     let client: APIClient
 
-    /// A fresh lookup runs the court's adapter, captcha and all. Same budget as a save.
-    static let timeout: TimeInterval = CourtSearchService.timeout
+    /// A fresh lookup runs the court's adapter, captcha and all, and the court's own portal sets
+    /// the pace: a few seconds usually, 40–80 for Allahabad and the other dedicated High Court
+    /// portals (gotcha 45). So it waits as long as a dedicated search does, not the 60 seconds of
+    /// a save, which cut the slowest courts off just before they answered.
+    static let timeout: TimeInterval = CourtSearchService.dedicatedTimeout
 
     func lookup(_ card: CourtSearchResult) async throws -> CourtRecord {
         guard let credentials = await client.currentCredentials() else {
             throw APIError.notAuthenticated
         }
         var body: [String: JSONValue] = ["userId": .string(credentials.userIDString)]
-        body["card"] = .object(card.cardFields)
+        body["card"] = .object(card.lookupCardFields)
 
         var request = try await client.makeRequest("POST", "/court/lookup", body: Payload(body: body))
         request.timeoutInterval = Self.timeout
@@ -246,17 +275,50 @@ struct CourtLookupService: CourtLookupProviding {
         throw Self.failure(status: http.statusCode, decoded: decoded, body: data)
     }
 
+    /// `NOT_FOUND`: the court returned nothing under that number.
+    static let nothingUnderThatNumber = APIError.server(
+        status: 404, message: "The court returned no details for this case. Check the number and year, or try again later.")
+    /// `BAD_REQUEST`: the card is not one the court can be asked about.
+    static let unreadableCard = APIError.server(
+        status: 400, message: "That case could not be read. Search for it again.")
+
+    /// The two answers that are final for a card: asking again sends the same card and gets the
+    /// same answer, so the way on is a new search, never "Try again" — the web's `LookupError`
+    /// (`FetchOrders.jsx`: `retryable = code !== 'NOT_FOUND' && code !== 'BAD_REQUEST'`).
+    enum FinalAnswer: Equatable, Sendable {
+        case nothingUnderThatNumber
+        case unreadableCard
+
+        /// The failure's heading.
+        var title: String {
+            switch self {
+            case .nothingUnderThatNumber: return "The court has nothing under that number."
+            case .unreadableCard: return "We could not read this case."
+            }
+        }
+    }
+
+    /// Whether `error` is one of the final answers. Told apart by this client's own wording, not
+    /// by the status alone: an uncoded 404 (a server without this route) is not the court saying
+    /// it has nothing.
+    static func finalAnswer(_ error: Error) -> FinalAnswer? {
+        guard let apiError = error as? APIError else { return nil }
+        if apiError == nothingUnderThatNumber { return .nothingUnderThatNumber }
+        if apiError == unreadableCard { return .unreadableCard }
+        return nil
+    }
+
     /// The refusal, worded for the person reading it.
     static func failure(status: Int, decoded: CourtLookupResponse?, body: Data) -> APIError {
         switch decoded?.code {
         case "RATE_LIMIT":
             return .server(status: 429, message: "That is a lot of lookups at once. Wait a minute and try again.")
         case "NOT_FOUND":
-            return .server(status: 404, message: "The court returned no details for this case. Check the number and year, or try again later.")
+            return nothingUnderThatNumber
         case "COURT_DOWN":
             return .server(status: 502, message: "The court's website did not answer. Try again in a few minutes.")
         case "BAD_REQUEST":
-            return .server(status: 400, message: "That case could not be read. Search for it again.")
+            return unreadableCard
         case "AUTH":
             return .invalidCredentials
         default:

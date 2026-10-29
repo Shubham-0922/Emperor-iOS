@@ -90,8 +90,11 @@ struct PlanUsageSection: View {
         .onChange(of: session.currentUser?.planLabel) { _, _ in reload() }
     }
 
+    /// Never an internal tier (Lite, Premium, Ultra): see `PlanLabel`.
     private var planLabel: String {
-        model?.usage?.planLabel ?? session.currentUser?.planLabel ?? "—"
+        let sessionLabel = session.currentUser?.planLabel
+        return model?.planName(sessionLabel: sessionLabel)
+            ?? PlanLabel.pill(session: sessionLabel, tierLabel: nil)
     }
 
     private func standingRow(_ standing: Session.Standing) -> some View {

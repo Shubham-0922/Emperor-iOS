@@ -118,6 +118,9 @@ struct ChatThreadView: View {
             // answer. Without this every conversation would open as a litigator regardless of
             // who is asking.
             created.role = practice.role.wireRole
+            // A reference to one of the reader's documents is looked up on the server, in the
+            // matter's documents when this conversation is a matter's.
+            created.citedSources = session.citedSources
             // Web search follows the account's Sources choice, which is what "Always" now means.
             let researchSources = ResearchSourcesModel(store: Preferences(), userID: session.currentUser?.id)
             created.webSearch = researchSources.searchesWeb
@@ -165,6 +168,9 @@ struct ChatThreadView: View {
         // The List of Annexures goes under one answer: the last finished draft.
         let draftAnswerID = AnnexureListViewModel.draftAnswerID(
             in: model.messages, isStreaming: model.isStreaming)
+        let open = OpenCitedDocumentAction { reference in
+            openCited(reference, in: model)
+        }
 
         return VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -188,6 +194,7 @@ struct ChatThreadView: View {
                                 followUps: followUps(after: message, in: model),
                                 onFollowUp: { question in send(question, in: model) },
                                 onCopied: { toast = "Copied with its sources" },
+                                projectID: model.projectID,
                                 showsAnnexures: message.stableID == draftAnswerID,
                                 onOpenArtifact: { artifact in
                                     openDraft = OpenDraft(
@@ -349,7 +356,8 @@ struct ChatThreadView: View {
         .fullScreenCover(item: $openDraft) { draft in
             ArtifactDetailView(
                 artifact: draft.artifact, chatID: chatID, editTarget: draft.target,
-                conversation: model)
+                conversation: model,
+                filingAttachments: FilingChatScope.attachments(in: model.messages))
         }
         .alert("Ask this again?", isPresented: Binding(
             get: { editing != nil },
@@ -385,8 +393,13 @@ struct ChatThreadView: View {
             }
         }
         .sheet(item: $model.openSource) { source in
-            SourceDocumentView(attachment: source.attachment, mention: source.mention)
+            SourceDocumentView(
+                attachment: source.attachment, mention: source.mention,
+                quote: source.quote, quoteStatus: source.quoteStatus)
         }
+        // A reference naming one of the reader's documents — its Open chip, its badge in the
+        // text — opens that document at the quoted words.
+        .environment(\.openCitedDocument, open)
         .alert("Cannot open that source", isPresented: alertBinding($model.citationError)) {
             Button("OK") { model.citationError = nil }
         } message: {
@@ -760,6 +773,10 @@ struct ChatThreadView: View {
         Task { await model.showSource(mention) }
     }
 
+    private func openCited(_ reference: DocumentReference, in model: ChatViewModel) {
+        Task { await model.showCitedDocument(reference) }
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy, _ model: ChatViewModel) {
         let target = model.live != nil ? "live" : model.messages.last?.stableID
         guard let target else { return }
@@ -785,6 +802,8 @@ private struct MessageBubble: View {
     var followUps: [String] = []
     var onFollowUp: (String) -> Void = { _ in }
     var onCopied: () -> Void = {}
+    /// The matter the conversation belongs to, for checking its citations there.
+    var projectID: String?
     /// Whether the List of Annexures is drawn under this answer — see
     /// `AnnexureListViewModel.draftAnswerID`.
     var showsAnnexures = false
@@ -833,6 +852,11 @@ private struct MessageBubble: View {
                     ReasoningPanel(snapshot: log, isStreaming: false, liveStatus: nil)
                 }
                 answer
+                // Whether the documents it cites hold what it quotes. Nothing for an answer
+                // citing none of the reader's documents.
+                CitationMetaLine(
+                    content: StreamContent.parse(message.content).prose,
+                    messageID: message.stableID, projectID: projectID)
                 if showsAnnexures, let chatID {
                     AnnexuresCard(chatID: chatID)
                 }

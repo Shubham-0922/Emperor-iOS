@@ -14,7 +14,7 @@ private let browseJSON = #"""
   "category":"case-law","court":"supremecourt","courtLabel":"Supreme Court","year":2026,"decidedOn":"2026-02-20","petitioner":"UNION OF INDIA","respondent":"SISTEMA SHYAM TELESERVICES LIMITED",
   "neutralCitation":"2026 INSC 210","caseType":"Civil Appeal","caseNumber":"4629 of 2008","bench":"B.R. Gavai, K. Vinod Chandran","ext":".txt","fileSize":653000,"render":"html"},
  {"id":3461,"title":"BIHAR MOTOR VEHICLES RULES, 1992","displayTitle":"Bihar Motor Vehicles Rules, 1992","category":"bare-acts","docType":"rules","jurisdiction":"Bihar","year":1992,
-  "ext":".pdf","fileSize":2300000,"render":"pdf","hasChildren":3,"coverUrl":"/api/library/catalogue/cover?id=3461&w=320","anomalies":["future_year"]},
+  "ext":".pdf","fileSize":2300000,"render":"pdf","hasChildren":3,"coverUrl":"/api/library/catalogue/cover?id=3461&w=320","anomalies":[{"kind":"future_year","year":2095,"limit":2027}]},
  {"id":280398,"title":"Calcutta Law Journal, Vol-91","category":"books-and-law-reports","series":"Calcutta Law Journal","volume":"Vol-91","volumeNo":91,"year":1953,"issue":"615","ext":".pdf","fileSize":"8123456","render":"pdf"}
 ],"total":271480,"page":2,"pageSize":20,"sort":"date_desc"}
 """#
@@ -86,6 +86,12 @@ final class LibraryWireTests: XCTestCase {
         let client = APIClient(config: Self.config, session: HTTPStub.session())
         await client.setCredentials(Credentials(token: "tok-abc", userID: 42))
         return (LibraryService(client: client), client)
+    }
+
+    private func makeService(sleep: @escaping @Sendable (TimeInterval) async throws -> Void) async -> LibraryService {
+        let client = APIClient(config: Self.config, session: HTTPStub.session())
+        await client.setCredentials(Credentials(token: "tok-abc", userID: 42))
+        return LibraryService(client: client, sleep: sleep)
     }
 
     private func query(_ request: URLRequest?) -> [String: String] {
@@ -252,18 +258,78 @@ final class LibraryWireTests: XCTestCase {
                 return .json(#"{"success":true,"groups":[{"category":"bare-acts","label":"Bare acts","total":12,"items":[{"id":1,"title":"PMLA"}]}],"search":"money","pageSize":6}"#)
             }
             if q.contains(where: { $0.name == "by" && $0.value == "series" }) {
-                return .json(#"{"success":true,"seriesTotal":200,"shelves":[{"series":"Calcutta Law Journal","count":66,"yearMin":1904,"yearMax":1952,"items":[{"id":3}]}],"standalone":{"count":1000,"items":[{"id":4}]},"day":"2026-10-19"}"#)
+                return .json(#"{"success":true,"seriesTotal":200,"shelves":[{"series":"Calcutta Law Journal","count":66,"yearMin":1904,"yearMax":1952,"items":[{"id":3}]}],"standalone":{"count":1000,"items":[{"id":4}]},"day":20261019}"#)
             }
-            return .json(#"{"success":true,"category":"case-law","label":"Case law","day":"2026-10-19","items":[{"id":2,"title":"A vs B","category":"case-law"}]}"#)
+            return .json(#"{"success":true,"category":"case-law","label":"Case law","day":20261019,"items":[{"id":2,"title":"A vs B","category":"case-law"}]}"#)
         }
         let grouped = try await service.browseGrouped(query: "money", pageSize: 99)
         XCTAssertEqual(query(HTTPStub.lastRequest)["pageSize"], "20", "grouped pages are at most 20")
         XCTAssertEqual(grouped.groups.first?.total, 12)
         let shelf = try await service.shelf(category: "case-law", limit: 14)
         XCTAssertEqual(shelf.items.first?.id, 2)
+        XCTAssertEqual(shelf.day, 20_261_019, "the day is the server's numeric seed")
         let series = try await service.seriesShelves(limit: 12, per: 14)
         XCTAssertEqual(series.shelves.first?.yearMin, 1904)
         XCTAssertEqual(series.standalone?.count, 1000)
+        XCTAssertEqual(series.day, 20_261_019)
+    }
+
+    /// Books' series shelves as `shelf.js` sends them: `day` is a number. Read as a string, the
+    /// whole answer failed to decode and Books said "These shelves could not be loaded" on every
+    /// visit.
+    func testTheSeriesShelvesDecodeWithANumericDay() throws {
+        let wire = #"""
+        {"success":true,"category":"books-and-law-reports","label":"Books and law reports","day":20261019,"seriesTotal":212,
+         "shelves":[{"series":"Calcutta Law Journal","count":66,"yearMin":1904,"yearMax":1952,
+                     "items":[{"id":280398,"title":"Calcutta Law Journal, Vol-91","category":"books-and-law-reports","series":"Calcutta Law Journal","volume":"Vol-91","volumeNo":91}]},
+                    {"series":"All India Reporter","count":40,"items":[]}],
+         "standalone":{"count":1874,"items":[{"id":4,"title":"A Treatise","hasCover":true}]}}
+        """#
+        let shelves = try JSONDecoder().decode(LibrarySeriesShelves.self, from: Data(wire.utf8))
+        XCTAssertEqual(shelves.day, 20_261_019)
+        XCTAssertEqual(shelves.seriesTotal, 212)
+        XCTAssertEqual(shelves.shelves.map(\.series), ["Calcutta Law Journal", "All India Reporter"])
+        XCTAssertEqual(shelves.shelves.first?.items.first?.volumeNo, 91)
+        XCTAssertNil(shelves.shelves.last?.yearMin, "a series with no dated volume sends no years")
+        XCTAssertEqual(shelves.standalone?.count, 1874)
+
+        // A string day (the old fixture's shape) or a count in the wrong type costs only that field.
+        let odd = #"{"day":"2026-10-19","seriesTotal":"212","shelves":[{"series":"CLJ","count":"66","items":[{"id":3}]}],"standalone":{"count":null,"items":[]}}"#
+        let tolerated = try JSONDecoder().decode(LibrarySeriesShelves.self, from: Data(odd.utf8))
+        XCTAssertNil(tolerated.day)
+        XCTAssertEqual(tolerated.seriesTotal, 212)
+        XCTAssertEqual(tolerated.shelves.first?.count, 66)
+        XCTAssertEqual(tolerated.shelves.first?.items.map(\.id), [3])
+        XCTAssertNil(tolerated.standalone?.count)
+    }
+
+    /// `anomalies` is a list of objects (`build-library-catalogue.mjs`), not of strings. Every
+    /// shape reads without failing the row, and any flag keeps a row off a fallback shelf.
+    func testAnomaliesDecodeAsTheCatalogueWritesThem() throws {
+        let wire = #"""
+        {"success":true,"items":[
+         {"id":1,"title":"State vs Kumar","category":"case-law","year":2027,"anomalies":[{"kind":"future_year","year":2027,"limit":2026},{"kind":"court_mismatch","dirCourt":"chennai","bodyCourt":"madras"}]},
+         {"id":2,"title":"Untitled scan","category":"books-and-law-reports","anomalies":[{"kind":"unrecoverable_title","from":"PDF (4.78 MB)"}]},
+         {"id":3,"title":"Legacy flag","category":"case-law","anomalies":["future_year"]},
+         {"id":4,"title":"Kindless flag","category":"case-law","anomalies":[{"year":2027},7]},
+         {"id":5,"title":"Odd value","category":"case-law","anomalies":{"kind":"future_year"}},
+         {"id":6,"title":"Clean row","category":"case-law","anomalies":[]},
+         {"id":7,"title":"Never flagged","category":"case-law","anomalies":null}
+        ],"total":7,"page":1,"pageSize":7}
+        """#
+        let items = try JSONDecoder().decode(LibraryPage.self, from: Data(wire.utf8)).items
+        XCTAssertEqual(items.map(\.id), [1, 2, 3, 4, 5, 6, 7], "no shape of the flag fails its row")
+        XCTAssertEqual(items[0].anomalies, ["future_year", "court_mismatch"])
+        XCTAssertEqual(items[1].anomalies, ["unrecoverable_title"])
+        XCTAssertEqual(items[2].anomalies, ["future_year"])
+        XCTAssertEqual(items[3].anomalies, ["unknown", "unknown"], "a flag with no kind is still a flag")
+        XCTAssertNil(items[4].anomalies)
+        XCTAssertEqual(items[5].anomalies, [])
+        XCTAssertNil(items[6].anomalies)
+        XCTAssertEqual(items[4].title, "Odd value")
+
+        let shelved = items.filter { LibraryTitles.isShelfWorthy($0, thisYear: 2030) }.map(\.id)
+        XCTAssertEqual(shelved, [5, 6, 7], "a flagged row stays off a fallback shelf")
     }
 
     /// The cover route's three answers: bytes, "not yet", "never".
@@ -286,6 +352,84 @@ final class LibraryWireTests: XCTestCase {
 
         _ = try await service.cover(id: 1, width: 999)
         XCTAssertEqual(query(HTTPStub.lastRequest)["w"], "320", "an unknown width falls back to the default rather than earning a 400")
+    }
+
+    /// A busy body search (`503 search_busy`, `Retry-After: 5`) is asked again once, after the
+    /// wait the server names — never more than five seconds.
+    func testABusySearchIsAskedAgainOnce() async throws {
+        let waits = WaitLog()
+        let service = await makeService(sleep: { waits.append($0) })
+        let calls = WaitLog()
+        HTTPStub.respond { _ in
+            calls.append(0)
+            if calls.count == 1 {
+                return HTTPStub.Reply(status: 503, body: Data(#"{"error":"search_busy"}"#.utf8),
+                                      headers: ["Content-Type": "application/json", "Retry-After": "2"])
+            }
+            return .json(searchJSON)
+        }
+        let page = try await service.search(LibraryBrowseFilters(category: "case-law", query: "bona fide"))
+        XCTAssertEqual(page.items.first?.snippet?.text, "the bona fide purchaser for value without notice")
+        XCTAssertEqual(HTTPStub.seen.count, 2)
+        XCTAssertEqual(HTTPStub.seen.map(\.path), ["/api/library/catalogue/search", "/api/library/catalogue/search"])
+        XCTAssertEqual(HTTPStub.seen.last?.queryItems["q"], "bona fide", "the retry asks the same search")
+        XCTAssertEqual(waits.values, [2])
+    }
+
+    func testASearchBusyTwiceIsTheRefusalAndTheWaitIsCapped() async throws {
+        let waits = WaitLog()
+        let service = await makeService(sleep: { waits.append($0) })
+        HTTPStub.always(HTTPStub.Reply(status: 503, body: Data(#"{"error":"search_timeout"}"#.utf8),
+                                       headers: ["Content-Type": "application/json", "Retry-After": "30"]))
+        do {
+            _ = try await service.search(LibraryBrowseFilters(category: "case-law", query: "bail"))
+            XCTFail("busy twice is a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertTrue(error.isBusy)
+            XCTAssertEqual(error.errorDescription, "The library is busy searching for other readers. Try again in a moment.")
+        }
+        XCTAssertEqual(HTTPStub.seen.count, 2, "only one retry")
+        XCTAssertEqual(waits.values, [5], "a long Retry-After is capped at five seconds")
+
+        XCTAssertEqual(LibraryService.busyRetryDelay(LibraryCatalogueError(status: 503, code: "search_busy")), 5,
+                       "no Retry-After: the server's five seconds")
+        XCTAssertEqual(LibraryService.busyRetryDelay(LibraryCatalogueError(status: 503, code: "search_busy", retryAfter: -3)), 0)
+    }
+
+    func testOnlyABusySearchIsRetried() async throws {
+        let waits = WaitLog()
+        let service = await makeService(sleep: { waits.append($0) })
+        HTTPStub.always(.json(#"{"error":"library_failed"}"#, status: 500))
+        do {
+            _ = try await service.search(LibraryBrowseFilters(category: "case-law", query: "bail"))
+            XCTFail("expected a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertEqual(error.code, "library_failed")
+        }
+        XCTAssertEqual(HTTPStub.seen.count, 1)
+
+        // The front door's own 503 (no catalogue code) is the platform restarting, not a busy pool.
+        HTTPStub.reset()
+        HTTPStub.always(.text("Service Unavailable", status: 503))
+        do {
+            _ = try await service.search(LibraryBrowseFilters(category: "case-law", query: "bail"))
+            XCTFail("expected a refusal")
+        } catch is LibraryCatalogueError {
+            XCTFail("not a catalogue refusal")
+        } catch {}
+        XCTAssertEqual(HTTPStub.seen.count, 1)
+
+        // Title browsing is never retried: only the body search runs on the busy pool.
+        HTTPStub.reset()
+        HTTPStub.always(.json(#"{"error":"search_busy"}"#, status: 503))
+        do {
+            _ = try await service.browse(LibraryBrowseFilters(category: "case-law", query: "bail"))
+            XCTFail("expected a refusal")
+        } catch let error as LibraryCatalogueError {
+            XCTAssertTrue(error.isBusy)
+        }
+        XCTAssertEqual(HTTPStub.seen.count, 1)
+        XCTAssertTrue(waits.values.isEmpty)
     }
 
     func testTheCatalogueErrorsCarryTheirCodes() async throws {
@@ -403,4 +547,13 @@ final class LibraryModelTests: XCTestCase {
         XCTAssertTrue(LibraryCatalogueError(status: 413, code: "too_large").isTooLarge)
         XCTAssertTrue(LibraryCatalogueError(status: 404, code: "no_cover", reason: "file_missing").isFileMissing)
     }
+}
+
+/// What a test's stand-in was handed, in order — appended from the transport's own queue.
+private final class WaitLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _values: [TimeInterval] = []
+    var values: [TimeInterval] { lock.withLock { _values } }
+    var count: Int { lock.withLock { _values.count } }
+    func append(_ value: TimeInterval) { lock.withLock { _values.append(value) } }
 }

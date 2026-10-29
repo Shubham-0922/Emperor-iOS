@@ -154,10 +154,10 @@ final class AddToMattersDraftTests: XCTestCase {
 final class RecentLookupsTests: XCTestCase {
 
     func testTheListRemembersSixNewestFirstWithoutRepeats() {
-        let store = InMemoryPreferenceStore()
+        let store = InMemoryCacheStore()
         final class Tick: @unchecked Sendable { var n = 0 }
         let tick = Tick()
-        let recent = RecentLookups(store: store, now: { tick.n += 1; return Date(timeIntervalSince1970: Double(tick.n) * 86_400) })
+        let recent = RecentLookups(store: store, userID: 42, now: { tick.n += 1; return Date(timeIntervalSince1970: Double(tick.n) * 86_400) })
         XCTAssertTrue(recent.read().isEmpty)
         for n in 1...7 {
             var c = card()
@@ -190,6 +190,78 @@ final class RecentLookupsTests: XCTestCase {
         entry.title = "A vs B"
         XCTAssertEqual(entry.displayTitle, "A v. B")
     }
+
+    /// Each account has its own list: whoever signs in next on the phone never sees whose cases
+    /// were read before them.
+    func testEachAccountKeepsItsOwnList() {
+        let store = InMemoryCacheStore()
+        let mine = RecentLookups(store: store, userID: 42)
+        let theirs = RecentLookups(store: store, userID: 7)
+        mine.remember(card(), title: "Pstgems v. Alisha")
+        XCTAssertEqual(mine.read().map(\.title), ["Pstgems v. Alisha"])
+        XCTAssertTrue(theirs.read().isEmpty)
+        XCTAssertEqual(mine.storageKey, "fetch-orders-recent-42")
+        XCTAssertNotNil(store.read("fetch-orders-recent-42"))
+        theirs.forget(RecentLookups.key(for: card()))
+        XCTAssertEqual(mine.read().count, 1, "forgetting in one list leaves the other alone")
+    }
+
+    /// The one list earlier builds kept for the whole device, in the preferences a sign-out does
+    /// not touch, is emptied and never read.
+    func testTheDeviceWideListOfEarlierBuildsIsEmptied() {
+        let preferences = InMemoryPreferenceStore()
+        RecentLookups.dropDeviceWideList(from: preferences)
+        XCTAssertNil(preferences.string(for: RecentLookups.deviceWideKey), "nothing is written where nothing was")
+        preferences.setString(#"[{"key":"DLHC010012342025","title":"Someone else's case"}]"#, for: "ex-fetch-orders-recent")
+        RecentLookups.dropDeviceWideList(from: preferences)
+        XCTAssertEqual(preferences.string(for: "ex-fetch-orders-recent"), "")
+    }
+}
+
+/// Signing out forgets the account's recent lookups with everything else it left on the phone.
+final class RecentLookupsSessionTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        HTTPStub.reset()
+    }
+
+    override func tearDown() {
+        HTTPStub.reset()
+        super.tearDown()
+    }
+
+    func testSigningOutForgetsTheList() async throws {
+        HTTPStub.always(.json(#"{"success":true}"#))
+        let store = InMemoryCacheStore()
+        try await signedIn(as: 42, store: store) { session in
+            let recent = try XCTUnwrap(session.recentLookups)
+            XCTAssertEqual(recent.userID, 42)
+            recent.remember(card(), title: "Pstgems v. Alisha")
+            XCTAssertEqual(session.recentLookups?.read().count, 1)
+
+            await session.signOut()
+
+            XCTAssertNil(session.recentLookups, "nothing is kept for nobody")
+            XCTAssertTrue(recent.read().isEmpty, "the list went with the sign-out")
+        }
+        await signedIn(as: 7, store: store) { session in
+            XCTAssertEqual(session.recentLookups?.read(), [])
+        }
+    }
+}
+
+@MainActor
+private func signedIn(
+    as id: Int, store: InMemoryCacheStore, _ body: @MainActor (Session) async throws -> Void
+) async rethrows {
+    let encoded = String(decoding: try! JSONEncoder().encode(User(id: id)), as: UTF8.self)
+    let session = Session(
+        store: InMemoryCredentialStore(["auth.token": "tok", "auth.user": encoded]),
+        cache: ResponseCache(store: store),
+        urlSession: HTTPStub.session())
+    await session.restore()
+    try await body(session)
 }
 
 final class TrackedCasesTests: XCTestCase {
@@ -257,7 +329,7 @@ private final class FakeMatters: ProjectProviding, @unchecked Sendable {
 }
 
 @MainActor
-private func makeLookup(tracked: [LegalCase] = [], matters: [Project] = []) throws -> (FakeTrackerService, FakeMatters, FakeCases, InMemoryPreferenceStore, CourtLookupViewModel) {
+private func makeLookup(tracked: [LegalCase] = [], matters: [Project] = []) throws -> (FakeTrackerService, FakeMatters, FakeCases, InMemoryCacheStore, CourtLookupViewModel) {
         let lookup = FakeLookupService()
         lookup.record = try record()
         let tracker = FakeTrackerService()
@@ -265,10 +337,10 @@ private func makeLookup(tracked: [LegalCase] = [], matters: [Project] = []) thro
         projects.existing = matters
         let cases = FakeCases()
         cases.cases = tracked
-        let store = InMemoryPreferenceStore()
+        let store = InMemoryCacheStore()
         let model = CourtLookupViewModel(
             card: card(), lookup: lookup, tracker: tracker, projects: projects, cases: cases,
-            recent: RecentLookups(store: store), todayKey: { "2026-10-19" })
+            recent: RecentLookups(store: store, userID: 42), todayKey: { "2026-10-19" })
         return (tracker, projects, cases, store, model)
 }
 
@@ -294,7 +366,7 @@ final class FetchOrdersLookupTests: XCTestCase {
         XCTAssertEqual(model.tiles[0].hint, CourtLookupViewModel.Hints.nextHearing)
         XCTAssertEqual(model.keepLabel, "Add to Matters")
         XCTAssertEqual(model.provenanceLine, "Read from the court just now · not saved to your account")
-        XCTAssertEqual(RecentLookups(store: store).read().first?.title, "M/S PSTGEMS PRIVATE LIMITED vs. ALISHA ENTERPRISES", "a read case is remembered")
+        XCTAssertEqual(RecentLookups(store: store, userID: 42).read().first?.title, "M/S PSTGEMS PRIVATE LIMITED vs. ALISHA ENTERPRISES", "a read case is remembered")
         }
     }
 

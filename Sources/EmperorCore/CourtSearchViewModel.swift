@@ -97,6 +97,12 @@ final class CourtSearchViewModel {
     /// Whether a lookup here is the slow kind, so the wait can be explained rather than endured.
     var expectsLongWait: Bool { query.forum.solvesCaptcha(in: query.mode) }
 
+    /// What the long wait is, in words: a High Court on its own portal is slow for its own
+    /// reasons, not the eCourts security check.
+    var longWaitNote: String {
+        query.highCourtDedicated ? Copy.dedicatedWait : Copy.captchaWait
+    }
+
     // MARK: - Searching
 
     func search() {
@@ -223,8 +229,10 @@ final class CourtSearchViewModel {
             adopt(fetched)
 
             // A generic eCourts High Court publishes neither list in its contract; both come
-            // from separate calls, the second of which needs a bench first.
-            if court.family == .highCourt, fetched.benches.isEmpty, !query.stateCode.isEmpty {
+            // from separate calls, the second of which needs a bench first. A dedicated portal
+            // has already said everything it has.
+            if court.family == .highCourt, fetched.hcKind != .dedicated,
+               fetched.benches.isEmpty, !query.stateCode.isEmpty {
                 benches = try await metadata.highCourtBenches(stateCode: query.stateCode)
                 guard ticket == cascade else { return }
             }
@@ -246,10 +254,11 @@ final class CourtSearchViewModel {
         caseTypes = fetched.caseTypes
         query.requiresBench = fetched.needsBench
         query.benchCascade = fetched.benchCascade
+        query.highCourtDedicated = fetched.hcKind == .dedicated
         // Only the first mode this court supports; the others are not offered, so leaving the
         // query in one of them would make the form unsendable with nothing on screen to change.
-        if query.forum.path(for: query.mode) == nil,
-           let first = query.forum.availableModes.first {
+        if query.searchPath == nil,
+           let first = query.availableModes.first {
             query.mode = first
         }
     }
@@ -261,14 +270,18 @@ final class CourtSearchViewModel {
 
         query.bench = option.value
         query.benchName = option.label
+        // A dedicated High Court portal gave every case type it has with its contract, and its
+        // seat does not change them: the chosen type stands and nothing is asked again.
+        if query.forum == .highCourt, query.highCourtDedicated { return }
+        // An eCourts High Court addresses the bench as its court code.
+        if query.forum == .highCourt { query.courtCode = option.value }
         // The case type belonged to the previous bench. Keeping it would submit a type this
         // bench may not have, and the server would answer "no such case" rather than saying so.
         query.caseType = ""
         query.caseTypeLabel = ""
 
         guard contract.takesCaseType else { return }
-        // A dedicated portal already gave us every type it has; only the two that serve them
-        // per bench need asking again.
+        // Only the two that serve case types per bench need asking again.
         let needsFetch = query.forum == .highCourt || query.forum == .tribunal
         guard needsFetch else { return }
 
@@ -495,6 +508,7 @@ final class CourtSearchViewModel {
         static let searchButton = "Search the court"
         static let searching = "Asking the court…"
         /// Said out loud because ten seconds of silence reads as a hang.
+        static let dedicatedWait = "The court’s own website can take up to a minute to answer."
         static let captchaWait = """
             High Court lookups go through the court's own security check, which usually takes \
             a few seconds and sometimes longer.

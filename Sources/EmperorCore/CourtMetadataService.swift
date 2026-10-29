@@ -27,6 +27,17 @@ struct CourtContract: Equatable, Sendable {
     var takesCaseType = true
     /// Whether the platform can search this court. False for anything whose adapter is absent.
     var isSupported = true
+    /// High Courts only: whether this one is searched on its own portal or through eCourts.
+    var hcKind: HCKind?
+
+    /// How a High Court is searched (`/court/hc/config`'s `kind`).
+    enum HCKind: String, Equatable, Sendable {
+        /// Its own portal: case types (and any seats) come with the contract; searched on
+        /// `/court/hc/dedicated/search` by case number only.
+        case dedicated
+        /// The eCourts aggregator: a bench first, then its case types, by state code.
+        case generic
+    }
 
     /// What a court the platform cannot reach looks like.
     static let unsupported = CourtContract(takesCaseType: false, isSupported: false)
@@ -160,12 +171,17 @@ struct CourtMetadataService: CourtMetadataProviding {
             guard response.success == true, response.kind != "unsupported" else {
                 return .unsupported
             }
-            // A dedicated portal hands back both lists at once; a generic eCourts court hands
-            // back neither and needs `/court/hc/benches` then `/court/hc/casetypes`.
-            return CourtContract(
-                needsBench: response.contract?.needsBench ?? (response.kind == "generic"),
-                benches: response.benches ?? [],
-                caseTypes: response.caseTypes ?? [])
+            // A dedicated portal hands back both lists at once and wants a bench only where its
+            // contract says so; a generic eCourts court hands back neither, always wants a bench,
+            // and needs `/court/hc/benches` then `/court/hc/casetypes`.
+            if response.kind == "dedicated" {
+                return CourtContract(
+                    needsBench: response.contract?.needsBench ?? false,
+                    benches: response.benches ?? [],
+                    caseTypes: response.caseTypes ?? [],
+                    hcKind: .dedicated)
+            }
+            return CourtContract(needsBench: true, hcKind: .generic)
 
         case .tribunal:
             let response = try await get(

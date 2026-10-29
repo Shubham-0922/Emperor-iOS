@@ -110,6 +110,22 @@ final class CourtRecordTests: XCTestCase {
         XCTAssertTrue(parties.respondentAdvocates.isEmpty)
     }
 
+    /// Only an `http(s)` address with a host is a copy to open. A consumer forum's order comes as
+    /// a marker, which `URL(string:)` would happily take for a link that opens nothing.
+    func testOnlyAWebAddressIsACopyToOpen() {
+        func link(_ url: String?) -> URL? { CourtRecord.Order(date: "2026-07-01", title: "Order", url: url).pdfURL }
+        XCTAssertEqual(link("https://court.example/o1.pdf")?.absoluteString, "https://court.example/o1.pdf")
+        XCTAssertEqual(link("HTTP://court.example/o1.pdf")?.host, "court.example")
+        XCTAssertEqual(link("  https://court.example/o1.pdf\n")?.absoluteString, "https://court.example/o1.pdf")
+        XCTAssertNil(link("ejagriti-order:77"))
+        XCTAssertNil(link("javascript:alert(1)"))
+        XCTAssertNil(link("file:///etc/passwd"))
+        XCTAssertNil(link("https://"))
+        XCTAssertNil(link("/orders/77.pdf"))
+        XCTAssertNil(link(""))
+        XCTAssertNil(link(nil))
+    }
+
     func testATitlelessRecordIsNamedFromItsParties() throws {
         var record = try decodedRecord()
         record.case.title = nil
@@ -159,6 +175,62 @@ final class CourtLookupViewModelTests: XCTestCase {
             XCTAssertEqual(model.state.failure?.message, "The court's website did not answer. Try again in a few minutes.")
             XCTAssertTrue(model.state.failure?.isRetryable ?? false)
             XCTAssertNotNil(model.presentation.state.failure)
+            XCTAssertNil(model.finalAnswer)
+            XCTAssertNil(model.deadEnd, "a court that did not answer may answer next time: Try again stays")
+        }
+    }
+
+    /// The court has nothing under that number: asking again sends the same card and gets the
+    /// same answer, so the only way on is a new search.
+    func testNothingUnderThatNumberOffersOnlyANewSearch() async throws {
+        let record = try decodedRecord()
+        await withLookup { lookup, _, model in
+            lookup.error = CourtLookupService.nothingUnderThatNumber
+            await model.load()
+            XCTAssertEqual(model.finalAnswer, .nothingUnderThatNumber)
+            XCTAssertEqual(model.deadEnd, CourtLookupViewModel.DeadEnd(
+                title: "The court has nothing under that number.",
+                message: "The court returned no details for this case. Check the number and year, or try again later."))
+            XCTAssertEqual(CourtLookupViewModel.searchAgain, "Search again")
+
+            // A later answer that comes back clears it.
+            lookup.error = nil
+            lookup.record = record
+            await model.load()
+            XCTAssertNil(model.finalAnswer)
+            XCTAssertNil(model.deadEnd)
+        }
+    }
+
+    func testAnUnreadableCardOffersOnlyANewSearch() async {
+        await withLookup { lookup, _, model in
+            lookup.error = CourtLookupService.unreadableCard
+            await model.load()
+            XCTAssertEqual(model.deadEnd?.title, "We could not read this case.")
+            XCTAssertEqual(model.deadEnd?.message, "That case could not be read. Search for it again.")
+        }
+    }
+
+    /// Only the court's own two answers are final — not a 404 with no code (a server without the
+    /// route), and not a sign-out or an outage.
+    func testOnlyTheCodedAnswersAreFinal() {
+        XCTAssertEqual(CourtLookupService.finalAnswer(CourtLookupService.nothingUnderThatNumber), .nothingUnderThatNumber)
+        XCTAssertEqual(CourtLookupService.finalAnswer(CourtLookupService.unreadableCard), .unreadableCard)
+        XCTAssertNil(CourtLookupService.finalAnswer(APIError.server(status: 404, message: "Not found")))
+        XCTAssertNil(CourtLookupService.finalAnswer(APIError.server(status: 502, message: "The court's website did not answer. Try again in a few minutes.")))
+        XCTAssertNil(CourtLookupService.finalAnswer(APIError.invalidCredentials))
+        XCTAssertNil(CourtLookupService.finalAnswer(URLError(.timedOut)))
+    }
+
+    /// A forum's order marker is no link in the copied summary either.
+    func testTheSummaryCarriesOnlyLinksThatOpen() async throws {
+        var record = try decodedRecord()
+        record.orders = [CourtRecord.Order(date: "2026-07-01", title: "Final order", url: "ejagriti-order:77")]
+        await withLookup { lookup, _, model in
+            lookup.record = record
+            await model.load()
+            XCTAssertTrue(model.summaryText.contains("- Wednesday, 1 July 2026: Final order\n"), model.summaryText)
+            XCTAssertFalse(model.summaryText.contains("ejagriti-order"), model.summaryText)
         }
     }
 
@@ -243,6 +315,41 @@ final class CourtLookupWireTests: XCTestCase {
         XCTAssertEqual(sent["courtType"] as? String, "hc")
         XCTAssertEqual((sent["scrapeRef"] as? [String: Any])?["bench"] as? String, "3")
         XCTAssertNil(sent["diaryNumber"])
+        XCTAssertNil(sent["judge"], "a card that does not carry the bench sends none")
+    }
+
+    /// The slowest portals (Allahabad and the other dedicated High Courts) take 40–80 seconds.
+    func testALookupWaitsAsLongAsTheSlowestCourt() async throws {
+        let service = await makeService()
+        HTTPStub.always(.json(recordJSON))
+        _ = try await service.lookup(card())
+        XCTAssertEqual(try XCTUnwrap(HTTPStub.lastRequest).timeoutInterval, 90)
+        XCTAssertEqual(CourtLookupService.timeout, 90)
+    }
+
+    /// What the search said about the bench, the stage and the next date goes with the lookup —
+    /// the record falls back to the first two — and only with the lookup: `/save-case`'s card is
+    /// unchanged.
+    func testTheLookupCardCarriesTheBenchStageAndNextDate() async throws {
+        var searched = card()
+        searched.judge = "Hon'ble Mr. Justice R. Verma"
+        searched.stage = "Admission"
+        searched.nextHearingDate = "12-11-2026"
+        let service = await makeService()
+        HTTPStub.always(.json(recordJSON))
+        _ = try await service.lookup(searched)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(HTTPStub.lastRequest?.httpBody)) as? [String: Any])
+        let sent = try XCTUnwrap(body["card"] as? [String: Any])
+        XCTAssertEqual(sent["judge"] as? String, "Hon'ble Mr. Justice R. Verma")
+        XCTAssertEqual(sent["stage"] as? String, "Admission")
+        XCTAssertEqual(sent["nextHearingDate"] as? String, "12-11-2026")
+        XCTAssertEqual(sent["cnr"] as? String, "DLHC010012342025")
+
+        for key in ["judge", "stage", "nextHearingDate"] {
+            XCTAssertNil(searched.cardFields[key], "/save-case's card is not changed: \(key)")
+        }
+        searched.stage = ""
+        XCTAssertNil(searched.lookupCardFields["stage"], "a blank is left out, as every other field is")
     }
 
     func testEachCodeIsWordedForTheReader() async {

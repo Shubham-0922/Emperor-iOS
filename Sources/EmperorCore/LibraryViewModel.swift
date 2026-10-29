@@ -251,6 +251,30 @@ final class LibraryViewModel {
 
     var passageItems: [CatalogueDocument] { passages?.items ?? [] }
 
+    // MARK: - Opening a collection
+
+    /// Where a collection opened from the home lands. The search on screen goes along — the web's
+    /// `selectCategory` keeps `q` whether a chip or a "See all" was tapped — and "See all" under
+    /// the passages opens Case law on the words inside (`in=text`), not on case names.
+    struct CollectionOpening: Equatable, Sendable {
+        var category: LibraryCategoryCount
+        var query: String
+        var inText: Bool
+    }
+
+    /// A chip on the strip, or a collection's "See all".
+    func opening(_ category: LibraryCategoryCount) -> CollectionOpening {
+        CollectionOpening(category: category, query: searchedFor, inText: false)
+    }
+
+    /// "See all" under "Inside judgments".
+    var passagesOpening: CollectionOpening {
+        let key = LibraryCollection.caseLaw.rawValue
+        let category = categories.first { $0.key == key }
+            ?? LibraryCategoryCount(key: key, label: LibraryCollectionTheme.theme(for: key).label, count: nil)
+        return CollectionOpening(category: category, query: searchedFor, inText: !searchedFor.isEmpty)
+    }
+
     /// Nothing anywhere, after everything answered.
     var searchFoundNothing: Bool {
         searchState.hasLoaded && orderedGroups.isEmpty && passageItems.isEmpty

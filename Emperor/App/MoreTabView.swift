@@ -5,9 +5,9 @@ import SwiftUI
 /// Files, History, All Notifications and Library are the workspace management rows — each
 /// presents its screen the way You presents the Tools destinations (every one owns its own
 /// `NavigationStack`; see `ToolDestination`). Under them the web sidebar's **Case tools** and
-/// **Doc tools**: the case tools are drawn as cards — they are not built in this app yet, so
-/// each is a stand-in the same way the composer's wand and mic are — and the doc tools are wired
-/// to the screens they already have (OCR, the PDF tools). The search field filters every row
+/// **Doc tools**: the case tools are drawn as cards, each opening its screen the way You's Tools
+/// rows do (Fetch Orders, the Analysis tools, Limitation Radar, Filing Assembly), and the doc
+/// tools are wired to the screens they already have (OCR, the PDF tools). The search field filters every row
 /// on the screen, as a search on a screen of destinations should.
 struct MoreTabView: View {
     @Environment(\.theme) private var theme
@@ -131,26 +131,41 @@ struct MoreTabView: View {
 
     // MARK: - Case tools
 
-    /// One drawn case-tool card; nowhere to go yet, the same stand-in the doc rows were before
-    /// their screens were wired.
+    /// One drawn case-tool card and the screen it opens. `key` names the card for the UI tests
+    /// (`case-tool-<key>`).
     private struct CaseTool: Identifiable {
+        let key: String
         let title: String
         let subtitle: String
         let systemImage: String
         let tag: String
-        var id: String { title }
+        let destination: ToolDestination
+        var id: String { key }
     }
 
     private var caseToolItems: [CaseTool] {
         [
-            CaseTool(title: "Fetch Orders", subtitle: "Autopull from SC & Delhi HC portals",
-                     systemImage: "doc.text.magnifyingglass", tag: "Live Court"),
-            CaseTool(title: "Devil's Advocate", subtitle: "AI adversary cross-exam prep",
-                     systemImage: "shield", tag: "Adversary AI"),
-            CaseTool(title: "Doc Index", subtitle: "Pagination & court filing indices",
-                     systemImage: "tablecells", tag: "E-Filing"),
-            CaseTool(title: "List of Dates", subtitle: "Chronology generator for SLP & writs",
-                     systemImage: "calendar", tag: "SLP Ready"),
+            CaseTool(key: "fetchOrders", title: "Fetch Orders",
+                     subtitle: "Autopull from SC & Delhi HC portals",
+                     systemImage: "doc.text.magnifyingglass", tag: "Live Court",
+                     destination: .fetchOrders),
+            // The three server-run analyses open on the Analysis tools hub, where each is chosen.
+            CaseTool(key: "devilsAdvocate", title: "Devil's Advocate",
+                     subtitle: "AI adversary cross-exam prep",
+                     systemImage: "shield", tag: "Adversary AI", destination: .analysis),
+            CaseTool(key: "docIndex", title: "Doc Index",
+                     subtitle: "Pagination & court filing indices",
+                     systemImage: "tablecells", tag: "E-Filing", destination: .analysis),
+            CaseTool(key: "listOfDates", title: "List of Dates",
+                     subtitle: "Chronology generator for SLP & writs",
+                     systemImage: "calendar", tag: "SLP Ready", destination: .analysis),
+            CaseTool(key: "limitationRadar", title: "Limitation Radar",
+                     subtitle: "Limitation periods & condonation risk",
+                     systemImage: "hourglass", tag: "Deadlines", destination: .limitationRadar),
+            CaseTool(key: "filingAssembly", title: "Filing Assembly",
+                     subtitle: "Index, annexures & paper-book",
+                     systemImage: "books.vertical.fill", tag: "E-Filing",
+                     destination: .filingAssembly),
         ]
     }
 
@@ -168,7 +183,7 @@ struct MoreTabView: View {
 
     private func caseToolCard(_ item: CaseTool) -> some View {
         Button {
-            // Not built in this app yet — the card is the promise, the wiring is a later step.
+            tool = item.destination
         } label: {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 IconTile(systemImage: item.systemImage)
@@ -193,6 +208,7 @@ struct MoreTabView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(item.title))
         .accessibilityHint(Text(item.subtitle))
+        .accessibilityIdentifier("case-tool-\(item.key)")
     }
 
     // MARK: - Doc tools

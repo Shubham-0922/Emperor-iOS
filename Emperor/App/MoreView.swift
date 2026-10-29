@@ -17,7 +17,7 @@ import SwiftUI
 ///   wrong one. So each carries its own "Done" at `.cancellationAction`, and You owns the one
 ///   sheet they are presented in.
 enum ToolDestination: String, Identifiable {
-    case deck, corporateCalendar, library, fetchOrders, projects, tools, analysis, limitationRadar, mcaRegistry, fileTools, ocr, translate, eAuctions
+    case deck, corporateCalendar, library, fetchOrders, projects, tools, analysis, limitationRadar, filingAssembly, mcaRegistry, fileTools, ocr, translate, eAuctions
 
     var id: String { rawValue }
 
@@ -36,6 +36,8 @@ enum ToolDestination: String, Identifiable {
         case .analysis: return "Analysis tools"
         // Is a suit in time, and by how much — date arithmetic against the Limitation Act.
         case .limitationRadar: return "Limitation Radar"
+        // A saved draft, its annexures and a cover made into one court-ready bundle (`/filing`).
+        case .filingAssembly: return "Filing Assembly"
         // Decode a CIN offline; open the companies named in liquidation notices.
         case .mcaRegistry: return "MCA Registry"
         case .fileTools: return "File tools"
@@ -56,6 +58,7 @@ enum ToolDestination: String, Identifiable {
         case .tools: return "wrench.and.screwdriver"
         case .analysis: return "exclamationmark.shield"
         case .limitationRadar: return "hourglass"
+        case .filingAssembly: return "books.vertical.fill"
         case .mcaRegistry: return "building.2"
         case .fileTools: return "scissors"
         case .ocr: return "doc.text.viewfinder"
@@ -76,6 +79,7 @@ enum ToolDestination: String, Identifiable {
         case .tools: ToolsListView()
         case .analysis: AnalysisHubView()
         case .limitationRadar: LimitationRadarView()
+        case .filingAssembly: FilingAssemblyScreen()
         case .mcaRegistry: McaRegistryView()
         case .fileTools: PDFToolsView()
         // One screen with an OCR | Translate switch at its head; each row opens it in its own mode.
@@ -113,6 +117,7 @@ struct ToolsSections: View {
             row(.tools)
             row(.analysis)
             row(.limitationRadar)
+            row(.filingAssembly)
             row(.mcaRegistry)
             row(.fileTools)
             row(.ocr)

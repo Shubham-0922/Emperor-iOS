@@ -267,7 +267,7 @@ final class ScreenshotTour: XCTestCase {
         // hidden for now; see `ToolsSections`.
         for row in ["Your workspace", "Corporate Calendar", "Library", "Fetch Orders",
                     "Matter workspaces", "All tools", "Analysis tools", "Limitation Radar",
-                    "MCA Registry", "File tools", "OCR", "Translate"] {
+                    "Filing Assembly", "MCA Registry", "File tools", "OCR", "Translate"] {
             let button = app.buttons[row].firstMatch
             app.reveal(button)
             guard button.waitForExistence(timeout: 5) else { continue }
