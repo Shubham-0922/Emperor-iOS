@@ -324,6 +324,30 @@ struct CourtSearchQuery: Equatable, Sendable {
     var caseType: String = ""
     var caseTypeLabel: String = ""
 
+    /// High Court only: this court has a portal of its own (Delhi, Punjab & Haryana, Bombay,
+    /// Karnataka, Madras, Allahabad), as `/court/hc/config` says, rather than the eCourts
+    /// aggregator. It is searched on its own route, by case type, number and year — a bench only
+    /// where its contract asks for one — and it has no filing-number lookup.
+    var highCourtDedicated = false
+
+    /// The route this query goes to, or nil when it has none in this mode.
+    var searchPath: String? {
+        if forum == .highCourt, highCourtDedicated {
+            return mode == .caseNumber ? "/court/hc/dedicated/search" : nil
+        }
+        return forum.path(for: mode)
+    }
+
+    /// The modes worth offering for this court, in order. A dedicated High Court portal is
+    /// searched by case number only.
+    var availableModes: [CourtSearchMode] {
+        CourtSearchMode.allCases.filter { candidate in
+            var probe = self
+            probe.mode = candidate
+            return probe.searchPath != nil
+        }
+    }
+
     /// Whether this is complete enough to send.
     ///
     /// Worth checking locally because the server does **not** report a validation failure as
@@ -333,7 +357,7 @@ struct CourtSearchQuery: Equatable, Sendable {
     /// - Note: a court with no route for the current mode is never complete, however much of the
     ///   form is filled in. That is the district courts, whose only endpoint echoes the request
     ///   back as a fabricated card — see `Court.isSearchable`.
-    var isComplete: Bool { forum.path(for: mode) != nil && missingFields.isEmpty }
+    var isComplete: Bool { searchPath != nil && missingFields.isEmpty }
 
     /// From the fetched contract: whether this court needs a bench before it can be searched.
     ///
@@ -382,6 +406,11 @@ struct CourtSearchQuery: Equatable, Sendable {
             return [
                 (caseType, "Case type"), (number, forum.numberLabel(for: mode)), (year, "Year"),
             ]
+        // A dedicated portal is addressed by its own id: no state and no eCourts bench, a
+        // bench (seat or side) only where its contract asks for one.
+        case (.highCourt, _) where highCourtDedicated:
+            return (requiresBench ? [(bench, benchLabel)] : [])
+                + [(caseType, "Case type"), (number, "Case number"), (year, "Year")]
         // The High Court needs the same five either way: its diary route still searches a
         // bench's listing rather than going straight to a case.
         case (.highCourt, _):
@@ -467,6 +496,21 @@ struct CourtSearchQuery: Equatable, Sendable {
                 "caseNumber": .string(trimmed(number)),
                 "year": .string(trimmed(year)),
             ]
+            addLabels(to: &body)
+            return body
+
+        // A dedicated portal: the court's own id, the case type (and its words), number and
+        // year, and the seat or side where one was chosen.
+        case (.highCourt, _) where highCourtDedicated:
+            let named = trimmed(courtID)
+            let fallback = CourtSearchQuery.highCourtID(forStateCode: trimmed(stateCode)) ?? ""
+            var body: [String: JSONValue] = [
+                "courtId": .string(named.isEmpty ? fallback : named),
+                "caseType": .string(trimmed(caseType)),
+                "caseNumber": .string(trimmed(number)),
+                "year": .string(trimmed(year)),
+            ]
+            if !trimmed(bench).isEmpty { body["bench"] = .string(trimmed(bench)) }
             addLabels(to: &body)
             return body
 

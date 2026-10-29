@@ -217,8 +217,9 @@ struct ResponseCache: Sendable {
     /// nor must an offline conversation or document, of any account.
     ///
     /// `onClear` lets the app layer wipe things the core cannot reach — the temporary directory
-    /// share sheets write PDFs into, for instance. Signing out is purely local, so what the
-    /// device forgets is the *only* protection the next person to hold the phone gets.
+    /// share sheets write PDFs into, for instance. Signing out is purely local (there is no
+    /// revocation endpoint), so what the device forgets is the *only* protection the next
+    /// person to hold the phone gets.
     func clear() {
         store.removeAll()
         offline.removeAll()

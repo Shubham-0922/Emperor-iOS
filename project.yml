@@ -30,8 +30,8 @@ settings:
     # resolved by `APIConfig.resolveEnvironment`.
     #
     # Setting this to `development` in a Release configuration does NOT take effect — the
-    # resolver forces production. Changing this value cannot cause a distributed build to talk
-    # to a development deployment.
+    # resolver forces production, because the development host is a public tunnel with no
+    # Access policy in front of real client matters. Changing this value cannot expose it.
     Debug:
       EMPEROR_ENVIRONMENT: development
     Release:
@@ -87,6 +87,13 @@ targets:
           - InstrumentSerif-Italic.ttf
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # iPad multitasking (Split View, Stage Manager) requires all four; App Store upload
+        # validation refuses an iPad app that leaves one out without UIRequiresFullScreen.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         # Required: the app opens the camera to scan paperbooks. Without a purpose string

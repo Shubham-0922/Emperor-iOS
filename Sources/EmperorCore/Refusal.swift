@@ -52,6 +52,14 @@ struct Refusal: Equatable, Sendable {
         case accountSuspended = "ACCOUNT_SUSPENDED"
         /// 429: more requests in an hour than anyone sends by hand.
         case rateLimit = "RATE_LIMIT"
+
+        // The account itself.
+        /// 403: the token is valid but the account it names is not found.
+        case noAccount = "NO_ACCOUNT"
+        /// 401 with a code: a request needed a fresh sign-in. Not a sign-out by itself.
+        case reauthenticate = "AUTH"
+        /// 400: the mobile number is not a complete Indian mobile number.
+        case badPhone = "BAD_PHONE"
     }
 
     var code: Code
@@ -70,7 +78,9 @@ struct Refusal: Equatable, Sendable {
     /// Whether this is about the account's plan or standing, rather than about signing in.
     var concernsThePlan: Bool {
         switch code {
-        case .providerAccount, .emailUnverified, .accountExists, .invalidCode: return false
+        case .providerAccount, .emailUnverified, .accountExists, .invalidCode,
+             .noAccount, .reauthenticate, .badPhone:
+            return false
         default: return true
         }
     }

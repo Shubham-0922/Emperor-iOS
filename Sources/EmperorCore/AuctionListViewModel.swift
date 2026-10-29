@@ -226,15 +226,18 @@ final class AuctionListViewModel {
 
     // MARK: - Watchlists (built, tested, and held back)
     //
-    // Nothing below has a caller in the app. A watchlist names the companies a firm is tracking
-    // — litigation strategy, not a preference — so it is withheld until the contract of that
-    // endpoint is confirmed.
+    // Nothing below has a caller in the app. `/auction-watchlists` reads its `userId` from the
+    // query on GET and from the body on POST, with no token check either way
+    // (`sync-server.js:10368`, `:10378`), so any caller can read *and write* any account's
+    // watchlist. A watchlist names the companies a firm is tracking — litigation strategy, not
+    // a preference.
     //
-    // Kept rather than deleted, and kept under test, because the client side is correct.
-    // Re-adding the toolbar item and the sheet is the whole of the job when that is settled.
+    // Kept rather than deleted, and kept under test, because the client side is correct and
+    // the fix is three lines of `requireAuth` on the server. Re-adding the toolbar item and
+    // the sheet is the whole of the work when that lands.
     //
-    // **Do not wire these up without checking the endpoint first.** The Android client reached
-    // the same conclusion independently.
+    // **Do not wire these up without checking the route first.** The Android client reached
+    // the same conclusion independently — `Jithro_Android/BACKEND_REQUESTS.md` item 3.
 
     private var hasLoadedWatchlists = false
 

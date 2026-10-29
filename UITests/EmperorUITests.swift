@@ -543,6 +543,14 @@ final class EmperorUITests: XCTestCase {
         choice.tap()
         app.buttons["Continue"].tap()
 
+        // The second step: chambers and designation, both optional.
+        let start = app.buttons["Start working"]
+        XCTAssertTrue(start.waitForExistence(timeout: 10), "the details step did not follow the role")
+        XCTAssertTrue(app.textFields["welcome-organization"].exists, "the chambers field is missing")
+        XCTAssertTrue(app.textFields["welcome-title"].exists, "the designation field is missing")
+        XCTAssertTrue(app.buttons["Skip"].exists, "there must be a way past the details")
+        start.tap()
+
         XCTAssertTrue(
             app.tab("Ask").waitForExistence(timeout: 10),
             "choosing a role did not lead into the app")
@@ -790,11 +798,36 @@ final class EmperorUITests: XCTestCase {
 
         // Left as the other tests expect to find it. The picker is waited on by its own bar
         // before the row is tapped, the same way the first open waits for its rows.
-        app.reveal(selector)
-        selector.tap()
-        XCTAssertTrue(
-            app.navigationBars["Switch role"].waitForExistence(timeout: 10),
-            "the role picker did not reopen")
+        // A tap that lands while the closed sheet is still settling is swallowed, so the row is
+        // revealed and tapped again, up to three times, before the picker is called missing.
+        //
+        // `reveal` alone is not enough here. After the list has been scrolled, the Role row can
+        // come back sitting *under* the collapsed navigation bar: XCTest calls it
+        // hittable, but the tap lands on the bar and nothing opens. So the list is dragged down
+        // until the row is clear of the bar first. The drag is short and only made while the row
+        // is under the bar — the list is then far from its top, so it scrolls the list and cannot
+        // pull the sheet down.
+        let profileBar = app.navigationBars["Account & Profile"].firstMatch
+        var reopened = false
+        for _ in 0..<3 where !reopened {
+            app.reveal(selector)
+            var nudges = 0
+            while selector.exists, profileBar.exists,
+                  selector.frame.minY < profileBar.frame.maxY + 4, nudges < 4 {
+                // Measured from the row itself, so the drag starts inside the sheet's list on a
+                // phone and on an iPad's form sheet alike.
+                let start = selector.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                    .withOffset(CGVector(dx: 0, dy: 160))
+                let end = start.withOffset(CGVector(dx: 0, dy: 180))
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow,
+                            thenHoldForDuration: 0.2)
+                Thread.sleep(forTimeInterval: 0.3)
+                nudges += 1
+            }
+            selector.tap()
+            reopened = app.navigationBars["Switch role"].waitForExistence(timeout: 6)
+        }
+        XCTAssertTrue(reopened, "the role picker did not reopen")
         let litigator = app.buttons["role-litigator"].firstMatch
         XCTAssertTrue(litigator.waitForExistence(timeout: 10), "the roles were not listed")
         litigator.tap()
@@ -1516,8 +1549,17 @@ final class EmperorUITests: XCTestCase {
         let edit = app.buttons["edit-profile"].firstMatch
         app.reveal(edit)
         XCTAssertTrue(edit.waitForExistence(timeout: 10), "You has no Edit profile row")
-        edit.tap()
-        XCTAssertTrue(app.navigationBars["Edit profile"].waitForExistence(timeout: 10))
+        // Tapped again, up to three times in all, while the row is still there and nothing has
+        // opened: on an iPad, You's page sheet takes in rows that arrive from the server just as
+        // the sheet settles, and a tap made while the list takes them in can be lost. A row that
+        // opens nothing fails all three.
+        let form = app.navigationBars["Edit profile"]
+        for _ in 0..<3 {
+            guard edit.exists, edit.isHittable else { break }
+            edit.tap()
+            if form.waitForExistence(timeout: 5) { break }
+        }
+        XCTAssertTrue(form.waitForExistence(timeout: 10), "Edit profile did not open")
 
         let name = app.textFields["profile-name"].firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 10), "no name field")
@@ -1801,6 +1843,22 @@ final class EmperorUITests: XCTestCase {
         XCTAssertTrue(becomesSelected(app.tab("Home")), "Updates opens over Home, where its bell is")
     }
 
+    /// A shared conversation's link opens it read-only, over whatever is showing — its title, the
+    /// question and the answer, and nothing that writes.
+    func testASharedConversationLinkOpensItReadOnly() {
+        let app = signedIn("-UITestLinkOnReturn", "emperor://share/k3j9x2abq81mz")
+
+        leaveAndReturn(app)
+        let sheet = app.navigationBars["Shared conversation"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the shared conversation did not open")
+        XCTAssertTrue(
+            app.staticTexts["Bail in a commercial dispute"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Is anticipatory bail available here?"].exists)
+
+        sheet.buttons["Done"].tap()
+        XCTAssertFalse(sheet.waitForExistence(timeout: 2))
+    }
+
     /// Sends the app to the background and brings it back — the moment a link handed over with
     /// `-UITestLinkOnReturn` is opened. The Home button as the app-lock tests press it, with
     /// SpringBoard brought forward if the press alone does not move the app off screen.
@@ -1849,8 +1907,8 @@ final class EmperorUITests: XCTestCase {
         storedWorkLogPanel(app).waitForExistence(timeout: 10)
     }
 
-    /// Back from the conversation to Home, by the bar's leading button — see
-    /// `testAToolOpensItsFormAndCanBeRun` for why it is not found by its label.
+    /// Back from the conversation to Home, by the bar's leading button — found by its
+    /// position rather than by a label, which is not the same on every screen that opens one.
     private func leaveTheConversation(_ app: XCUIApplication) {
         let bar = app.navigationBars["Conversation"]
         XCTAssertTrue(bar.waitForExistence(timeout: 10))

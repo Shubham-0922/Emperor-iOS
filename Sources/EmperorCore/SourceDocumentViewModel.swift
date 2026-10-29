@@ -31,25 +31,52 @@ final class SourceDocumentViewModel {
     /// signal.
     private(set) var offlineNote: String?
 
+    /// A Word document the server could not convert: the text read out of it at upload, shown in
+    /// its place (`ExtractedText`). Never kept for offline reading.
+    private(set) var extractedText: FileTextResponse?
+    /// Why the document is shown as extracted text — the converter's reason.
+    private(set) var conversionNote: String?
+
     let attachment: ChatAttachment
     let mention: AnnexureMention
+    /// The words the citation quotes, to find and mark; `""` for none.
+    let quote: String
+    /// The server's check of those words against this document.
+    let quoteStatus: QuoteStatus?
+
+    /// What the search for the quoted words found, once it has run.
+    private(set) var quoteSearch: QuoteSearchResult?
+    /// The web's sentence about that search, when there is one to say — words found on another
+    /// page, not found, or a scan still being prepared.
+    var quoteNote: String?
 
     private let service: any FileProviding
     private let officePreview: (any OfficePreviewProviding)?
     private let offline: OfflineDocuments?
     private let connectivity: (any ConnectivityReporting)?
+    private let words: (any CitedSourceResolving)?
+    private let fileText: (any FileRouteProviding)?
 
     /// - Parameters:
     ///   - offline: where this account keeps documents for reading offline. Every document that
     ///     opens is kept there, and opens from there when the server cannot be reached.
     ///   - connectivity: whether the device is known to have no connection.
+    ///   - quote: the words a citation quotes, to find on the cited page and mark.
+    ///   - quoteStatus: the server's check of those words.
+    ///   - words: where a scanned page's placed words come from (`/page-words`).
+    ///   - fileText: where a Word document's extracted text comes from when the server cannot
+    ///     convert it for viewing.
     init(
         attachment: ChatAttachment,
         mention: AnnexureMention,
         service: any FileProviding,
         officePreview: (any OfficePreviewProviding)? = nil,
         offline: OfflineDocuments? = nil,
-        connectivity: (any ConnectivityReporting)? = nil
+        connectivity: (any ConnectivityReporting)? = nil,
+        quote: String = "",
+        quoteStatus: QuoteStatus? = nil,
+        words: (any CitedSourceResolving)? = nil,
+        fileText: (any FileRouteProviding)? = nil
     ) {
         self.attachment = attachment
         self.mention = mention
@@ -57,6 +84,97 @@ final class SourceDocumentViewModel {
         self.officePreview = officePreview
         self.offline = offline
         self.connectivity = connectivity
+        self.quote = quote
+        self.quoteStatus = quoteStatus
+        self.words = words
+        self.fileText = fileText
+    }
+
+    // MARK: - The quoted words
+
+    /// What the head adds for the server's check of the quote, if anything.
+    var quoteStatusLabel: String? {
+        switch quoteStatus {
+        case .verified: return "Quote checked"
+        case .mismatch: return "Quote differs from the source"
+        case .unlocated: return "Quote not found in the source"
+        case .tooShort, nil: return nil
+        }
+    }
+
+    /// The placed words of one page of a scanned document, or `nil` when they cannot be had —
+    /// the page's own text is used then.
+    func scannedWords(page: Int) async -> PageWords? {
+        guard let words else { return nil }
+        let folder = (attachment.folderName?.isEmpty ?? true) ? "." : attachment.folderName!
+        return try? await words.pageWords(folderName: folder, fileName: attachment.name, page: page)
+    }
+
+    /// Looks for the quoted words on the cited page, then one either side, as the web's viewer
+    /// does: a scanned page's placed words where the server has them, the page's own text
+    /// (`textWords`, the `\S+` runs of a 1-based page) otherwise. Sets `quoteSearch` and
+    /// `quoteNote`. Nothing is searched for without a quote, or in a document that is not a PDF.
+    func findQuote(
+        pageCount: Int, textWords: @MainActor (Int) -> [String]
+    ) async -> QuoteSearchResult? {
+        guard !quote.isEmpty, isPDF, pageCount > 0 else { return nil }
+        let target = min(pageCount, max(1, mention.startPage ?? 1))
+        var pending = false
+        for n in CitedSource.searchOrder(target: target, pageCount: pageCount) {
+            let scanned = await scannedWords(page: n)
+            if let scanned, scanned.status == .ready, !scanned.words.isEmpty {
+                if let range = CitedSource.findQuoteRange(words: scanned.words.map(\.text), quote: quote) {
+                    return finish(QuoteSearchResult(
+                        page: n, target: target,
+                        hit: .scanBoxes(CitedSource.lineRects(scanned.words.map(\.box), range))))
+                }
+                continue
+            }
+            let text = textWords(n)
+            // A scan still being prepared, with next to no text of its own: say so if nothing is
+            // found, rather than that the words are not there.
+            if scanned?.status == .pending, text.count < 20 { pending = true }
+            if let range = CitedSource.findQuoteRange(words: text, quote: quote) {
+                return finish(QuoteSearchResult(page: n, target: target, hit: .textWords(range)))
+            }
+        }
+        return finish(QuoteSearchResult(page: target, target: target, hit: nil, pending: pending))
+    }
+
+    /// The words were found but the page could not place a mark on them: counted as not
+    /// located, so neither the note under the page nor VoiceOver claims they are highlighted.
+    func quoteWasNotMarked() {
+        guard let found = quoteSearch, found.hit != nil else { return }
+        _ = finish(QuoteSearchResult(page: found.page, target: found.target, hit: nil, pending: found.pending))
+    }
+
+    private func finish(_ result: QuoteSearchResult) -> QuoteSearchResult {
+        quoteSearch = result
+        quoteNote = CitedSource.note(
+            target: result.target, foundOn: result.hit == nil ? nil : result.page,
+            pending: result.pending)
+        return result
+    }
+
+    /// The line under the page about what was cited, for the page on screen.
+    func citedNote(page: Int) -> CitedNote {
+        if !quote.isEmpty, let search = quoteSearch {
+            if search.hit != nil, page == search.page, search.page == search.target {
+                return CitedNote(text: "The quoted words are highlighted.", isWarning: false)
+            }
+            if let quoteNote { return CitedNote(text: quoteNote, isWarning: true) }
+        }
+        guard let cited = mention.startPage else {
+            return CitedNote(
+                text: "The answer cites this document without a page, so it opens at the first.",
+                isWarning: false)
+        }
+        let onCited = page == cited || mention.endPage.map { (cited...max(cited, $0)).contains(page) } == true
+        return CitedNote(
+            text: onCited
+                ? "This is the page the answer cites."
+                : "The answer cites \(mention.pageDescription ?? "page \(cited)").",
+            isWarning: false)
     }
 
     // MARK: - Titles
@@ -140,9 +258,32 @@ final class SourceDocumentViewModel {
             keep(document)
         } catch {
             if OfflineReading.mayStandIn(after: error), openSavedCopy() { return }
+            if let notViewable = error as? DocumentNotViewable,
+               await openExtractedText(because: notViewable.message) {
+                return
+            }
             errorMessage = (error as? DocumentNotViewable)?.message
                 ?? DisplayText.message(for: error)
         }
+    }
+
+    /// A Word document the converter refused: its extracted text instead, as the web's viewer
+    /// falls back (`src/components/viewer/viewers.jsx`). `false` when there is none to ask for
+    /// or the request failed — the converter's reason is then said as before.
+    private func openExtractedText(because reason: String) async -> Bool {
+        guard isOfficeDocument, let fileText else { return false }
+        guard let response = try? await fileText.fileText(
+            name: attachment.name, folderName: attachment.folderName)
+        else { return false }
+        extractedText = response
+        conversionNote = reason
+        errorMessage = nil
+        return true
+    }
+
+    /// The banner over the extracted text.
+    var extractedNotice: String? {
+        extractedText.map { ExtractedText.notice(for: $0, conversionNote: conversionNote) }
     }
 
     /// "Offline — showing the copy saved yesterday", while the kept copy is on screen.
@@ -177,4 +318,30 @@ final class SourceDocumentViewModel {
             offlineNote = nil
         }
     }
+}
+
+/// Where the search for a citation's quoted words landed.
+struct QuoteSearchResult: Equatable, Sendable {
+    /// The words, found among a scanned page's placed words or in the page's own text.
+    enum Hit: Equatable, Sendable {
+        /// One rectangle per line, top-left origin, the page as shown (`/page-words`'s space).
+        case scanBoxes([QuoteBox])
+        /// Which of the page's `\S+` runs (`CitedSource.wordRuns`) the quote covers.
+        case textWords(ClosedRange<Int>)
+    }
+
+    /// The 1-based page to show: where the words are, or the cited page when they were not found.
+    var page: Int
+    /// The cited page, brought into the document.
+    var target: Int
+    var hit: Hit?
+    /// Not found, and a page searched was a scan still being prepared.
+    var pending = false
+}
+
+/// What the viewer says under the page about the citation.
+struct CitedNote: Equatable, Sendable {
+    var text: String
+    /// Said on the warning wash: the words were elsewhere, or not found.
+    var isWarning: Bool
 }

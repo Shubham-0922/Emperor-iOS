@@ -15,14 +15,48 @@ struct PDFDataView: UIViewRepresentable {
     /// One page at a time, moved only by `page` — the cited-page sheet, whose "Page N of M" must
     /// always be the page on screen. Otherwise the pages scroll continuously.
     var pagesOneAtATime = false
+    /// Passages to mark, by 0-based page, as rectangles in that page's own space — a citation's
+    /// quoted words. Drawn on the document on screen only, never written into `data`, so what is
+    /// shared is the document as stored. Applied once per change, and the first is brought into
+    /// view.
+    var highlights: [Int: [CGRect]] = [:]
+    /// The marks' colour — the theme's `mark`.
+    var highlightColor: UIColor = .systemYellow
 
     final class Coordinator {
         /// The page last moved to, so a redraw for any other reason does not move the reader.
         var shownPage: Int?
         var hasShown = false
+        /// The marks drawn, and on which pages, so a change replaces them rather than adding.
+        var appliedHighlights: [Int: [CGRect]] = [:]
+        var annotations: [(page: PDFPage, annotation: PDFAnnotation)] = []
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    /// Replaces the marks when they have changed, and answers where the first one is.
+    private func applyHighlights(
+        to document: PDFDocument, _ coordinator: Coordinator
+    ) -> (page: PDFPage, rect: CGRect)? {
+        guard coordinator.appliedHighlights != highlights else { return nil }
+        for drawn in coordinator.annotations {
+            drawn.page.removeAnnotation(drawn.annotation)
+        }
+        coordinator.annotations = []
+        coordinator.appliedHighlights = highlights
+        var first: (page: PDFPage, rect: CGRect)?
+        for index in highlights.keys.sorted() {
+            guard let page = document.page(at: index) else { continue }
+            for rect in highlights[index] ?? [] {
+                let mark = PDFAnnotation(bounds: rect, forType: .highlight, withProperties: nil)
+                mark.color = highlightColor
+                page.addAnnotation(mark)
+                coordinator.annotations.append((page, mark))
+                if first == nil { first = (page, rect) }
+            }
+        }
+        return first
+    }
 
     func makeUIView(context: Context) -> PDFView {
         let view = PDFView()
@@ -38,6 +72,16 @@ struct PDFDataView: UIViewRepresentable {
             view.document = document
         }
         guard let document = view.document else { return }
+        let firstMark = applyHighlights(to: document, context.coordinator)
+        defer {
+            // After any page move, so the mark is what ends up in view. Deferred for the same
+            // reason the page move is.
+            if let firstMark {
+                DispatchQueue.main.async {
+                    view.go(to: firstMark.rect, on: firstMark.page)
+                }
+            }
+        }
         guard !context.coordinator.hasShown || context.coordinator.shownPage != page else { return }
         context.coordinator.hasShown = true
         context.coordinator.shownPage = page

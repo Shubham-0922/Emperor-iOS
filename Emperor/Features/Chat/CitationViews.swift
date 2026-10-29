@@ -171,8 +171,13 @@ struct CitationReferenceList: View {
     /// above and below it, to be handed back so the row keeps its height. On the generous side,
     /// so the target never reaches past the row's own card.
     @ScaledMetric(relativeTo: .caption) private var badgeHeight: CGFloat = 20
+    /// Set inside a conversation: a reference naming one of the reader's documents gets an Open
+    /// chip that opens it at the quoted words.
+    @Environment(\.openCitedDocument) private var openCitedDocument
     let references: [CitationReference]
     let citations: CitationIndex
+    /// Shows a reference's card. Without it the number goes through `openURL`, as a badge does.
+    var onShowReference: ((CitationReference) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -182,7 +187,11 @@ struct CitationReferenceList: View {
                     // reference from it. Vertically the extra is given back, so a list of
                     // references keeps the height of its lines.
                     Button {
-                        if let url = CitationLink.url(for: reference.number) { openURL(url) }
+                        if let onShowReference {
+                            onShowReference(reference)
+                        } else if let url = CitationLink.url(for: reference.number) {
+                            openURL(url)
+                        }
                     } label: {
                         CitationNumberBadge(number: reference.number)
                             .frame(minWidth: 44, minHeight: 44, alignment: .leading)
@@ -193,10 +202,15 @@ struct CitationReferenceList: View {
                     .accessibilityLabel("Reference \(reference.number)")
                     .accessibilityHint("Shows this reference on its own, to copy")
 
-                    InlineMarkdownText(text: reference.text, citations: citations)
-                        // Part of the answer, so its prose face — the badge beside it stays SF.
-                        .font(.serif(.subheadline))
-                        .foregroundStyle(theme.textPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        InlineMarkdownText(text: reference.text, citations: citations)
+                            // Part of the answer, so its prose face — the badge beside it stays SF.
+                            .font(.serif(.subheadline))
+                            .foregroundStyle(theme.textPrimary)
+                        if let openCitedDocument, let document = CitedSource.parse(reference.text) {
+                            openChip(document, number: reference.number, open: openCitedDocument)
+                        }
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -209,6 +223,26 @@ struct CitationReferenceList: View {
                         .strokeBorder(theme.separator, lineWidth: 1))
             }
         }
+    }
+
+    /// "Open p. 12", or "Open" for a reference naming no page — the web's chip
+    /// (`citations.js:90-96`).
+    private func openChip(
+        _ document: DocumentReference, number: Int, open: OpenCitedDocumentAction
+    ) -> some View {
+        let page = document.page.flatMap { $0 > 0 ? $0 : nil }
+        let name = DisplayText.fileName(document.file)
+        let label: String = page.map { "Open \(name) at page \($0)" } ?? "Open \(name)"
+        return Button {
+            open(document)
+        } label: {
+            ChipLabel(
+                title: page.map { "Open p. \($0)" } ?? "Open",
+                systemImage: "doc.text.magnifyingglass", isSelected: false)
+        }
+        .buttonStyle(ChipButtonStyle(isSelected: false))
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("cite-open-\(number)")
     }
 }
 
@@ -223,9 +257,18 @@ struct CitationReferenceSheet: View {
     /// Tall enough for a full case citation and the button at the default text size, and
     /// growing with Dynamic Type; the medium detent is there for anything longer.
     @ScaledMetric(relativeTo: .body) private var compactHeight: CGFloat = 260
+    /// Room for "Open document" under Copy as well.
+    @ScaledMetric(relativeTo: .body) private var compactHeightWithOpen: CGFloat = 330
     let reference: CitationReference
+    /// Opens the document the reference names, after the card has gone. `nil` where no document
+    /// can be opened — outside a conversation.
+    var onOpenDocument: ((DocumentReference) -> Void)? = nil
 
     @State private var didCopy = false
+
+    private var opensDocument: Bool {
+        onOpenDocument != nil && CitedSource.parse(reference.text) != nil
+    }
 
     var body: some View {
         NavigationStack {
@@ -251,6 +294,18 @@ struct CitationReferenceSheet: View {
                     }
                     .buttonStyle(.primaryAction)
                     .accessibilityHint("Copies this reference")
+
+                    if let onOpenDocument, let document = CitedSource.parse(reference.text) {
+                        Button {
+                            onOpenDocument(document)
+                            dismiss()
+                        } label: {
+                            Label("Open document", systemImage: "doc.text.magnifyingglass")
+                        }
+                        .buttonStyle(.secondaryAction)
+                        .accessibilityHint("Opens \(DisplayText.fileName(document.file)) at the quoted words")
+                        .accessibilityIdentifier("cite-card-open")
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -264,7 +319,7 @@ struct CitationReferenceSheet: View {
                 }
             }
         }
-        .presentationDetents([.height(compactHeight), .medium])
+        .presentationDetents([.height(opensDocument ? compactHeightWithOpen : compactHeight), .medium])
         .presentationDragIndicator(.visible)
     }
 }

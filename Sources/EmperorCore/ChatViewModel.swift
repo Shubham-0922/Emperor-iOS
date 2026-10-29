@@ -36,6 +36,19 @@ final class ChatViewModel {
 
     /// Set when a run finished but the server says the answer was cut short.
     private(set) var wasInterrupted = false
+    /// Set when the last run ended because someone pressed Stop — here, or on another device.
+    private(set) var wasStopped = false
+
+    /// A Stop is on its way to the server. The Stop button ignores taps meanwhile.
+    private(set) var isStopping = false
+    /// Following a run on the server that this screen has no stream for: opened while it was
+    /// running, refused as busy, or come back to from the background. `isStreaming` is true
+    /// alongside it, so the composer stays in its Stop state and cannot start a second run.
+    private(set) var isFollowing = false
+    /// Why a run could not be followed to an answer. Shown with Retry; see `retryRun()`.
+    private(set) var runIssue: String?
+    /// The clock and the waits the follower uses. Replaced by tests.
+    var followTiming = FollowTiming.live
 
     /// What became of the last attempt to store a turn's work log. Never shown — the answer is
     /// stored whatever happens to the log — and kept so the conditions can be tested.
@@ -96,6 +109,10 @@ final class ChatViewModel {
     /// different failure with different wording, not a failed turn.
     var citationError: String?
 
+    /// Finds the stored document a reference names (`/resolve-file`). Set by the screen; without
+    /// it a reference opens only from the documents this conversation already knows.
+    var citedSources: (any CitedSourceResolving)?
+
     /// A question the server refused to start, handed back so the composer can restore it.
     ///
     /// The refusal happens *before* anything is stored (`sync-server.js:7256-7276`), so leaving
@@ -104,6 +121,11 @@ final class ChatViewModel {
     var restoredDraft: String?
 
     let chatID: String
+    /// The matter this conversation belongs to, when it was opened from one. Named on every
+    /// turn — the first, every follow-up, an edit and a re-answer alike — because a turn sent
+    /// without it is read without the matter's documents; and where a citation's file is looked
+    /// for, since a matter's file is never found without it.
+    let projectID: String?
     var attachments: [ChatAttachment] = []
 
     /// The documents to name above the composer, which is none once the conversation has started.
@@ -154,7 +176,25 @@ final class ChatViewModel {
     /// Whether the system says there is no connection, so the saved copy can be shown at once
     /// rather than after a request has waited out its timeout.
     private let connectivity: (any ConnectivityReporting)?
+    /// Where an edited draft is stored. Absent means an edit is kept in the conversation and
+    /// stored with the next question — see `commitDraftEdit`.
+    private let draftEdits: (any DraftEditSaving)?
     private var streamTask: Task<Void, Never>?
+    /// The loop following a server run, and the wait it is currently in — cancelled on its own
+    /// to poll at once when the app comes back to the foreground.
+    private var followTask: Task<Void, Never>?
+    private var followNap: Task<Void, Never>?
+    private var wakeRequested = false
+
+    /// What became of the last attempt to store an edited draft. Kept so it can be tested.
+    private(set) var draftEditSave: DraftEditSaveOutcome?
+    /// The turn an edit was folded into, and the content the server is believed to hold for it
+    /// — what a fresh read must match before the edit is written back. Nil once the server holds
+    /// what is on screen.
+    private var storedDraftTurn: (index: Int, content: String)?
+    /// The last edit folded in, so a retry of an edit already in the turn still stores it (the
+    /// web's `placedEditRef`).
+    private var placedDraftEdit: String?
 
     /// The document tree, fetched on the first citation tap that needs it.
     ///
@@ -170,6 +210,8 @@ final class ChatViewModel {
     ///   - detached: where removals are remembered. Without it a removal lasts the session only.
     ///   - offline: where this account keeps conversations for reading offline.
     ///   - connectivity: whether the device is known to have no connection.
+    ///   - projectID: the matter this conversation was opened from, if any.
+    ///   - draftEdits: where an edited draft is stored.
     init(
         chatID: String,
         service: any ChatProviding,
@@ -177,15 +219,20 @@ final class ChatViewModel {
         detached: (any DetachedDocuments)? = nil,
         preferredModel: String? = nil,
         offline: OfflineStore? = nil,
-        connectivity: (any ConnectivityReporting)? = nil
+        connectivity: (any ConnectivityReporting)? = nil,
+        projectID: String? = nil,
+        draftEdits: (any DraftEditSaving)? = nil
     ) {
         self.chatID = chatID
+        let trimmedProject = projectID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.projectID = (trimmedProject?.isEmpty ?? true) ? nil : trimmedProject
         self.service = service
         self.files = files
         self.detached = detached
         self.model = ChatModel.fromPreference(preferredModel)
         self.offline = offline
         self.connectivity = connectivity
+        self.draftEdits = draftEdits
     }
 
     // MARK: - Documents on this conversation
@@ -240,6 +287,9 @@ final class ChatViewModel {
             messages = try await uncancelledRead { try await service.messages(chatID: chatID) }
             // The server's transcript replaces any saved copy on screen, and the notice goes.
             savedCopyAt = nil
+            // What is on screen is now what the server holds, edits and all.
+            storedDraftTurn = nil
+            placedDraftEdit = nil
             // Reopening a matter has to reopen its documents. They are not a field on the chat —
             // they live on the turns that carried them — so they are reconstructed here; see
             // `attachedDocuments`. Without this, a conversation opened from History listed no
@@ -264,8 +314,13 @@ final class ChatViewModel {
             // and the copy worth keeping for reading offline.
             keepCopy()
             // A run may have continued server-side while the app was closed — generation is
-            // not tied to the socket.
-            await recoverInFlightRun()
+            // not tied to the socket. Asked on every load; a run already being followed keeps
+            // its follower, and its checkpoint row is not shown twice.
+            if isFollowing {
+                dropLiveCheckpoint()
+            } else if !isStreaming {
+                await checkForRun(reloadFirst: false)
+            }
         } catch let error as APIError {
             // A brand-new chat has no row yet, which this API reports as an error rather than
             // an empty list. That is not a failure worth showing — and there is nothing stored
@@ -340,50 +395,249 @@ final class ChatViewModel {
         }
     }
 
-    /// Rejoins a generation still running on the server.
-    private func recoverInFlightRun() async {
-        guard let status = try? await service.streamStatus(chatID: chatID), status.error == nil
-        else { return }
+    // MARK: - Following a run this screen did not start
 
-        if status.active, let content = status.content, !content.isEmpty {
-            live = StreamContent.parse(content)
-            isStreaming = true
-            pollUntilFinished()
-        } else if status.incomplete == true {
-            wasInterrupted = true
+    /// Asks `/stream-status` what is happening on this chat and acts on `LiveRun.followDecision`:
+    /// follow a live run, say the last question went unanswered, or do nothing.
+    ///
+    /// - Parameter reloadFirst: read the conversation again before following, because the run
+    ///   may belong to a question sent elsewhere while this screen was away.
+    private func checkForRun(reloadFirst: Bool) async {
+        let status = try? await service.streamStatus(chatID: chatID)
+        // A send or a follow may have started while the status was on its way.
+        guard !isStreaming else { return }
+        switch LiveRun.followDecision(messages: messages, status: status) {
+        case .follow:
+            if reloadFirst, let saved = try? await service.messages(chatID: chatID), !saved.isEmpty {
+                guard !isStreaming else { return }
+                adopt(saved)
+            }
+            beginFollow(initial: status, reportsFailure: true)
+        case .failed:
+            runIssue = LiveRun.failureText("no-answer")
+        case .idle:
+            guard let status, status.error == nil else { return }
+            if status.incomplete == true { wasInterrupted = true }
+            // Idle on both sides, but an answer may have landed while the app was away.
+            if reloadFirst, let saved = try? await service.messages(chatID: chatID),
+               !isStreaming, saved.count > messages.count {
+                adopt(saved)
+            }
         }
     }
 
-    /// Polls a rejoined run to completion.
-    ///
-    /// There is no way to re-attach to the byte stream of a run started by another
-    /// connection, so recovery is polling `/stream-status`, whose `content` is always the
-    /// full draft rather than a delta.
-    private func pollUntilFinished() {
-        streamTask?.cancel()
-        streamTask = Task { [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                guard let status = try? await self.service.streamStatus(chatID: self.chatID)
-                else { continue }
-
-                // Re-checked after the await: a poll already in flight when `stop()` ran would
-                // otherwise resurrect `live` and append the answer a second time — and, since
-                // history is posted back verbatim, persist the duplicate.
-                if Task.isCancelled { return }
-
-                if let content = status.content, !content.isEmpty {
-                    self.live = StreamContent.parse(content)
-                }
-                if !status.active {
-                    self.wasInterrupted = status.incomplete == true
-                    // The run finished on the server, which stored the answer itself.
-                    if await self.finishStreaming() { self.keepCopy() }
-                    return
-                }
+    /// The app came back to the foreground. A follower polls at once rather than sitting out its
+    /// back-off; otherwise, with no stream of its own, the screen asks again whether a run is
+    /// live — one may have started on another device, or finished while the app was away.
+    func becameActive() async {
+        if isFollowing {
+            if let followNap {
+                followNap.cancel()
+            } else {
+                wakeRequested = true
             }
+            return
         }
+        guard !isStreaming, !isLoading, historyIsIntact, !isShowingSavedCopy else { return }
+        await checkForRun(reloadFirst: true)
+    }
+
+    /// Answers the question again after a run that never produced an answer: the last
+    /// question, re-asked from where it stands, exactly as an edit to the same words would.
+    func retryRun() {
+        guard let question = messages.last(where: { $0.role == .user }), canEdit(question) else {
+            return
+        }
+        runIssue = nil
+        edit(question, to: question.content)
+    }
+
+    /// Replaces the transcript with the server's copy — the one place an answer finished,
+    /// finalised or stopped by the server is read from.
+    private func adopt(_ saved: [ChatMessage]) {
+        messages = saved
+        savedCopyAt = nil
+        historyIsIntact = true
+        keepCopy()
+    }
+
+    /// A trailing assistant row still marked as typing is the live run's own checkpoint. It is
+    /// shown as the live answer while the run is followed, not as a finished turn.
+    private func dropLiveCheckpoint() {
+        if let last = messages.last, last.role == .assistant, last.isTyping == true {
+            messages.removeLast()
+        }
+    }
+
+    /// Starts following the run on the server.
+    ///
+    /// - Parameters:
+    ///   - initial: a status already read, drawn at once so the screen shows the run without
+    ///     waiting for the first poll.
+    ///   - reportsFailure: whether a run that cannot be followed to an answer is reported with
+    ///     Retry. A run followed after a busy refusal is not this screen's question, so it is not.
+    private func beginFollow(initial: StreamStatus?, reportsFailure: Bool) {
+        followTask?.cancel()
+        wakeRequested = false
+        dropLiveCheckpoint()
+        // Until the run writes, the newest saved answer is the previous turn's, not this one.
+        let known = Set(messages.filter { $0.role == .assistant }
+            .map { $0.content.trimmingCharacters(in: .whitespacesAndNewlines) })
+        isStreaming = true
+        isFollowing = true
+        runIssue = nil
+        wasInterrupted = false
+        wasStopped = false
+        live = nil
+        progress = ReasoningSnapshot()
+        status = "Working on your request…"
+        if let initial { showFollowed(initial, known: known) }
+        followTask = Task { [weak self] in
+            await self?.follow(initial: initial, known: known, reportsFailure: reportsFailure)
+        }
+    }
+
+    /// Draws one status answer: the run's own text (never the previous answer), its status line
+    /// and its recent tool calls as a work log.
+    private func showFollowed(_ status: StreamStatus, known: Set<String>) {
+        let text = LiveRun.liveContent(status, knownAnswers: known)
+        if !text.isEmpty { live = StreamContent.parse(text) }
+        let friendly = status.status.map(StepLabels.friendly) ?? ""
+        self.status = LiveRun.liveStatusText(status, friendly: friendly, now: followTiming.now())
+        let groups = LiveRun.logFromStatusLines(status.statusLines)
+        if !groups.isEmpty {
+            progress = ReasoningSnapshot(workLog: groups.map { group in
+                .group(WorkGroup(status: .inProgress, steps: group.steps.map {
+                    WorkStep(label: $0.label, status: $0.completed ? .completed : .inProgress, at: 0)
+                }))
+            })
+        }
+    }
+
+    /// Whether a status answer says the run is over.
+    private static func runEnded(_ status: StreamStatus) -> Bool {
+        status.done == true || !LiveRun.isRunLive(status)
+    }
+
+    /// Whether anything worth redrawing changed between two status answers.
+    private static func signature(_ status: StreamStatus) -> String {
+        "\(status.contentLength ?? 0)|\(status.status ?? "")|\(status.phase ?? "")|\(status.statusLines?.count ?? 0)"
+    }
+
+    /// Waits between two polls. Cancelling `followNap` ends the wait early; a wake asked for
+    /// before the wait began skips it.
+    private func nap(_ ms: Int) async {
+        if wakeRequested {
+            wakeRequested = false
+            return
+        }
+        let sleep = followTiming.sleep
+        let nap = Task { await sleep(ms) }
+        followNap = nap
+        await withTaskCancellationHandler {
+            await nap.value
+        } onCancel: {
+            nap.cancel()
+        }
+        if followNap == nap { followNap = nil }
+    }
+
+    /// Polls `/stream-status` until the run ends, then reads the conversation as the server saved
+    /// it and shows that. There is no way to re-attach to the byte stream of a run started by
+    /// another connection, so this is the whole of following one.
+    ///
+    /// Waits start at two seconds and grow by half each time nothing changed, up to ten. It gives
+    /// up after 35 minutes, or after eight status reads in a row that could not be made.
+    private func follow(initial: StreamStatus?, known: Set<String>, reportsFailure: Bool) async {
+        let deadline = followTiming.now().addingTimeInterval(Double(LiveRun.watchMaxMs) / 1000)
+        var delay: Int?
+        var changed = true
+        var lastSignature = initial.map(Self.signature) ?? ""
+        var failures = 0
+        var finished = initial.map(Self.runEnded) ?? false
+        var reason = "timeout"
+        var pollNow = initial == nil
+
+        while !finished {
+            if !pollNow {
+                let wait = LiveRun.nextPollDelay(previousMs: delay, changed: changed)
+                delay = wait
+                await nap(wait)
+            }
+            pollNow = false
+            if Task.isCancelled { return }
+            if followTiming.now() >= deadline { reason = "timeout"; break }
+
+            let status = try? await service.streamStatus(chatID: chatID)
+            // Re-checked after every await: a poll still in flight when Stop was pressed must not
+            // draw over what the stop decided, or append anything.
+            if Task.isCancelled { return }
+            guard let status else {
+                failures += 1
+                if failures >= LiveRun.maxPollFailures { reason = "lost"; break }
+                changed = false
+                continue
+            }
+            // Forbidden, or no chat: nothing to follow.
+            if status.error != nil { reason = "no-answer"; break }
+            failures = 0
+            showFollowed(status, known: known)
+            if Self.runEnded(status) { finished = true; break }
+            let signature = Self.signature(status)
+            changed = signature != lastSignature
+            lastSignature = signature
+        }
+
+        guard finished else {
+            endFollow(issue: reportsFailure ? LiveRun.failureText(reason) : nil)
+            return
+        }
+
+        var saved = try? await service.messages(chatID: chatID)
+        if Task.isCancelled { return }
+        // The run's final save can land a moment after it lets go of the chat: one short second
+        // look before calling it answerless.
+        if let first = saved, !first.isEmpty, LiveRun.runOutcome(first) == .noAnswer {
+            await nap(1500)
+            if Task.isCancelled { return }
+            saved = (try? await service.messages(chatID: chatID)) ?? first
+            if Task.isCancelled { return }
+        }
+        guard let saved, !saved.isEmpty else {
+            endFollow(issue: reportsFailure ? LiveRun.failureText("no-answer") : nil)
+            return
+        }
+        adopt(saved)
+        busyNotice = nil
+        switch LiveRun.runOutcome(saved) {
+        case .finished:
+            // A checkpoint still marked as typing is not an answer, whatever it holds.
+            if saved.last?.isTyping == true {
+                endFollow(issue: reportsFailure ? LiveRun.failureText("no-answer") : nil)
+                return
+            }
+        case .incomplete:
+            wasInterrupted = true
+        case .stopped:
+            wasStopped = true
+        case .noAnswer:
+            endFollow(issue: reportsFailure ? LiveRun.failureText("no-answer") : nil)
+            return
+        }
+        endFollow(issue: nil)
+    }
+
+    private func endFollow(issue: String?) {
+        runIssue = issue
+        live = nil
+        status = nil
+        // The status-line log described the run while it ran; the saved answer carries its own.
+        progress = ReasoningSnapshot()
+        isFollowing = false
+        isStreaming = false
+        followTask = nil
+        followNap = nil
+        wakeRequested = false
     }
 
     // MARK: - Sending
@@ -454,6 +708,8 @@ final class ChatViewModel {
 
         busyNotice = nil
         wasInterrupted = false
+        wasStopped = false
+        runIssue = nil
         errorMessage = nil
         refusal = nil
         progress = ReasoningSnapshot()
@@ -464,6 +720,9 @@ final class ChatViewModel {
             turn.attachments = attachments.map(\.jsonValue)
         }
         messages.append(turn)
+        // `/chat` stores exactly what it is sent, so an edited draft goes with this turn.
+        storedDraftTurn = nil
+        placedDraftEdit = nil
         isStreaming = true
         live = StreamContent()
         status = "Preparing…"
@@ -492,13 +751,16 @@ final class ChatViewModel {
                     model: self.model,
                     role: self.role,
                     attachments: outbound,
-                    webSearch: self.webSearch)
+                    webSearch: self.webSearch,
+                    projectID: self.projectID)
 
+                var refusedAsBusy = false
                 for try await event in stream {
                     switch event {
                     case .status(let text):
                         self.status = text
                     case .busy(let notice):
+                        refusedAsBusy = true
                         self.busyNotice = notice
                         // Nothing was started and nothing was stored. Drop the optimistic
                         // bubble *and* give the text back, so the question is not lost.
@@ -517,13 +779,23 @@ final class ChatViewModel {
                 }
                 // A stop ends the loop the same way the end of the body does. It is not a
                 // completion: what was in flight never confirmed, and nothing is saved for it.
+                // `stop()` finishes the turn itself, from what the server says it kept.
                 if Task.isCancelled {
-                    await self.finishStreaming()
+                    if !self.isStopping { await self.finishStreaming() }
+                    return
+                }
+                // Refused because a run is already live on this chat: the question stays in
+                // the composer, and the screen follows that run to the answer the server saves
+                // rather than going idle beside it.
+                if refusedAsBusy {
+                    self.workLogSave = .skipped(.noAnswer)
+                    self.streamTask = nil
+                    self.beginFollow(initial: nil, reportsFailure: false)
                     return
                 }
                 await self.confirmCompletion()
             } catch is CancellationError {
-                await self.finishStreaming()
+                if !self.isStopping { await self.finishStreaming() }
             } catch let apiError as APIError where apiError.refusal != nil {
                 // Refused before a byte was written — the allowance is checked first, so
                 // nothing was stored. As with the busy refusal, the optimistic bubble is a turn
@@ -536,6 +808,8 @@ final class ChatViewModel {
                 }
                 await self.finishStreaming()
             } catch {
+                // A request torn down by Stop fails with it; `stop()` finishes the turn.
+                if self.isStopping { return }
                 self.errorMessage = (error as? APIError)?.errorDescription
                     ?? error.localizedDescription
                 await self.finishStreaming()
@@ -556,17 +830,80 @@ final class ChatViewModel {
         // `status:'length'` finding (`sync-server.js:7797`), so a draft stranded mid-document is
         // reported complete. Trust the shape of the answer as well as the server's word.
         if live?.hasUnclosedDocumentBlock == true { wasInterrupted = true }
+
+        // The server finishes a draft after the last byte this client sees, and saves that
+        // finished version as the answer. What streamed here is the unfinished one — and the
+        // next question posts this transcript back, so keeping it would put the unfinished
+        // draft back over the finished one. Once the run has let go of the chat, the saved
+        // conversation is read (still inside the turn, so no question can go out meanwhile).
+        var saved: [ChatMessage]?
+        if let status, status.error == nil, !LiveRun.isRunLive(status) {
+            saved = try? await service.messages(chatID: chatID)
+        }
+        let question = messages.last(where: { $0.role == .user })?.content
+        let snapshot = progress
+        let seconds = Int(Date().timeIntervalSince(turnStartedAt ?? Date()))
+
         let answered = await finishStreaming(ended: .completed)
-        if answered { keepCopy() }
-        saveWorkLog(answered: answered, status: status)
+        var adopted = false
+        if let saved, historyIsIntact, !isShowingSavedCopy,
+           Self.isServerAnswer(saved, to: question) {
+            var server = saved
+            var answer = server[server.count - 1]
+            // The saved answer is the server's; the work log of this turn is this client's, and
+            // goes back onto it unless the server's row already carries one.
+            if !answer.hasWorkLog {
+                if answered, let ours = messages.last, ours.role == .assistant {
+                    answer.attachWorkLog(ours.extra.filter { WorkLogWire.keys.contains($0.key) })
+                } else if !snapshot.isEmpty {
+                    answer.attachWorkLog(
+                        WorkLogWire.fields(for: snapshot, seconds: seconds, ended: .completed))
+                }
+                server[server.count - 1] = answer
+            }
+            if answer.hasWorkLog { progress = ReasoningSnapshot() }
+            adopt(server)
+            let outcome = LiveRun.runOutcome(server)
+            wasInterrupted = outcome == .incomplete
+                || StreamContent.parse(answer.content).hasUnclosedDocumentBlock
+            wasStopped = outcome == .stopped
+            adopted = true
+        } else if answered {
+            keepCopy()
+        }
+        // After the adoption, never before: the save then compares against the conversation
+        // as the server holds it.
+        saveWorkLog(answered: answered || adopted, status: status)
+    }
+
+    /// Whether the saved conversation ends with the server's own answer to `question`: an
+    /// assistant row it marked finished, written by the run, or stopped.
+    private static func isServerAnswer(_ saved: [ChatMessage], to question: String?) -> Bool {
+        guard let last = saved.last, last.role == .assistant,
+              !last.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              last.isTyping != true
+        else { return false }
+        let marked = last.done == true
+            || last.extra["serverRun"]?.boolValue == true
+            || last.extra["stopped"]?.boolValue == true
+        guard marked else { return false }
+        guard let question else { return true }
+        let asked = saved.dropLast().last(where: { $0.role == .user })?.content
+        return asked?.trimmingCharacters(in: .whitespacesAndNewlines)
+            == question.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Ends the turn on screen. Returns whether it appended an answer.
     ///
-    /// - Parameter ended: how the stream ended — `.completed` only from a clean end of body.
-    ///   Anything else may have left work in flight that never came back.
+    /// - Parameters:
+    ///   - ended: how the stream ended — `.completed` only from a clean end of body.
+    ///     Anything else may have left work in flight that never came back.
+    ///   - stoppedByUser: the reader pressed Stop and the server could not be told. The partial
+    ///     answer is marked `stopped` / `stoppedBy: "user"`, as the web marks its own, so a later
+    ///     history merge on the server keeps it rather than replacing it; with nothing written
+    ///     yet, a one-line note stands in for the answer.
     @discardableResult
-    private func finishStreaming(ended: WorkStatus = .stopped) async -> Bool {
+    private func finishStreaming(ended: WorkStatus = .stopped, stoppedByUser: Bool = false) async -> Bool {
         // Reentrancy guard. `stop()` and a late-arriving poll can both reach here, and without
         // this the turn is appended twice.
         guard isStreaming else {
@@ -575,7 +912,15 @@ final class ChatViewModel {
             return false
         }
         var answered = false
-        if let live, !live.prose.isEmpty || !live.artifacts.isEmpty {
+        let hasText = live.map { !$0.prose.isEmpty || !$0.artifacts.isEmpty } ?? false
+        if stoppedByUser, !hasText, messages.last?.role == .user {
+            var note = ChatMessage(role: .assistant, content: Self.stoppedEmptyNote)
+            note.extra["stopped"] = .bool(true)
+            note.extra["stoppedBy"] = .string("user")
+            messages.append(note)
+            answered = true
+        }
+        if let live, hasText {
             // `persistableContent`, NOT `prose`. The next `send` posts this whole array back,
             // and the server replaces its stored messages with exactly what it receives
             // (`sync-server.js:4250`) — so posting the stripped prose would permanently delete
@@ -593,15 +938,24 @@ final class ChatViewModel {
                     ended: ended))
                 progress = ReasoningSnapshot()
             }
+            if stoppedByUser {
+                answer.extra["stopped"] = .bool(true)
+                answer.extra["stoppedBy"] = .string("user")
+            }
             messages.append(answer)
             answered = true
         }
         live = nil
         status = nil
         isStreaming = false
+        isFollowing = false
         streamTask = nil
         return answered
     }
+
+    /// What stands in for an answer stopped before it wrote anything — the web's own words, and
+    /// the line the server saves for the same case.
+    static let stoppedEmptyNote = "_Stopped by you before an answer was written._"
 
     // MARK: - Storing the work log
 
@@ -669,18 +1023,148 @@ final class ChatViewModel {
             && messages.count == count && messages.last?.stableID == lastID
     }
 
+    // MARK: - Editing a drafted document
+
+    /// The turn `message` is, when its draft can be edited in place: the last assistant turn,
+    /// carrying exactly one document, in a conversation loaded whole with nothing streaming. Only
+    /// the last assistant turn — an edit is put back by position, as on the web (`withEditedDraft`).
+    func draftEditTarget(for message: ChatMessage) -> DraftEditTarget? {
+        guard message.role == .assistant, !isStreaming, historyIsIntact, !isShowingSavedCopy,
+              let index = indexOf(message), index == DraftEdit.lastAssistantIndex(messages),
+              StreamContent.parse(message.content).artifacts.count == 1
+        else { return nil }
+        return DraftEditTarget(index: index, messageCount: messages.count)
+    }
+
+    /// Folds an edited draft into its turn, then stores the conversation.
+    ///
+    /// The fold is the part that cannot fail quietly: once it is in `messages`, every later
+    /// question carries the edit, and `/chat` stores what it is sent — which is all the web's chat
+    /// path guarantees. Storing it now goes through `DraftEditSaving` under the conditions that
+    /// make rewriting a stored conversation safe; the next question waits for it, as it waits for
+    /// a work-log save, so the two writes can never arrive out of order.
+    func commitDraftEdit(_ html: String, target: DraftEditTarget) async -> DraftEditCommitResult {
+        guard !isStreaming, messages.count == target.messageCount,
+              DraftEdit.lastAssistantIndex(messages) == target.index
+        else { return .notPlaced }
+        let index = target.index
+        if let folded = DraftEdit.withEditedDraft(messages, html: html, ownerIndex: index) {
+            if storedDraftTurn?.index != index {
+                storedDraftTurn = (index, messages[index].content)
+            }
+            messages = folded
+            placedDraftEdit = html
+            keepCopy()
+        } else if placedDraftEdit != html {
+            return .notPlaced
+        }
+
+        guard historyIsIntact, !isShowingSavedCopy else {
+            draftEditSave = .kept(.historyNotIntact)
+            return .folded(.kept(.historyNotIntact))
+        }
+        // A retry of an edit whose write has since been confirmed: the server holds it.
+        guard let stored = storedDraftTurn else {
+            draftEditSave = .saved(rowUpdated: false)
+            return .folded(.saved(rowUpdated: false))
+        }
+        guard let draftEdits else {
+            draftEditSave = .kept(.unavailable)
+            return .folded(.kept(.unavailable))
+        }
+
+        var transcript = messages
+        transcript[index].content = stored.content
+        let edited = messages[index].content
+        let request = DraftEditSaveRequest(
+            chatID: chatID, storedTranscript: transcript, index: index, editedContent: edited)
+        let count = messages.count
+        let pending = saveTask
+        let save = Task { () -> DraftEditSaveOutcome in
+            await pending?.value
+            return await draftEdits.save(request, commit: { [weak self] in
+                await self?.holdsDraftEdit(count: count, index: index, content: edited) ?? false
+            })
+        }
+        saveTask = Task { _ = await save.value }
+        let outcome = await save.value
+        if case .saved = outcome, holdsDraftEdit(count: count, index: index, content: edited) {
+            storedDraftTurn = nil
+        }
+        draftEditSave = outcome
+        return .folded(outcome)
+    }
+
+    /// Whether the conversation is still the one the edit was stored from.
+    private func holdsDraftEdit(count: Int, index: Int, content: String) -> Bool {
+        !isStreaming && historyIsIntact && !isShowingSavedCopy && messages.count == count
+            && messages.indices.contains(index) && messages[index].content == content
+    }
+
     /// Waits for a work-log save still on its way. For tests, which otherwise cannot tell a save
     /// that has not happened yet from one that never will.
     func settleWorkLogSave() async {
         await saveTask?.value
     }
 
-    /// Stops rendering locally. It does **not** stop the run: generation continues on the
-    /// server and will be there on the next load.
+    /// Stops the answer — here and on the server.
+    ///
+    /// The local stream or follower is cancelled first, so nothing more is drawn; then the server
+    /// is asked to end the run, which saves what it had written as a stopped answer. When it
+    /// answers, that saved conversation replaces the transcript. When it cannot be reached, the
+    /// partial answer on screen is kept, marked as stopped by the reader.
+    ///
+    /// Taps while a stop is on its way are ignored.
+    /// The screen is closing or switching chats: stop polling for a run this screen no longer
+    /// shows. The run itself keeps going on the server, as it does for the web.
+    func leave() {
+        guard isFollowing else { return }
+        followTask?.cancel()
+        followTask = nil
+        followNap?.cancel()
+        followNap = nil
+        wakeRequested = false
+        isFollowing = false
+        isStreaming = false
+        status = nil
+        live = nil
+    }
+
     func stop() {
+        guard isStreaming, !isStopping else { return }
+        isStopping = true
+        status = "Stopping…"
         streamTask?.cancel()
         streamTask = nil
-        Task { await finishStreaming() }
+        followTask?.cancel()
+        followTask = nil
+        followNap?.cancel()
+        followNap = nil
+        wakeRequested = false
+        Task { await self.finishStop() }
+    }
+
+    private func finishStop() async {
+        defer { isStopping = false }
+        let reply = try? await service.stopRun(chatID: chatID)
+        var saved: [ChatMessage]?
+        if let reply, reply.success, reply.error == nil, reply.savedByKind != StopReply.SavedBy.none {
+            saved = try? await service.messages(chatID: chatID)
+        }
+        wasStopped = true
+        let stoppedQuestion = messages.last(where: { $0.role == .user })?.content
+        if let saved, Self.isServerAnswer(saved, to: stoppedQuestion),
+           historyIsIntact, !isShowingSavedCopy {
+            // The server's copy holds the stopped answer, ending with its own "stopped" line.
+            adopt(saved)
+            live = nil
+            status = nil
+            progress = ReasoningSnapshot()
+            isFollowing = false
+            isStreaming = false
+            return
+        }
+        await finishStreaming(stoppedByUser: true)
     }
 
     // MARK: - Citations
@@ -690,6 +1174,48 @@ final class ChatViewModel {
         let id = UUID()
         let attachment: ChatAttachment
         let mention: AnnexureMention
+        /// The words the citation quotes, to find and mark on the page; `""` for none.
+        var quote: String = ""
+        /// The server's check of those words against the document.
+        var quoteStatus: QuoteStatus?
+    }
+
+    /// Opens the document a reference line names — `[3] Lease.pdf, p. 12 — "…"` — at the page the
+    /// server found its quoted words on, or else the page the reference names, with the words to
+    /// mark there.
+    ///
+    /// The server is asked which stored document the name means, as the web asks it: a reference
+    /// carries the name the model saw, never its folder, and in a matter's conversation the file
+    /// is one of that matter's.
+    func showCitedDocument(_ ref: DocumentReference) async {
+        let projectID = self.projectID?.nilIfEmpty
+        guard let citedSources else {
+            // Nothing to ask: the conversation's own documents are all there is.
+            let mention = AnnexureMention(
+                fileName: ref.file, mark: "", startPage: ref.page, endPage: nil)
+            if !resolveFromCache(mention, quote: ref.quote) {
+                citationError = "The cited document could not be opened."
+            }
+            return
+        }
+        do {
+            let resolved = try await citedSources.resolve(
+                name: ref.file, quote: ref.quote.nilIfEmpty, projectID: projectID)
+            guard let attachment = resolved.attachment else {
+                let whose = projectID == nil ? "your" : "this matter’s"
+                citationError = "“\(ref.file)” is not among \(whose) documents, so it cannot be opened."
+                return
+            }
+            openSource = SourceSelection(
+                attachment: attachment,
+                mention: AnnexureMention(
+                    fileName: attachment.name, mark: "",
+                    startPage: resolved.page ?? ref.page, endPage: nil),
+                quote: ref.quote,
+                quoteStatus: resolved.quoteStatus)
+        } catch {
+            citationError = "The cited document could not be opened."
+        }
     }
 
     /// Opens the document a citation points at, at the page it names.
@@ -705,6 +1231,16 @@ final class ChatViewModel {
             if resolveFromCache(mention) { return }
         }
 
+        // Last, the server: it knows a matter's documents, and a name the library spells
+        // differently. A failure here changes nothing — the file is still not to be found.
+        if let citedSources,
+           let resolved = try? await citedSources.resolve(
+               name: mention.fileName, quote: nil, projectID: projectID?.nilIfEmpty),
+           let attachment = resolved.attachment {
+            openSource = SourceSelection(attachment: attachment, mention: mention)
+            return
+        }
+
         // Name the file that is missing. A citation pointing at a document no longer in the
         // library is exactly the case the user needs told plainly rather than as a dead tap.
         citationError = """
@@ -713,7 +1249,7 @@ final class ChatViewModel {
             """
     }
 
-    private func resolveFromCache(_ mention: AnnexureMention) -> Bool {
+    private func resolveFromCache(_ mention: AnnexureMention, quote: String = "") -> Bool {
         // The transcript's own documents after the composer's: a citation names a file some turn
         // carried, and the transcript knows its folder exactly. This is also what lets a citation
         // open from a saved copy with no connection, when the library cannot be fetched.
@@ -721,7 +1257,19 @@ final class ChatViewModel {
         guard let attachment = CitationResolver.resolve(
             mention, attachments: attachments + transcript, files: libraryCache)
         else { return false }
-        openSource = SourceSelection(attachment: attachment, mention: mention)
+        openSource = SourceSelection(attachment: attachment, mention: mention, quote: quote)
         return true
     }
+}
+
+/// The clock and the waits a followed run is polled by: the real ones in the app, and ones a
+/// test can step through without waiting 35 minutes.
+struct FollowTiming: Sendable {
+    var now: @Sendable () -> Date
+    /// Waits about this many milliseconds. Returning early — on cancellation — is allowed.
+    var sleep: @Sendable (_ ms: Int) async -> Void
+
+    static let live = FollowTiming(
+        now: { Date() },
+        sleep: { ms in try? await Task.sleep(for: .milliseconds(ms)) })
 }

@@ -247,6 +247,8 @@ final class BackgroundUploader {
                 // take a quarter of an hour — awaiting it here would stall the rest of this
                 // loop, so an upload still needing chunks would not be re-enqueued until an
                 // unrelated one had finished being indexed.
+                // The completing chunk's stored name was written to the manifest when it
+                // landed, so it survives the process that received it.
                 Task { await finish(manifest) }
                 continue
             }
@@ -329,7 +331,11 @@ final class BackgroundUploader {
         try? FileManager.default.removeItem(
             at: store.chunkBodyURL(for: id, index: index))
 
-        guard let updated = store.recordCompletion(id: id, index: index) else { return }
+        // The reply that completes the file names where it was stored; it need not be the last
+        // index to land, so every delivered body is read.
+        let storedName = ChunkOutcome.storedName(status: statusCode, body: body)
+        guard let updated = store.recordCompletion(
+            id: id, index: index, storedName: storedName) else { return }
         if let position = inFlight.firstIndex(where: { $0.id == id }) {
             if updated.isComplete {
                 inFlight.remove(at: position)
@@ -343,7 +349,12 @@ final class BackgroundUploader {
             batch.setLoaded(updated.bytesSent, of: id, at: Date())
         }
 
-        if updated.isComplete { await finish(updated) }
+        // The manifest now carries the stored name — for a photo, the PDF it was made into —
+        // and the poll asks after that (`pollName`): asked about the photo, `/upload-status`
+        // would answer "reading" until this gave up.
+        if updated.isComplete {
+            await finish(updated)
+        }
     }
 
     /// Every chunk has landed. The bytes are on the server; the document is not yet usable.
@@ -367,7 +378,7 @@ final class BackgroundUploader {
         let id = manifest.id
         batch.markProcessing(id)
         let state = try? await UploadService(client: client).waitForIngestion(
-            fileName: manifest.fileName, folderName: manifest.folderName,
+            fileName: manifest.pollName, folderName: manifest.folderName,
             // `@Sendable` and hopping explicitly, because the poll runs off the main actor and
             // the batch lives on it.
             onProgress: { @Sendable message in
@@ -377,7 +388,7 @@ final class BackgroundUploader {
             })
         switch state {
         case .some(.ready), .some(.scanned):
-            batch.markDone(id)
+            batch.markDone(id, savedAs: manifest.storedName)
         case .some(.failed(let reason)):
             batch.markProcessingFailed(
                 id, message: reason.replacingOccurrences(of: "ERROR: ", with: ""))

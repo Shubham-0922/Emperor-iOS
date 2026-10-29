@@ -142,6 +142,7 @@ struct DraftHistoryView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("draft-row-\(item.id)")
     }
 }
 
@@ -154,6 +155,8 @@ struct DraftReaderView: View {
     @Environment(\.dismiss) private var dismiss
 
     let draft: DraftHistoryViewModel.OpenedDraft
+
+    @State private var isAssemblingFiling = false
 
     var body: some View {
         NavigationStack {
@@ -175,12 +178,23 @@ struct DraftReaderView: View {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Done") { dismiss() }
                     }
-                    ToolbarItem(placement: .primaryAction) {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        // A saved draft filed as it is, its annexures and a cover made into
+                        // one bundle — as from the web's Filing Assembly.
+                        if draft.canAssembleFiling {
+                            Button("Assemble filing", systemImage: "books.vertical") {
+                                isAssemblingFiling = true
+                            }
+                            .accessibilityIdentifier("draft-assemble-filing")
+                        }
                         DocumentExportMenu(
                             content: draft.content,
                             isHTML: draft.format == .html,
                             title: draft.item.displayTitle)
                     }
+                }
+                .sheet(isPresented: $isAssemblingFiling) {
+                    FilingAssemblyScreen(scope: .draft(FilingDraft(draft.item)))
                 }
         }
     }

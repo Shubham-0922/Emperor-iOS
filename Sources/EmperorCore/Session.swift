@@ -42,6 +42,8 @@ final class Session {
     let courtSearch: CourtSearchService
     /// The dropdown catalogues behind the court search form — which bench, which case type.
     let courtMetadata: CourtMetadataService
+    /// Fetch Orders: a case read from the court's records without being added — see `CourtLookup`.
+    let courtLookup: CourtLookupService
     let fileManagement: FileManagementService
     let drafts: DraftHistoryService
     let auctions: AuctionService
@@ -68,6 +70,22 @@ final class Session {
     /// The private calendar-subscription link. Takes the base URL because the route answers a
     /// path that has to be resolved against it.
     let calendarFeed: CalendarFeedService
+    /// The server-run analysis tools — Doc Index, List of Dates, Devil's Advocate.
+    let analysis: AnalysisService
+    /// The Limitation Radar's audit.
+    let limitationRadar: LimitationRadarService
+    /// The List of Annexures under a draft, and the filing-ready package — see `FilingPackage`.
+    let filingAnnexures: FilingAnnexureService
+    /// Shared conversations, read without an account — the web's `/share/:shareId` (share package).
+    let sharedChats: SharedChatService
+    /// Connected services: Google Drive and OneDrive, import and export — see `CloudDriveService`.
+    let cloudDrives: CloudDriveService
+    /// Several documents as one zip (My Files package).
+    let fileDownloads: FileDownloadService
+    /// Draft editing: an edited draft written back to its conversation and its Drafts row.
+    let draftEdits: DraftEditService
+    /// The account's plan, payments, invoices and coupons — see `BillingService` (account package).
+    let billing: BillingService
 
     let cache: ResponseCache
 
@@ -106,6 +124,7 @@ final class Session {
         self.usage = UsageService(client: client)
         self.courtSearch = CourtSearchService(client: client)
         self.courtMetadata = CourtMetadataService(client: client)
+        self.courtLookup = CourtLookupService(client: client)
         self.fileManagement = FileManagementService(client: client)
         self.drafts = DraftHistoryService(client: client)
         self.auctions = AuctionService(client: client)
@@ -119,6 +138,14 @@ final class Session {
         self.officePreview = OfficePreviewService(client: client)
         self.complianceCalendar = ComplianceCalendarService(client: client)
         self.calendarFeed = CalendarFeedService(client: client, baseURL: config.baseURL)
+        self.analysis = AnalysisService(client: client)
+        self.limitationRadar = LimitationRadarService(client: client)
+        self.filingAnnexures = FilingAnnexureService(client: client)
+        self.sharedChats = SharedChatService(client: client)
+        self.cloudDrives = CloudDriveService(client: client)  // Connected services package
+        self.fileDownloads = FileDownloadService(client: client)  // My Files package
+        self.draftEdits = DraftEditService(client: client)
+        self.billing = BillingService(client: client)  // account package
         self.store = store
         self.cache = cache
         self.signInFlow = SignInFlow(auth: auth)
@@ -228,6 +255,15 @@ final class Session {
         case suspended
     }
 
+    /// The administrator's stated reason for a pause, trimmed, or nil when there is none or the
+    /// account is not paused. Shown beside the paused banner.
+    var suspendedReason: String? {
+        guard standing == .suspended,
+              let reason = currentUser?.suspendedReason?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !reason.isEmpty else { return nil }
+        return reason
+    }
+
     /// From the account as last read: at sign-in, at launch (`refreshAccount`), and whenever the
     /// server refuses something for one of these two reasons.
     var standing: Standing? {
@@ -316,6 +352,7 @@ final class Session {
         if let phone = saved.phone { user.phone = phone }
         if let needsPlan = saved.needsPlan { user.needsPlan = needsPlan }
         if let suspended = saved.suspended { user.suspended = suspended }
+        if saved.suspended != nil { user.suspendedReason = saved.suspendedReason }
         persist(user)
         state = .signedIn(user)
     }
@@ -378,6 +415,7 @@ final class Session {
         store.remove(Self.tokenKey)
         store.remove(Self.userKey)
         cache.clear()
+        CitationCheckCache.shared.clear()
         await auth.signOut()
         signInFlow.reset()
         isAwaitingPlanPurchase = false

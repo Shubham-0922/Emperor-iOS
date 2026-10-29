@@ -174,4 +174,14 @@ final class BackgroundUploadTests: XCTestCase {
                 "\(bad ?? "nil") should not parse")
         }
     }
+
+    /// The chunk that completes the file need not be the last index; any delivered body counts,
+    /// and a refused or failed one never does.
+    func testStoredNameComesFromAnyDeliveredResponse() {
+        let body = Data(#"{"success":true,"storedName":"scan.pdf","convertedFrom":"jpg"}"#.utf8)
+        XCTAssertEqual(ChunkOutcome.storedName(status: 200, body: body), "scan.pdf")
+        XCTAssertNil(ChunkOutcome.storedName(status: 200, body: Data(#"{"success":true}"#.utf8)))
+        XCTAssertNil(ChunkOutcome.storedName(status: 500, body: body))
+        XCTAssertNil(ChunkOutcome.storedName(status: nil, body: body))
+    }
 }

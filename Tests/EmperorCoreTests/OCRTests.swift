@@ -50,10 +50,10 @@ final class OCRTests: XCTestCase {
 
     // MARK: - Job decoding
 
-    /// **Every field except `status` must be optional.** A global clear wipes the server's job
-    /// map, and the completion path then re-inserts the job by spreading an `undefined` —
-    /// producing a row with no fileName, no targetLang and no logs. Non-optional fields crash
-    /// on it.
+    /// **Every field except `status` must be optional.** An unauthenticated `/ocr-clear` wipes
+    /// the global job map, and the completion path then re-inserts the job by spreading an
+    /// `undefined` — producing a row with no fileName, no targetLang and no logs
+    /// (`sync-server.js:12268-12269`). Non-optional fields crash on it.
     func testAJobStrippedBySomeoneElsesClearStillDecodes() throws {
         let job = try decode(OCRJob.self, #"{"status":"completed","progress":100}"#)
 
@@ -126,9 +126,9 @@ final class OCRTests: XCTestCase {
         XCTAssertTrue(job.translationMayBeIncomplete)
     }
 
-    /// A job that 404s on every poll — which is what a global clear produces — must still hit
-    /// the deadline. Checking the clock only after a *successful* fetch made the timeout
-    /// unreachable in exactly the case it exists for.
+    /// A job that 404s on every poll — which is what an unauthenticated `/ocr-clear` produces —
+    /// must still hit the deadline. Checking the clock only after a *successful* fetch made the
+    /// timeout unreachable in exactly the case it exists for.
     func testAJobThatFailsEveryPollStillHitsTheDeadline() async {
         let clock = MutableClock(start: Date(timeIntervalSince1970: 1_789_365_600))
         await withOCR(clock: clock) { service, model in

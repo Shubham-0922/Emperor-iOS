@@ -5,8 +5,10 @@ final class APIEnvironmentTests: XCTestCase {
 
     // MARK: - The safety property
 
-    /// The reason this type exists: a TestFlight or App Store build must never be able to reach
-    /// a development deployment, whatever the build settings say.
+    /// The reason this type exists. The development host is a Cloudflare tunnel with **no
+    /// Access policy**, serving what the platform's own config calls "a copy of real client
+    /// matters" (`ecosystem.dev.config.cjs:9-16`). A TestFlight or App Store build that reaches
+    /// it would expose every user's documents to anyone who resolves the name.
     ///
     /// So a release build asking for development does not get a warning — it gets production.
     func testAReleaseBuildCanNeverResolveToTheDevTunnel() {

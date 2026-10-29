@@ -2,11 +2,20 @@ import SwiftUI
 
 /// Exporting a drafted document — as a PDF, as Word, or as its own text.
 ///
+/// Both files are laid out on the account's page setup (`DocumentPageSetup`): the size,
+/// orientation and margins chosen under "Page setup" at the foot of this menu, as the web's canvas
+/// header sets the page its downloads use. The margins open in a sheet of their own.
+///
 /// Both files are built inside the menu's content closure, which SwiftUI evaluates when the menu
 /// is opened rather than when the screen draws. That matters: laying out a PDF and packing an
 /// OOXML archive for every document on screen would cost more than the feature is worth, and
 /// most documents are read and never exported.
 struct DocumentExportMenu: View {
+    @Environment(Session.self) private var session
+    @State private var pageSetup = DocumentPageSetup.default
+    @State private var isEditingMargins = false
+    private let preferences = Preferences()
+
     /// The document as it is held. Named `content` rather than `body`, which a `View` needs for
     /// itself.
     let content: String
@@ -15,6 +24,11 @@ struct DocumentExportMenu: View {
     /// Whether to ask, for each format, with or without the citation numbers — the Record
     /// draft's download menu. Offered only when the draft carries any.
     var offersCitationChoice = false
+    /// Builds the filing-ready package — the draft with every annexure it cites. Its two items
+    /// appear only when `hasAnnexures`; the package needs the network, so unlike the files above
+    /// it is made when chosen, and `FilingPackageStatus` shows the progress and the share sheet.
+    var packageExport: FilingPackageExport?
+    var hasAnnexures = false
 
     var body: some View {
         Menu {
@@ -31,7 +45,14 @@ struct DocumentExportMenu: View {
                 pdfLink("PDF", citations: true)
                 wordLink("Word (.docx)", subtitle: nil, citations: true)
             }
+            if let packageExport, hasAnnexures {
+                packageSection(packageExport)
+            }
             Divider()
+            PageSetupSubmenu(
+                setup: pageSetup,
+                onChange: savePageSetup,
+                onEditMargins: { isEditingMargins = true })
             // The document as it stands, for pasting somewhere this app knows nothing about.
             ShareLink(item: content) {
                 Label("Copy as text", systemImage: "textformat")
@@ -40,6 +61,17 @@ struct DocumentExportMenu: View {
             Image(systemName: "square.and.arrow.up")
         }
         .accessibilityLabel("Download this document")
+        .onAppear {
+            pageSetup = DocumentPageSetup.stored(in: preferences, userID: session.currentUser?.id)
+        }
+        .sheet(isPresented: $isEditingMargins) {
+            PageMarginsSheet(setup: pageSetup, onSave: savePageSetup)
+        }
+    }
+
+    private func savePageSetup(_ setup: DocumentPageSetup) {
+        pageSetup = setup
+        setup.save(to: preferences, userID: session.currentUser?.id)
     }
 
     @ViewBuilder
@@ -69,6 +101,37 @@ struct DocumentExportMenu: View {
         }
     }
 
+    /// The web's two "filing-ready package" downloads.
+    private func packageSection(_ export: FilingPackageExport) -> some View {
+        Section("Filing-ready package") {
+            packageButton("Word · filing-ready package", format: .word, export: export)
+            packageButton("PDF · filing-ready package", format: .pdf, export: export)
+        }
+        .disabled(export.isBuilding)
+    }
+
+    private func packageButton(
+        _ label: String, format: FilingPackage.Format, export: FilingPackageExport
+    ) -> some View {
+        Button {
+            // A filing copy carries no citation numbers, as the clean download does.
+            let draft = fragment(citations: false)
+            let setup = pageSetup
+            Task {
+                await export.start(format, draftHTML: draft) { pieces in
+                    try FilingPackageFile.render(pieces, as: format, pageSetup: setup)
+                }
+            }
+        } label: {
+            Label {
+                Text(label)
+                Text("The draft, then every annexure")
+            } icon: {
+                Image(systemName: format == .pdf ? "doc.richtext" : "doc.text")
+            }
+        }
+    }
+
     private func fragment(citations: Bool) -> String {
         let source = citations ? content : DraftCitations.withoutMarkers(content)
         return isHTML ? source : MarkdownHTML.html(from: source)
@@ -82,13 +145,13 @@ struct DocumentExportMenu: View {
 
     private func pdfURL(citations: Bool) -> URL? {
         ShareableFile.url(
-            for: AnswerPDF.render(html: fragment(citations: citations)),
+            for: AnswerPDF.render(html: fragment(citations: citations), pageSetup: pageSetup),
             named: "\(fileStem(citations: citations)).pdf")
     }
 
     private func wordURL(citations: Bool) -> URL? {
         ShareableFile.url(
-            for: DocxDocument.make(fromHTML: fragment(citations: citations)),
+            for: DocxDocument.make(fromHTML: fragment(citations: citations), pageSetup: pageSetup),
             named: "\(fileStem(citations: citations)).docx")
     }
 }

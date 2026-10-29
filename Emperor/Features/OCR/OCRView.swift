@@ -196,6 +196,22 @@ struct OCRScreen: View {
                             .font(.brand(.caption))
                             .foregroundStyle(theme.warning)
                     }
+                    if let pages = result.pageSummary {
+                        ValueRow("Pages", value: pages)
+                            .accessibilityIdentifier("ocr-result-pages")
+                    }
+                    if !model.resultNotes.isEmpty {
+                        VStack(alignment: .leading, spacing: Spacing.xs) {
+                            RecordSectionLabel(title: "Notes")
+                            ForEach(model.resultNotes, id: \.self) { note in
+                                Label(note, systemImage: "exclamationmark.circle")
+                                    .font(.brand(.caption))
+                                    .foregroundStyle(theme.textSecondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("ocr-result-notes")
+                    }
                     Button {
                         model.reset()
                     } label: {
@@ -397,6 +413,23 @@ struct OCRScreen: View {
                     Text(historyDetail(job))
                         .font(.brand(.caption))
                         .foregroundStyle(theme.textSecondary)
+                    if !job.notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(job.notes.prefix(2)), id: \.self) { note in
+                                Text(note)
+                                    .font(.brand(.caption))
+                                    .foregroundStyle(theme.warning)
+                                    .dynamicLineLimit(3)
+                            }
+                            if job.notes.count > 2 {
+                                Text("and \(job.notes.count - 2) more")
+                                    .font(.brand(.caption))
+                                    .foregroundStyle(theme.textSecondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("ocr-row-notes-\(job.id ?? "")")
+                    }
                     if job.state == .failed, let error = job.error, !error.isEmpty {
                         Text(error)
                             .font(.brand(.caption))
@@ -423,6 +456,7 @@ struct OCRScreen: View {
         var parts: [String] = []
         if let language = job.languageLabel { parts.append(language) }
         if let date = job.createdAt { parts.append(DisplayText.relative(date)) }
+        if let pages = job.pageSummary { parts.append(pages) }
         if !job.state.isTerminal, let progress = job.progress { parts.append("\(progress)%") }
         return parts.isEmpty ? " " : parts.joined(separator: " · ")
     }

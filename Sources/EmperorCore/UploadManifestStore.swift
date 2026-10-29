@@ -75,9 +75,10 @@ struct UploadManifestStore: Sendable {
     /// relaunched app has no in-memory copy, and because two chunks can complete close enough
     /// together that a stale copy would drop one of them.
     @discardableResult
-    func recordCompletion(id: String, index: Int) -> UploadManifest? {
+    func recordCompletion(id: String, index: Int, storedName: String? = nil) -> UploadManifest? {
         guard var manifest = load(id: id) else { return nil }
         manifest.markCompleted(index)
+        manifest.recordStoredName(storedName)
         try? save(manifest)
         return manifest
     }

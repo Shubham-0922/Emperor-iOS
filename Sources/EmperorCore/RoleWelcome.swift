@@ -4,9 +4,10 @@ import Foundation
 ///
 /// The web asks a new account what kind of practitioner it is before anything else
 /// (`src/pages/Onboarding.jsx`, step 0) and treats an unset role as "onboarding not done"
-/// (`uiRole: null`, `src/lib/store.js:86`). This is the same question, asked the same way: one
-/// screen, every option optional, and a "Skip for now" that leaves the default in force. It is
-/// asked once per device and only of an account that has no role yet.
+/// (`uiRole: null`, `src/lib/store.js:86`). This is the same question, asked the same way: every
+/// option optional, and a "Skip for now" that leaves the default in force — followed, as on the
+/// web, by the chambers and designation (`RoleWelcomeFlow`). It is asked once per device and only
+/// of an account that has no role yet.
 ///
 /// ## When it appears
 ///
@@ -20,8 +21,7 @@ import Foundation
 ///   (`Practice`), so someone who chose one on the web, or on another phone, has answered —
 ///   even when it is one this app does not carry.
 ///
-/// The roles are this app's seven. The web's onboarding also offers "Devil's Advocate"; that
-/// role is not part of this app.
+/// The roles are the web's eight, Devil's Advocate included, in the web's order.
 enum RoleWelcome {
     static let pendingKey = "practitioner.role.welcome.pending.v1"
     static let completedKey = "practitioner.role.welcome.completed.v1"

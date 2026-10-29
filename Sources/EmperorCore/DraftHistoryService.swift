@@ -35,6 +35,15 @@ struct DraftedItem: Codable, Equatable, Identifiable, Sendable {
     /// The conversation it came out of. `""` rather than null when the chat is gone, because
     /// the server COALESCEs it — so emptiness is the signal, not nil.
     var chatTitle: String?
+    /// The matter whose conversation made it, when one did (`canvas_documents` → `chats.project_id`,
+    /// docs/projects.md). Such a draft belongs to the matter's own Drafts section; the web's
+    /// Library hid these rows and then stopped listing drafts altogether. Kept out of this
+    /// list the same way — see `DraftHistoryViewModel`.
+    var projectID: String?
+
+    var belongsToMatter: Bool {
+        !(projectID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -43,6 +52,7 @@ struct DraftedItem: Codable, Equatable, Identifiable, Sendable {
         case type
         case createdAtRaw = "created_at"
         case chatTitle = "chat_title"
+        case projectID = "project_id"
     }
 
     /// - Note: **two encodings on one field.** Ordinary writes are JavaScript ISO 8601 with
@@ -89,7 +99,17 @@ struct DraftContentResponse: Codable, Sendable {
 
 protocol DraftHistoryProviding: Sendable {
     func drafts(_ kind: DraftKind) async throws -> [DraftedItem]
+    /// One matter's drafts, or every draft when `projectID` is nil.
+    func drafts(_ kind: DraftKind, projectID: String?) async throws -> [DraftedItem]
     func content(id: String) async throws -> String
+}
+
+extension DraftHistoryProviding {
+    /// For stand-ins that list one set whatever the matter: the caller keeps only the rows whose
+    /// `project_id` is the matter's, so nothing from elsewhere can show inside it.
+    func drafts(_ kind: DraftKind, projectID: String?) async throws -> [DraftedItem] {
+        try await drafts(kind)
+    }
 }
 
 struct DraftHistoryService: DraftHistoryProviding {
@@ -99,10 +119,17 @@ struct DraftHistoryService: DraftHistoryProviding {
     ///   user has ever produced comes back in one response, newest first. Fetch on appear and
     ///   on pull-to-refresh; never poll it.
     func drafts(_ kind: DraftKind) async throws -> [DraftedItem] {
+        try await drafts(kind, projectID: nil)
+    }
+
+    /// With `projectId`, the route lists the drafts made in that matter's conversations.
+    func drafts(_ kind: DraftKind, projectID: String?) async throws -> [DraftedItem] {
+        let project = projectID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let query = project.isEmpty ? [:] : ["projectId": project]
         let response = try await withRetry {
             // `userId` is added by `makeRequest` for GETs. Omitting it is a **500**, not a 400,
             // because the route throws rather than validating.
-            let request = try await client.makeRequest("GET", kind.path)
+            let request = try await client.makeRequest("GET", kind.path, query: query)
             return try await client.send(request, as: DraftListResponse.self)
         }
         try CaseService.throwIfUnsuccessful(success: response.success, error: response.error)
@@ -118,8 +145,10 @@ struct DraftHistoryService: DraftHistoryProviding {
     ///   distinguished from "no such document", and the caller must not render a blank page as
     ///   though the draft were genuinely empty.
     ///
-    /// - Note: the app only ever passes ids drawn from the signed-in user's own list. Nothing
-    ///   on this path is an authorisation boundary — never accept an id from any other source.
+    /// - Note: this route carries **no owner predicate** — the query is
+    ///   `SELECT content FROM canvas_documents WHERE id = ?` with no user or team check. Any
+    ///   caller who knows an id can read it. The app only ever passes ids from the user's own
+    ///   list, but nothing here should be mistaken for an authorisation boundary.
     func content(id: String) async throws -> String {
         let response = try await withRetry {
             let request = try await client.makeRequest(

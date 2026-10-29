@@ -4,8 +4,8 @@ import SwiftUI
 ///
 /// These are the twenty-nine tools behind `/w/:toolId`, which is the web app's **main
 /// generation surface** — its Home is a deck of cards that open them. They were absent here
-/// because an earlier gap analysis filed them under "30-tool drafting workspace, canvas editing"
-/// and rejected the pair together. That was right about the canvas — a contenteditable A4 page with
+/// because `GAPS.md` filed them under "30-tool drafting workspace, canvas editing" and rejected
+/// the pair together. That reasoning was right about the canvas — a contenteditable A4 page with
 /// a paginating rail is a different product — and wrong about the tools, which share none of its
 /// machinery.
 ///
@@ -44,6 +44,10 @@ struct ToolsListView: View {
                         title: "Analysis",
                         detail: "Run against a document you have attached")
                         .accessibilityIdentifier("tools-header-analysis")
+                } footer: {
+                    Text("The server-run Doc Index, List of Dates and Devil's Advocate are under You → Analysis tools.")
+                        .font(.brand(.caption))
+                        .foregroundStyle(theme.textTertiary)
                 }
                 .listRowBackground(theme.surface)
 

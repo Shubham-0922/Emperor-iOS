@@ -17,7 +17,8 @@ import Foundation
 /// `EMPEROR_WEB_PLANS` in `project.yml`. App Review restricts buttons that lead to a purchase
 /// made outside the app (guidelines 3.1.1 and 3.1.3), and what is allowed differs by
 /// storefront. A build for a storefront where it is not allowed sets the switch to `NO`, and
-/// every button disappears; nothing else changes. Check the current guidelines before each
+/// every button disappears, and with them Billing's coupon box and its priced list of plans
+/// (`BillingView`); nothing else changes. Check the current guidelines before each
 /// submission.
 struct WebPlans: Equatable, Sendable {
     var isOffered: Bool
@@ -63,7 +64,7 @@ struct WebPlans: Equatable, Sendable {
              .matterLimit, .scanLimit:
             return true
         case .accountSuspended, .rateLimit, .providerAccount, .emailUnverified, .accountExists,
-             .invalidCode:
+             .invalidCode, .noAccount, .reauthenticate, .badPhone:
             return false
         }
     }

@@ -7,8 +7,10 @@ import Foundation
 enum APIEnvironment: String, CaseIterable, Sendable {
     /// The Cloudflare tunnel in front of a developer's box.
     ///
-    /// - Warning: a development convenience, never a destination for a build that leaves this
-    ///   machine. `isDistributable` is `false` for exactly this reason.
+    /// - Warning: this host is **public and unauthenticated**, and the platform's own config
+    ///   describes it as serving "a copy of real client matters" with no Access policy in front
+    ///   of it (`ecosystem.dev.config.cjs:9-16`). It is a development convenience, never a
+    ///   destination for a build that leaves this machine.
     case development
 
     /// The live deployment — the same host the web app runs on. nginx serves the web build and
@@ -50,8 +52,8 @@ extension APIConfig {
     /// 2. **A release build never resolves to a non-distributable environment.** If a Release
     ///    configuration asks for `development` — by a stale build setting, a copied scheme, a
     ///    merge — it gets `production` instead. This is deliberately not a warning: the failure
-    ///    mode being prevented is a distributed build pointed at a development deployment, and
-    ///    that must not be reachable by mistake.
+    ///    mode being prevented is an App Store or TestFlight build pointed at an unauthenticated
+    ///    tunnel carrying real client matters, and that must not be reachable by mistake.
     ///
     /// Absent an override, Debug builds get `development` and everything else `production`.
     static func resolveEnvironment(override: String?, isDebugBuild: Bool) -> APIEnvironment {

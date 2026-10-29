@@ -105,20 +105,24 @@ final class MyFilesViewModel {
     private let cache: ResponseCache?
     private let offline: OfflineDocuments?
     private let officePreview: (any OfficePreviewProviding)?
+    private let downloads: (any FileDownloading)?
 
     /// - Parameters:
     ///   - cache: where the library is kept between launches, so it can be browsed offline.
     ///   - offline: where this account keeps documents for reading offline.
     ///   - officePreview: the converter, so a Word document is saved for offline as the viewer
     ///     shows it.
+    ///   - downloads: the zip downloads; without it none is offered.
     init(
         service: any FileProviding,
         manager: any FileManaging,
         now: @escaping @Sendable () -> Date = { Date() },
         cache: ResponseCache? = nil,
         offline: OfflineDocuments? = nil,
-        officePreview: (any OfficePreviewProviding)? = nil
+        officePreview: (any OfficePreviewProviding)? = nil,
+        downloads: (any FileDownloading)? = nil
     ) {
+        self.downloads = downloads
         self.service = service
         self.manager = manager
         self.now = now
@@ -157,6 +161,7 @@ final class MyFilesViewModel {
         // A document's reading percentage never steps back within a stage between two reads.
         let fresh = ingestLatch.apply(to: fresh)
         tree = fresh
+        pruneSelection()
         cachedAt = nil
         cache?.save(fresh, for: .fileTree)
         offline?.prune(keepingPaths: Set(FileService.allFiles(in: fresh).map(\.path)))
@@ -399,6 +404,101 @@ final class MyFilesViewModel {
         }
     }
 
+    // MARK: - Downloads
+
+    /// Whether the zip downloads are offered at all. A PDF's searchable copy is not one of
+    /// them: it goes through the library's own service (`prepareSearchableCopy`).
+    var offersDownloads: Bool { downloads != nil }
+
+    // MARK: - Selecting several
+
+    /// Whether the rows are checkboxes rather than links.
+    private(set) var isSelecting = false
+    /// The chosen documents, by path.
+    private(set) var selectedPaths: Set<String> = []
+
+    func beginSelecting() {
+        isSelecting = true
+        selectedPaths = []
+    }
+
+    func endSelecting() {
+        isSelecting = false
+        selectedPaths = []
+    }
+
+    func isSelected(_ file: FileNode.StoredFile) -> Bool { selectedPaths.contains(file.path) }
+
+    func toggleSelection(_ file: FileNode.StoredFile) {
+        guard isSelecting else { return }
+        if selectedPaths.contains(file.path) {
+            selectedPaths.remove(file.path)
+        } else {
+            selectedPaths.insert(file.path)
+        }
+    }
+
+    /// The chosen documents still in the library, in library order.
+    var selectedFiles: [FileNode.StoredFile] {
+        FileService.allFiles(in: tree).filter { selectedPaths.contains($0.path) }
+    }
+
+    /// "Select documents", "1 selected", "3 selected".
+    var selectionTitle: String {
+        selectedPaths.isEmpty ? "Select documents" : "\(selectedPaths.count) selected"
+    }
+
+    /// "Download 3 as zip" — or, for one, "Download as zip".
+    var zipSelectionLabel: String {
+        selectedPaths.count > 1 ? "Download \(selectedPaths.count) as zip" : "Download as zip"
+    }
+
+    /// Lets go of a choice whose document has left the library.
+    private func pruneSelection() {
+        guard !selectedPaths.isEmpty else { return }
+        let present = Set(FileService.allFiles(in: tree).map(\.path))
+        selectedPaths.formIntersection(present)
+    }
+
+    /// Every document under a folder, at any depth, as the zip route names them — the web's
+    /// `filesUnder`.
+    func zipPlan(for folder: FolderSummary) -> [FileZipEntry] {
+        FileBrowser.files(under: folder.path, in: tree).map(FileZipEntry.init)
+    }
+
+    /// The chosen documents as one zip, for the share sheet. Ends selecting once it has arrived.
+    func downloadSelectionAsZip() async {
+        let files = selectedFiles
+        guard !files.isEmpty else {
+            actionError = "Choose at least one document to download."
+            return
+        }
+        let delivered = await downloadZip(files.map(FileZipEntry.init), named: nil, busy: "zip")
+        if delivered { endSelecting() }
+    }
+
+    /// A folder's documents, sub-folders and all, as one zip named after the folder.
+    func downloadAsZip(_ folder: FolderSummary) async {
+        let files = zipPlan(for: folder)
+        guard !files.isEmpty else {
+            actionNotice = "\(folder.displayName) holds no documents to download."
+            return
+        }
+        _ = await downloadZip(files, named: folder.name, busy: folder.path)
+    }
+
+    private func downloadZip(_ files: [FileZipEntry], named name: String?, busy: String) async -> Bool {
+        guard let downloads else { return false }
+        var delivered = false
+        await perform(on: busy) { [weak self] _ in
+            let archive = try await downloads.zip(files: files, suggestedName: name)
+            self?.sharing = SharedDocument(fileName: archive.fileName, data: archive.data)
+            delivered = true
+            return FileDownloadWording.shortfallNotice(asked: files.count, archive: archive)
+        }
+        return delivered
+    }
+
     // MARK: - Offline
 
     /// Whether a document opens without a connection, and whether that was asked for.
@@ -511,6 +611,77 @@ final class MyFilesViewModel {
             return FileEditWording.folderRenamed(to: newPath, requested: requested)
         }
         await reload()
+    }
+
+    /// Every folder `folder` could be moved into: not itself, nothing inside it, and not the
+    /// folder it already sits in.
+    func folderMoveDestinations(for folder: FolderSummary) -> [FolderSummary] {
+        let parent = Self.parentPath(of: folder.path)
+        return FileBrowser.allFolders(in: tree).filter {
+            $0.path != folder.path && !$0.path.hasPrefix(folder.path + "/") && $0.path != parent
+        }
+    }
+
+    /// Whether the top level is a place this folder could go: only when it is somewhere else.
+    func canMoveToTopLevel(_ folder: FolderSummary) -> Bool {
+        !Self.parentPath(of: folder.path).isEmpty
+    }
+
+    /// Moves a folder under `destination`, or to the top level when that is nil.
+    func moveFolder(_ folder: FolderSummary, to destination: FolderSummary?) async {
+        let target = destination.map { FileBrowser.normalized($0.path) } ?? ""
+        guard target != Self.parentPath(of: folder.path), target != folder.path,
+              !target.hasPrefix(folder.path + "/") else { return }
+        await perform(on: folder.path) { manager in
+            _ = try await manager.moveFolder(at: folder.path, toParent: target)
+            return "Moved \(folder.displayName) to \(destination?.displayName ?? "the top level")."
+        }
+        // The folder's documents have new paths; only a fresh read says what the library holds.
+        await reload()
+    }
+
+    nonisolated static func parentPath(of path: String) -> String {
+        FileBrowser.normalized(path).split(separator: "/").dropLast().joined(separator: "/")
+    }
+
+    // MARK: - Reading again
+
+    /// Whether the server gave up reading this document, which is what makes "Read again" worth
+    /// offering. Failures arrive as an `ERROR:` status string.
+    nonisolated static func readingFailed(_ file: FileNode.StoredFile) -> Bool {
+        if case .failed = IngestState.classify(file.status) { return true }
+        return false
+    }
+
+    /// Asks for the document to be read again and follows it to the end, as an upload does.
+    func readAgain(_ file: FileNode.StoredFile) async {
+        let name = DisplayText.fileName(file.name)
+        await perform(on: file.path) { manager in
+            try await manager.reprocess(name: file.name, folderName: file.folderPath)
+            switch try await manager.awaitIngestion(name: file.name, folderName: file.folderPath) {
+            case .ready, .scanned:
+                return "\(name) was read again."
+            case .failed(let reason):
+                throw DocumentNotViewable(message: reason)
+            case .inProgress:
+                return "\(name) is still being read. Check back in a moment."
+            }
+        }
+        await reload()
+    }
+
+    /// Fetches a PDF's searchable copy for the share sheet.
+    func prepareSearchableCopy(_ file: FileNode.StoredFile) async {
+        await perform(on: file.path) { [weak self] manager in
+            let data = try await manager.downloadSearchable(
+                name: file.name, folderName: file.folderPath)
+            guard !data.isEmpty else {
+                throw DocumentNotViewable(message: "The searchable copy arrived empty.")
+            }
+            let stem = (file.name as NSString).deletingPathExtension
+            self?.sharing = SharedDocument(fileName: stem + "_searchable.pdf", data: data)
+            return nil
+        }
     }
 
     // MARK: - Deleting

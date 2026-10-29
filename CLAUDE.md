@@ -18,8 +18,8 @@ Expected local layout:
   emperor-ai/     ← platform source, reference only. Never edit.
 ```
 
-If `emperor-ai/` sits elsewhere, adjust the paths below. That checkout is what the backend
-citations in this repo refer to.
+If `emperor-ai/` sits elsewhere, adjust the paths below. On the origin server it lives at
+`/var/www/emperor-ai`, which is what the citations in `README.md` and `ROADMAP.md` refer to.
 
 The reference copy is **source only** — no `node_modules`, no `Data/`, no `chroma_db/`, no
 `venv/`. It does not run. It is there to be read.
@@ -35,37 +35,53 @@ The reference copy is **source only** — no `node_modules`, no `Data/`, no `chr
 | `src/lib/canvasShape.js` | Why artifact format must be sniffed, not trusted |
 | `src/lib/api.js` | The transport layer: `<status>` extraction, chunk holdback |
 | `src/providers/OpenRouterProvider.js` | Model aliases, retries, `<truncate:N/>` |
-| `src/roles/roleConfig.js` | The real role contract. The web has eight roles; this app carries seven — Devil's Advocate is deliberately not one of them |
+| `src/roles/roleConfig.js` | The real role contract. The web has eight roles and this app carries all eight; each card deck is `src/roles/*Cards.js` |
 | `src/lib/citations.js` | Numbered `[1]` citations and the References section — the spec `AnswerCitations` ports |
 | `lib/authFlows.js`, `lib/usageMeter.js`, `lib/planLimits.js` | Sign-up confirmation, one-time codes, and the plan allowances behind every refusal |
-| `lib/filing/index.js` | Filing assembly. Follow `getUserFromRequest` in `sync-server.js` for caller resolution |
+| `lib/filing/index.js` | Often cited as the module that authenticates properly. **It does not** — `resolveUserId` (line 88) falls back to the client-supplied id when no token is sent, so omitting the header defeats it. Copy `getUserFromRequest` (`src/lib/authToken.js:226`) instead |
 | `AGENTS.md` | Corrected 2026-08-25; every claim carries a `file:line` |
 
 ### Do not trust these — verified dead code
 
 `ChatWindow.jsx`, `ChatWindow_original.jsx`, `Canvas.jsx`, `clerkConfig.js` (its
 `supportedRoles` is **not** the wire contract), `models_registry.json`,
-`convertTemplateTags()`, `src/pages/Library.jsx`, `FeedbackWidget.jsx`, `POST /draft`,
-`/library-books/*`, `/bare-acts/*`.
+`convertTemplateTags()`, `FeedbackWidget.jsx`, `POST /draft`, `/library-books/*`,
+`/bare-acts/*`. (`src/pages/Library.jsx` is live again: it is the Library page the app's Library
+screens follow, over `/library/catalogue/*` — see gotcha 35.)
 
 **Always `grep` for an importer before treating a component as specification.** The live chat
 surface is `src/tools/ToolWorkspace.jsx`, rendering through `src/tools/renderers/Markdown.jsx`.
 
 ## Repository
 
-Emperor is its own repository, independent of the platform.
+Emperor is its own repository, independent of the platform. There are two copies of it:
+
+- **`Emperor-AI-Labs/Emperor-iOS-private`** — this one. The full history from the first commit,
+  the reports below, and comments that say plainly what the server does and fails to do.
+- **`Emperor-AI-Labs/Emperor-iOS`** — the public copy, where the app is developed. It began on
+  2026-09-04 as a single commit made from this repository with the reports removed and those
+  comments reworded, and `scripts/check-public-safe.sh` holds it to that in CI.
 
 ```bash
-git clone https://github.com/Emperor-AI-Labs/Emperor-iOS.git emperor-ios
+git clone https://github.com/Emperor-AI-Labs/Emperor-iOS-private.git emperor-ios
 ```
 
-**This repository is public.** The platform it talks to is still being hardened, so nothing here
-may name which server route is unscoped, or how to construct a request that gets past a check.
-Say what this client does and why; never what the server fails to do. `scripts/check-public-safe.sh`
-enforces that and runs in CI — if it fails, rewrite the comment rather than narrowing the pattern.
+Work flows **one way, public → private**. To bring this copy up to date:
 
-The platform lives in a separate, private repo and must never be committed here — the
-`emperor-ai/` copy beside this one is read-only reference.
+```bash
+git remote add public https://github.com/Emperor-AI-Labs/Emperor-iOS.git   # once
+git fetch public main
+git merge public/main
+```
+
+The first sync (2026-10-28) recorded `public/main` as a parent, so every later merge finds the
+right base on its own. In a conflict, take the public side for code — it is the newer code — and
+keep a private-only note only if the platform source still bears it out. After a merge, check
+that every macOS job in `ci.yml` is still gated (see `docs/RELEASING.md`). Nothing from here goes
+the other way without passing `check-public-safe.sh` *and* a human read.
+
+Push back with `git push`. The platform lives in a separate repo and must never be committed
+here — the `emperor-ai/` copy beside this one is read-only reference.
 
 ## Working on Linux (the normal case)
 
@@ -75,7 +91,7 @@ as possible into `Sources/EmperorCore/`**, which builds and tests here.
 
 ```bash
 sudo apt install swiftlang     # Swift 6.1.3 on Ubuntu; no iOS SDK, but the core builds
-cd emperor-ios && swift test    # ~2,100 tests
+cd emperor-ios && swift test    # ~3,100 tests
 ```
 
 View models live in the core for this reason — turn state, recovery and error handling are
@@ -115,7 +131,7 @@ that makes no sense against the current source, `rm -rf .build` before investiga
 ## How to work on this repo
 
 - **Put logic in `Sources/EmperorCore/`.** It is Foundation-only — no UIKit, no SwiftUI — so it
-  compiles and tests anywhere, including Linux and CI. `swift test` runs about 2,100 tests in
+  compiles and tests anywhere, including Linux and CI. `swift test` runs about 3,100 tests in
   half a minute. Anything that could plausibly live there should.
 - **A view should hold no logic worth testing.** Everything a screen does other than lay itself
   out — loading, error wording, selection, empty-state rules — belongs in a `@MainActor` view
@@ -147,9 +163,15 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   `generate-worklog-fixtures.mjs` (the work log the web stores with each answer, and a
   `/messages` body),
   `generate-phone-fixtures.mjs`, `generate-tile-fixtures.mjs` (tool tile colours and symbols),
-  `generate-cause-list-fixtures.mjs`, `generate-compliance-feed-fixture.mjs` and
-  `generate-file-date-fixtures.mjs`. When a golden test fails after a platform change,
-  regenerate; do not edit the fixture to match.
+  `generate-cause-list-fixtures.mjs`, `generate-compliance-feed-fixture.mjs`,
+  `generate-compliance-schedule-fixtures.mjs`, `generate-fee-receipt-fixtures.mjs`,
+  `generate-matter-record-fixtures.mjs`, `generate-file-date-fixtures.mjs`, and those writing
+  `Tests/EmperorCoreTests/Resources/parity/<package>/` (read with `parityFixture(_:_:)`):
+  `generate-cited-source-fixtures.mjs` (a reference line and its quote),
+  `generate-filing-fixtures.mjs` (Filing Assembly's marks, forums, errors, covers and seeds),
+  `generate-usage-meter-fixtures.mjs` (the plan meter's rows) and
+  `generate-court-catalogue-fixtures.mjs` (`courts.js`' lists). When a golden test fails after a
+  platform change, regenerate; do not edit the fixture to match.
 - **The UI is seen through CI, on an iPhone and an iPad.** Every UI test and
   `UITests/ScreenshotTour.swift` (every main screen, both themes) run on both devices. The
   `screenshot-tour` and `screenshot-tour-ipad` artifacts hold the pictures as plain PNGs —
@@ -179,12 +201,15 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   Subscribe in the bar) and **Corporate calendar** (`ComplianceCalendarView(embedded:)`, no stack
   of its own) — the month grid drawn by one `MonthGrid` in both. **More** is workspace management —
   Files, History, All Notifications, Library,
-  each a sheet — then the web sidebar's Case tools as drawn cards (not yet wired), Doc tools
-  wired to OCR and the PDF tools, **Offline storage**, and **Follow Emperor** (the company's five
-  handles from `EmperorLinks`, each opening the browser), under a search field that filters the
-  screen.
-  UI tests sign in through the shared `signInWithACode` helper and reach tabs through
-  `app.tab(_:)`, both in `UITests/Tabs.swift`.
+  each a sheet — then the web sidebar's Case tools as drawn cards (Fetch Orders, the three Analysis
+  tools, Limitation Radar, Filing Assembly; each opens its `ToolDestination`, `case-tool-<key>`),
+  Doc tools wired to OCR and the PDF tools, **Offline storage**, and **Follow Emperor** (the
+  company's five handles from `EmperorLinks`, each opening the browser), under a search field that
+  filters the screen. UI tests sign in through the shared `signInWithACode` helper and reach tabs
+  through `app.tab(_:)`, both in `UITests/Tabs.swift`. A feature with routes of its own answers
+  them from its own file in `Emperor/App/UITestStubs/` (`StubReply`, with a status and type), asked
+  before the inline fixtures (`StubHooks.packageReply`); its UI tests use `UITests/ParityKit.swift`'s
+  helpers.
 - **iPad layouts.** At regular width History's conversation list (`ChatListView` — presented
   from More → History) shows the list beside what it opens (`ListBesideDetail`,
   reading one navigation path, `ListDetailPath`); Matters is a single stack on every device. A UI
@@ -263,9 +288,10 @@ Full detail in `README.md`. The short list:
     whose incoming `messages` array is shorter than the count it holds, so a metadata-only
     update — which is what a rename is — does nothing at all to a conversation that has ever
     been used, and says it worked. Sending the messages instead makes it delete and re-insert
-    every one of them. This is why chat rename has no caller; see `ChatMetadataService`. The one
-    thing this client writes through `/sync` is a finished turn's work log, under `WorkLogSync`'s
-    conditions (fresh read, exact match, the stored bytes sent back).
+    every one of them. This is why chat rename has no caller; see `ChatMetadataService`. The two
+    things this client writes through `/sync` are a finished turn's work log, under `WorkLogSync`'s
+    conditions (fresh read, exact match, the stored bytes sent back), and an edited draft, under
+    the same conditions (`DraftEditSync`).
 20. **`/check-duplicates` is the one route that refuses a client-supplied `userId`**, because
     its answer says which folders hold a document. It 401s without a real token, and that
     **must not block an upload** — the prompt is a courtesy and the server dedupes on arrival
@@ -285,7 +311,7 @@ Full detail in `README.md`. The short list:
     signed in. The client keeps no cookies; the bearer token is the only credential.
 26. **The role lives on the account** (`practice_role`, the web's role id — not
     `PractitionerRole.rawValue`). `Practice` keeps the device's copy in step; a role the app
-    does not carry (Devil's Advocate) is never overwritten.
+    does not carry (one the web adds after this build) is never overwritten.
 27. **`POST /notif/test` also opts the account in**, exactly as `/notif/optin` does, and
     `/notif/optout` deletes every browser push subscription the account holds. `/notif/status`
     has no `success` key. See `NotificationOptInService`.
@@ -302,6 +328,89 @@ Full detail in `README.md`. The short list:
 30. **A request made with no signal does not fail for ten minutes** (`waitsForConnectivity`,
     600 s timeout). Screens that keep offline copies ask the network monitor first; a saved copy
     is never posted back — see `OfflineReading`.
+31. **A photo is stored as a PDF.** Since the searchable-PDF change, a PNG or JPEG sent to
+    `/upload-chunk` is converted on arrival and the image never reaches storage; the completing
+    chunk's answer names the file (`storedName`, `convertedFrom`) — and that chunk need not be the
+    last one sent. Poll, attach and open by that name — asked about the image, `/upload-status`
+    reads "Reading…" for as long as it is asked. See `UploadReply` and `UploadManifest.pollName`.
+32. **A matter's conversations and drafts carry `project_id`** and are scoped to the matter: a
+    turn sent without `projectId` drops the matter's attachments. Until this client opens a
+    matter's own conversations, rows with a `project_id` stay out of its lists
+    (`ChatListViewModel.ownConversations`); `ChatService.send(…projectID:)` is the plumbing.
+33. **The matter writes keep what they are not sent.** Every `/project-*` save creates without
+    an `id` and edits with one, changing only the fields present — so a blank is omitted, never
+    sent as `""` or `null`. `POST /project-from-case` is idempotent per user and case.
+    `POST /project-attach` is the only way a document enters a matter (a copy from My Files;
+    uploads into `_projects/…` are refused), and `/project-case-refresh` answers 429 with
+    `retryAfter` inside five minutes of the last ask — and may itself take 150 s, so it is waited
+    on longer than that. `DELETE /project?confirm=` is read with `URLSearchParams`, where a bare
+    "+" is a space: the name is sent strictly percent-encoded (`ProjectService.strictQuery`).
+34. **`POST /court/lookup` saves nothing and needs a verified sign-in.** It takes the same card
+    `/save-case` does, nested under `card` (`CourtSearchResult.cardFields`, which
+    `lookupCardFields` extends with the bench, stage and next date the lookup reads), answers
+    honest status codes with a `code`, and caches a record for ten minutes. `NOT_FOUND` and
+    `BAD_REQUEST` are final for that card — a new search, never "Try again". See `CourtLookup`.
+35. **The Library is `/library/catalogue/*`** (`lib/library/routes.js`), not the older
+    `/library/{categories,browse,file}`. Any signed-in user may read it; every route answers
+    `401 auth_required` to a dead token, which this client treats as a sign-out like any other.
+    Errors are JSON `{error}` with a code (`LibraryCatalogueError`): `/cover` says `cover_pending`
+    (+ `Retry-After`) while it renders and `no_cover` when it never will — only the first is
+    worth retrying; `/judgment` says `file_missing` for a row whose text is not on the host and
+    `too_large` past 8 MB; a row's `ext` carries the dot (`.pdf`). `/file` answers a JSON 404 for
+    a missing file, so the reading room HEADs first and sniffs the bytes. `/search` answers
+    `503 search_busy` with `Retry-After` under load; it is asked once more. A shelf's `day` is a
+    number, and a row's `anomalies` are `{kind, …}` objects, not strings. See `LibraryService`.
+36. **`searchMode: "web"` is a request, not a switch.** The server searches on keywords anyway,
+    and skips the search on a turn that carries attachments. The web's research Sources reach no
+    request; only Web search does, and only from this client (`ResearchSources`).
+37. **`/draft-feedback` answers `ok`, not `success`** — `{ok: true, id}`, or `400 {ok: false,
+    error}` when there is neither a rating nor a comment. It trims a long comment or draft
+    rather than refusing it; `FeedbackService` caps both first.
+38. **Connecting Google Drive or OneDrive never returns to the app.** `/cloud/connect` gives the
+    drive's consent page; the drive redirects to the server, which stores the token and lands on
+    the *web* app's Settings page. Read `/cloud/connections` again when the in-app Safari view
+    closes — that is the only signal. The `/cloud/*` refusals are sentences meant for the person
+    (409 not connected or too little access, 404 no such document) that name the web's Settings;
+    `CloudDriveWording` points them at You → Connected services. A consent page is opened only on
+    the drive's own sign-in host (`CloudDrive.signInHost`). See `CloudDriveService`.
+39. **`POST /download-files` leaves out what it cannot find and still answers 200** — 404 only
+    when none is found. Count the zip's entries (`FileDownloadWording.zipEntryCount`) rather than
+    trusting the status. `/download-searchable` answers its errors in plain text, and sends a PDF
+    that is already its searchable version as stored. See `FileDownloadService` (zips) and
+    `FileManagementService.downloadSearchable` (the searchable copy, from My Files and the viewer).
+40. **A folder upload's structure is its `folderName`** — `Clients/Wadhwa/Orders`, slashes and
+    all; the folders are made on arrival. Operating-system files are refused (415), so
+    `FolderUploadPlan` drops them first by `junkNames.js`' rules (`UploadJunk`, golden-tested).
+41. **Every write of a conversation re-files its drafts.** `/chat` and `/sync` derive a Drafts
+    row from each assistant message and recognise one they already hold only by a hash of its
+    cleaned body, so an edited draft synced on its own appears twice in Drafts. Save the edit over
+    the original row by id (`POST /save-document`) with the body exactly as the server derives it
+    (`DraftEdit.storedDraft`) *before* the sync. See `DraftEditService`.
+42. **The coupon routes answer codes of their own**, outside `Refusal`: 400 `COUPON_INVALID`
+    (the coupon's own reason, shown as written), 400 `NEEDS_PAYMENT`, 409 `PLAN_DOWNGRADE` and
+    409 `COUPON_SPENT`. The `NEEDS_PAYMENT` and `PLAN_DOWNGRADE` sentences send the reader to a
+    payment step, so this client words them (`CouponRefusal`). Only a code that owes nothing is
+    redeemed here; `/billing/coupon/preview` answers 200 with `valid:false` for a bad code.
+    Invoices and orders are paise integers; an invoice's `gstPaise` is null or 0 when no GST
+    was charged, and then no GST line is drawn. See `BillingService`.
+43. **`DELETE /case` removes the case for its whole team** and only for a team owner or admin
+    (403 otherwise, worded by `CaseRemovalCopy`). A matter made from the case is kept and stops
+    showing the court's record. Refetch the docket afterwards; never patch it. See `CaseRemoving`.
+44. **A court row's `data` is a string on `/case` and an object on `/project`.** `GET /project`'s
+    `courtHistory` parses `case_items.data` before sending it; a strict `String?` threw and the
+    whole matter failed to load. `CaseItem`'s decoder keeps either as text.
+45. **A High Court is searched one of two ways, and `/court/hc/config` says which.** `kind:
+    "dedicated"` (Delhi, Punjab & Haryana, Bombay, Karnataka, Madras, Allahabad) is the court's
+    own portal: its case types come with the config, a seat only where its contract asks, and it
+    is searched on `/court/hc/dedicated/search` by case number alone, slowly. `kind: "generic"`
+    goes through eCourts: a bench first, which is also the `courtCode` the search needs, then that
+    bench's case types. `/court/hc/search` is eCourts only and ignores `courtId`. See
+    `CourtSearchQuery.searchPath` and `HCDedicatedSearchTests`.
+46. **`planLabel` is sometimes an internal tier.** `/auth/session` sends the plan's name (Junior
+    Associate…), `/preferred-model` the capability tier (`Lite`, `Premium`, `Ultra`), and the
+    account keeps whichever answered last. The web never shows a tier; neither does this client
+    (`PlanLabel`). A plan's storage is binary — "50 GB" is 50 GiB (`planLimits.js`) — and is
+    drawn that way (`AccountUsage.bytes`).
 
 ## Runtime connectivity
 
@@ -314,12 +423,27 @@ regardless of the build setting, and `APIEnvironmentTests` pins that.
 Both hosts are public and need no VPN, so a build on your Mac reaches the platform straight
 away.
 
-Server-side hardening is still in progress, and this client already sends both a bearer token
-and `userId` so it keeps working unchanged once the server derives the caller from the token.
-Where a route is not yet scoped to the authenticated caller, the corresponding feature is held
-back rather than shipped — see `README.md` and the `- Warning:` notes at each definition.
+**It is also unauthenticated.** Anyone who knows a user id can read that user's matters —
+unless the server runs with `REQUIRE_OWNER_MATCH=1`, which is off by default
+(`sync-server.js:491`). A verified token naming someone else is refused, and a matter's routes
+need a verified sign-in, but an anonymous `?userId=` is still answered. The
+client already sends both a bearer token and `userId` so it will keep working unchanged once
+the backend is hardened. See `ROADMAP.md` §0.3.
 
 ## The reports
 
-The status reports, the platform audit and the parity plan are **not in this repository** — they
-are kept privately. Ask if you need them.
+- `V1_BUILD_PLAN.md` — **start here.** Current iOS status, a verified platform audit, and the
+  step-by-step v1 plan. Written 2026-08-26 from a five-pass source audit of `../emperor-ai/`.
+  Its §C lists five points where it **supersedes `ROADMAP.md`** — most importantly, the
+  authentication picture is worse than recorded there, and `lib/filing/` is *not* a correct
+  auth template.
+- `ROADMAP.md` — the earlier status report. §1 is still the best narrative of what was built
+  and why; treat its Part 3 plan as superseded.
+- `REPORT.md` — the same ground in plain English.
+- `GAPS.md` and `PARITY_PLAN.md` — what was missing against the web and the Android client, as
+  of 2026-08-26 and 2026-09-04.
+
+All of these describe the app and the platform **as they stood when this repository went
+quiet (2026-09-04)**. The app has moved on in the public copy since, and so has the server —
+`POST /logout` exists, deletion and OCR history were released, and `/documents/content` now
+checks the owner. Read them as history and verify any claim against source before acting on it.

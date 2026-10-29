@@ -19,10 +19,17 @@ struct CaseDetailView: View {
     @Environment(Session.self) private var session
 
     let caseID: String
+    /// Called once the case is no longer tracked, so the screen that opened it can read its
+    /// docket again and close it. Without one, the screen closes itself.
+    var onRemoved: (() -> Void)?
 
+    @Environment(\.dismiss) private var dismiss
     @State private var model: CaseDetailViewModel?
+    @State private var isConfirmingRemoval = false
     @State private var isAddingNote = false
     @State private var isAddingTask = false
+    /// The matter behind this case, once asked for — pushed as its workspace.
+    @State private var openMatter: MatterRoute?
 
     var body: some View {
         Group {
@@ -41,7 +48,9 @@ struct CaseDetailView: View {
                 model = CaseDetailViewModel(
                     caseID: caseID, service: session.cases,
                     offline: session.offlineCopies?.matters,
-                    connectivity: AppConnectivity.current)
+                    connectivity: AppConnectivity.current,
+                    projects: session.projects,
+                    remover: session.cases)
             }
             // Loads when nothing has been loaded yet — including after a load that was cancelled
             // part-way (the model goes back to idle), so the matter is not left unloaded.
@@ -89,6 +98,30 @@ struct CaseDetailView: View {
                     } label: {
                         Label("Add a task", systemImage: "checkmark.circle")
                     }
+                    if model.canOpenMatter {
+                        Divider()
+                        // The web's Matters page for this case: chronology, tasks, fees, people
+                        // and documents. Made on the spot the first time, the same one after.
+                        Button {
+                            Task {
+                                if let id = await model.openMatter() {
+                                    openMatter = MatterRoute(projectID: id)
+                                }
+                            }
+                        } label: {
+                            Label("Open matter workspace", systemImage: "folder.badge.gearshape")
+                        }
+                        .disabled(model.isOpeningMatter)
+                    }
+                    if model.canRemove {
+                        Divider()
+                        // The web's "Remove", asked first: it is shared with the team and final.
+                        Button(role: .destructive) {
+                            isConfirmingRemoval = true
+                        } label: {
+                            Label(CaseRemovalCopy.action, systemImage: "minus.circle")
+                        }
+                    }
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
@@ -96,6 +129,23 @@ struct CaseDetailView: View {
                 // behind it.
                 .disabled(!model.canWrite)
             }
+        }
+        .navigationDestination(item: $openMatter) { route in
+            ProjectDetailView(projectID: route.projectID)
+                .toolbar(.hidden, for: .tabBar)
+        }
+        .modifier(CaseRemovalPrompts(
+            model: model, isConfirming: $isConfirmingRemoval,
+            onRemoved: {
+                if let onRemoved { onRemoved() } else { dismiss() }
+            }))
+        .alert("Could not open the workspace", isPresented: Binding(
+            get: { model.matterError != nil },
+            set: { if !$0 { model.matterError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.matterError ?? "")
         }
         .sheet(isPresented: $isAddingNote) {
             CaseWriteSheet(kind: .note) { title, body, _ in
@@ -293,6 +343,39 @@ struct CaseDetailView: View {
     }
 }
 
+/// "Stop tracking": the confirmation before it, and the reason when it was refused.
+private struct CaseRemovalPrompts: ViewModifier {
+    let model: CaseDetailViewModel
+    @Binding var isConfirming: Bool
+    let onRemoved: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                CaseRemovalCopy.confirmTitle,
+                isPresented: $isConfirming,
+                titleVisibility: .visible
+            ) {
+                Button(CaseRemovalCopy.action, role: .destructive) {
+                    Task {
+                        if await model.remove() { onRemoved() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(CaseRemovalCopy.confirmMessage)
+            }
+            .alert(CaseRemovalCopy.failedTitle, isPresented: Binding(
+                get: { model.removeError != nil },
+                set: { if !$0 { model.removeError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.removeError ?? "")
+            }
+    }
+}
+
 /// A cited or fetched order PDF.
 private struct OrderDocumentView: View {
     let document: CaseDetailViewModel.OpenDocument
@@ -319,4 +402,11 @@ private struct OrderDocumentView: View {
                 }
         }
     }
+}
+
+/// A matter's workspace pushed from its case. A value type, so `navigationDestination(item:)`
+/// can present it and asking again for the same matter is a new presentation.
+struct MatterRoute: Hashable, Identifiable {
+    let projectID: String
+    var id: String { projectID }
 }

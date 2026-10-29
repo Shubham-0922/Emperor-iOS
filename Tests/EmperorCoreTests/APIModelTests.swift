@@ -38,11 +38,11 @@ final class APIModelTests: XCTestCase {
 
     func testLoginResponseDecodes() throws {
         let response = try decode(AuthResponse.self, """
-        {"success":true,"user":{"id":7,"email":"a@b.com","name":"Jane","avatar":null,
+        {"success":true,"user":{"id":1216,"email":"a@b.com","name":"Jane","avatar":null,
         "title":null,"organization":null,"preferred_model":"fast","plan":"lite",
         "planLabel":"Lite"},"token":"abc.def"}
         """)
-        XCTAssertEqual(response.user.id, 7)
+        XCTAssertEqual(response.user.id, 1216)
         XCTAssertEqual(response.user.preferredModel, "fast")
         XCTAssertEqual(response.token, "abc.def")
     }

@@ -128,11 +128,11 @@ final class GapFixTests: XCTestCase {
         HTTPStub.always(.json(#"{"success":true}"#))
         let auth = AuthService(client: client)
 
-        try await auth.requestPasswordReset(email: "  R.Iyer@Example.TEST ")
+        try await auth.requestPasswordReset(email: "  R.Iyer@Chambers.IN ")
 
         let sent = try XCTUnwrap(HTTPStub.lastRequest)
         XCTAssertEqual(sent.path, "/api/forgot-password")
-        XCTAssertEqual(sent.bodyJSON["email"] as? String, "r.iyer@example.test")
+        XCTAssertEqual(sent.bodyJSON["email"] as? String, "r.iyer@chambers.in")
         XCTAssertNil(sent.header("Authorization"), "you are locked out — there is no token")
     }
 
@@ -163,6 +163,19 @@ final class GapFixTests: XCTestCase {
             XCTAssertEqual(uploads.uploadedNames, ["Order.pdf"])
             XCTAssertEqual(uploads.uploadedFolders, [FileLibraryViewModel.uploadFolder])
             XCTAssertEqual(model.files.count, 1, "and the library is re-read once it is readable")
+            XCTAssertNil(model.uploadError)
+        }
+    }
+
+    func testAConvertedUploadShowsItsStoredNameAndRefreshesTheLibrary() async {
+        await withLibrary { files, uploads, model in
+            uploads.events = [.stored(name: "scan (1).pdf"), .finished(.ready)]
+            files.tree = [folder("Uploads", [.file(readyFile("Uploads/scan (1).pdf"))])]
+
+            await model.upload(data: Data("x".utf8), fileName: "scan.png")
+
+            XCTAssertEqual(model.storedName, "scan (1).pdf")
+            XCTAssertEqual(model.files.count, 1)
             XCTAssertNil(model.uploadError)
         }
     }

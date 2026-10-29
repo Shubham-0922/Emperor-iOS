@@ -226,6 +226,9 @@ struct RootView: View {
                 ProgressView().controlSize(.large)
             }
         }
+        // A shared conversation a link asked for, over whatever is showing — signed in or not,
+        // once the disclaimer is answered. Inside the theme, so the sheet wears it.
+        .presentsSharedChats(isReady: hasAcknowledgedDisclaimer == true)
         .environment(\.theme, theme)
         .environment(\.practice, practice)
         // The device's appearance unless the user has chosen one — `ThemePreference.default` is
@@ -293,7 +296,7 @@ struct RootView: View {
             if !hasAnsweredRoleWelcome
                 && RoleWelcome.shouldShow(
                     preferences, isSignedIn: true, accountRole: user.practiceRole) {
-                RoleWelcomeView(name: user.name) { chosen in
+                RoleWelcomeView(user: user) { chosen in
                     if let chosen { practice.select(chosen) }
                     RoleWelcome.finish(choosing: chosen, in: preferences)
                     withAnimation { hasAnsweredRoleWelcome = true }
@@ -340,9 +343,14 @@ private struct AccountLifecycle: ViewModifier {
                 if hasAcknowledgedDisclaimer == nil {
                     hasAcknowledgedDisclaimer = Disclaimer.hasAcknowledged(preferences)
                 }
+                // Recent lookups are kept per account now; the one list earlier builds kept for
+                // the whole device named whoever had signed in last. See `RecentLookups`.
+                RecentLookups.dropDeviceWideList(from: preferences)
             }
             // URLs handed to the app, through one handler: the app's own `emperor://` links (the
-            // Today widget's tap, chiefly — see `AppLinks`), then documents another app handed over
+            // Today widget's tap, chiefly — see `AppLinks`) and shared-conversation links, both the
+            // app's own and the web's `https://…/share/<id>` should it arrive as a Universal Link
+            // (`SharedChatLink`), then documents another app handed over
             // ("Open in Emperor"), which arrive as file URLs. One handler rather than one each,
             // because how SwiftUI treats several `onOpenURL`s on one view is not something to rely on.
             .onOpenURL { url in

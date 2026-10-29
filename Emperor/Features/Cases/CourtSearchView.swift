@@ -7,14 +7,30 @@ import UIKit
 /// only be added from a desktop. It is presented as a sheet from the docket rather than a tab,
 /// because adding a case is something you do occasionally and finish, not somewhere you live.
 struct CourtSearchView: View {
+    /// What the search is for. The form is the same; the result row leads with the answer.
+    enum Purpose {
+        /// Add the case to the docket — the row's first button pins it.
+        case track
+        /// Fetch Orders: read the case first — the row's first button opens its record.
+        case lookup
+        /// New matter: choose the case. The row's button hands it to `onPick` and closes; the
+        /// matter sheet tracks it when the matter is made.
+        case pick
+    }
+
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
 
+    var purpose: Purpose = .track
     /// Called after a case is pinned, so the docket behind this sheet reloads.
     let onSaved: () -> Void
+    /// `.pick` only: the case chosen.
+    var onPick: ((CourtSearchResult) -> Void)? = nil
 
     @State private var model: CourtSearchViewModel?
+    /// The result being read without being added (`CourtRecordView`).
+    @State private var reading: CourtSearchResult?
 
     var body: some View {
         NavigationStack {
@@ -25,7 +41,7 @@ struct CourtSearchView: View {
                     ProgressView()
                 }
             }
-            .navigationTitle(CourtSearchViewModel.Copy.title)
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -37,8 +53,25 @@ struct CourtSearchView: View {
                 model = CourtSearchViewModel(
                     service: session.courtSearch,
                     metadata: session.courtMetadata,
-                    onSaved: onSaved)
+                    onSaved: onSaved,
+                    recent: session.recentLookups)
             }
+            .sheet(item: $reading, onDismiss: { model?.refreshRecent() }) { result in
+                CourtRecordView(card: result) { _ in
+                    // Added from the record: the docket behind this sheet has a new row.
+                    onSaved()
+                    model?.markSaved(result)
+                }
+                .pageSizedSheet()
+            }
+        }
+    }
+
+    private var title: String {
+        switch purpose {
+        case .track: return CourtSearchViewModel.Copy.title
+        case .lookup: return CourtSearchViewModel.Copy.lookupTitle
+        case .pick: return CourtSearchViewModel.Copy.pickTitle
         }
     }
 
@@ -46,6 +79,9 @@ struct CourtSearchView: View {
         @Bindable var model = model
 
         return Form {
+            if purpose == .lookup {
+                LookupIntroSection()
+            }
             Section {
                 NavigationLink {
                     CourtPicker(model: model)
@@ -66,12 +102,14 @@ struct CourtSearchView: View {
                 // Only where there is a choice. Ten tribunals and three consumer fora publish no
                 // pre-registration lookup, so offering the pill and refusing it would be worse
                 // than never showing it.
-                if model.query.forum.availableModes.count > 1 {
+                // A High Court on its own portal is searched by case number only, so it offers
+                // no choice either.
+                if model.query.availableModes.count > 1 {
                     Picker("Search by", selection: Binding(
                         get: { model.query.mode },
                         set: { model.setMode($0) }
                     )) {
-                        ForEach(model.query.forum.availableModes) { mode in
+                        ForEach(model.query.availableModes) { mode in
                             Text(mode.label(for: model.query.forum)).tag(mode)
                         }
                     }
@@ -102,6 +140,10 @@ struct CourtSearchView: View {
             }
 
             resultsSection(model)
+
+            if purpose == .lookup, !model.recentLookups.isEmpty {
+                RecentLookupsSection(model: model) { reading = $0 }
+            }
         }
         .font(.brand(.body))
         .scrollContentBackground(.hidden)
@@ -188,7 +230,7 @@ struct CourtSearchView: View {
                     SectionHeader(title: court.name)
                 } footer: {
                     if model.expectsLongWait {
-                        Text(CourtSearchViewModel.Copy.captchaWait)
+                        Text(model.longWaitNote)
                             .font(.brand(.caption))
                             .foregroundStyle(theme.textSecondary)
                     }
@@ -357,10 +399,63 @@ struct CourtSearchView: View {
                     .foregroundStyle(theme.warning)
             }
 
-            saveButton(model, result)
-                .padding(.top, Spacing.xxs)
+            // Two ways on: read the record first (Fetch Orders), or add it straight away. The
+            // purpose decides which leads.
+            HStack(spacing: Spacing.sm) {
+                if purpose == .pick {
+                    pickButton(result)
+                } else if purpose == .lookup {
+                    readButton(result, prominent: true)
+                    saveButton(model, result)
+                } else {
+                    saveButton(model, result)
+                    readButton(result, prominent: false)
+                }
+            }
+            .padding(.top, Spacing.xxs)
         }
         .padding(.vertical, Spacing.xs + 2)
+    }
+
+    /// New matter's choice: this is the case. Nothing is saved here — the matter sheet tracks it
+    /// when the matter is made, so backing out of New matter leaves nothing behind.
+    private func pickButton(_ result: CourtSearchResult) -> some View {
+        Button {
+            onPick?(result)
+            dismiss()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                Text(CourtSearchViewModel.Copy.useThisCase)
+            }
+            .font(.brand(.caption, weight: .semibold))
+            .foregroundStyle(theme.accentText)
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, 6)
+            .background(theme.accentWash, in: Capsule())
+            .overlay(Capsule().strokeBorder(theme.accentMuted, lineWidth: 1))
+        }
+        .buttonStyle(.borderless)
+    }
+
+    /// Opens the case's record from the court — orders, hearings, parties — without adding it.
+    private func readButton(_ result: CourtSearchResult, prominent: Bool) -> some View {
+        Button {
+            reading = result
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text.magnifyingglass")
+                Text(prominent ? CourtSearchViewModel.Copy.fetchThisCase : CourtSearchViewModel.Copy.readFirst)
+            }
+            .font(.brand(.caption, weight: .semibold))
+            .foregroundStyle(prominent ? theme.accentText : theme.textSecondary)
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, 6)
+            .background(prominent ? theme.accentWash : theme.surface2, in: Capsule())
+            .overlay(Capsule().strokeBorder(prominent ? theme.accentMuted : theme.border, lineWidth: 1))
+        }
+        .buttonStyle(.borderless)
+        .accessibilityHint("Reads the case from the court's records without adding it")
     }
 
     @ViewBuilder
@@ -605,5 +700,90 @@ private struct CaptchaSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Fetch Orders' front door: one line saying what this is, and the three steps from "I have a
+/// case number" to "I have it in Matters" — the web's `LookupSearch`.
+private struct LookupIntroSection: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text(CourtSearchViewModel.Copy.lookupLead)
+                    .font(.display(size: 22, relativeTo: .title2))
+                    .foregroundStyle(theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text(CourtSearchViewModel.Copy.lookupBlurb)
+                    .font(.brand(.footnote))
+                    .foregroundStyle(theme.textFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(CourtSearchViewModel.Copy.lookupSteps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .top, spacing: Spacing.sm) {
+                        IconTile(systemImage: step.symbol, size: .small)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(index + 1). \(step.title)")
+                                .font(.brand(.footnote, weight: .semibold))
+                                .foregroundStyle(theme.textPrimary)
+                            Text(step.text)
+                                .font(.brand(.caption))
+                                .foregroundStyle(theme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(.vertical, Spacing.xs)
+        }
+        .listRowBackground(theme.surface)
+    }
+}
+
+/// The cases looked up lately on this device — a shortcut back, not a record.
+private struct RecentLookupsSection: View {
+    @Environment(\.theme) private var theme
+    let model: CourtSearchViewModel
+    let onOpen: (CourtSearchResult) -> Void
+
+    var body: some View {
+        Section {
+            ForEach(model.recentLookups) { entry in
+                Button {
+                    onOpen(entry.card)
+                } label: {
+                    HStack(spacing: Spacing.sm) {
+                        IconTile(systemImage: "building.columns", size: .small)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.displayTitle)
+                                .font(.brand(.subheadline, weight: .medium))
+                                .foregroundStyle(theme.textPrimary)
+                                .dynamicLineLimit(2)
+                            Text(entry.detailLine)
+                                .font(.brand(.caption2))
+                                .foregroundStyle(theme.textTertiary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        RowChevron()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Reads the case from the court's records again")
+                .swipeActions {
+                    Button(role: .destructive) {
+                        model.forgetRecent(entry)
+                    } label: {
+                        Label("Forget", systemImage: "trash")
+                    }
+                }
+            }
+        } header: {
+            SectionHeader(title: CourtSearchViewModel.Copy.lookedUpRecently)
+        }
+        .listRowBackground(theme.surface)
     }
 }

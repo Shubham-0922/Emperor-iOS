@@ -54,8 +54,14 @@ final class SignInFlow {
     private(set) var isWorking = false
     /// What went wrong, in words for the person signing in.
     private(set) var error: String?
+    /// The server's refusal of the mobile number (`BAD_PHONE`), shown under that field until the
+    /// number is edited.
+    private(set) var phoneRejection: String?
     /// Something worth saying that is not a failure: "We've sent a code to …".
     private(set) var notice: String?
+    /// How long the last emailed code works, as the server said when it sent it; nil when it
+    /// did not say.
+    private(set) var codeLifetimeMinutes: Int?
     /// Whether to offer "Email me a sign-in code" on the sign-in step — after the server has
     /// said this account has no password, or on request.
     private(set) var offersCode = false
@@ -144,6 +150,7 @@ final class SignInFlow {
 
     /// Under the mobile field: what is wrong with it, or nil when it is empty or complete.
     var phoneHint: String? {
+        if step == .createAccount, let phoneRejection { return phoneRejection }
         guard step == .createAccount, !phone.isEmpty, !IndianMobile.isValid(phone) else { return nil }
         if phone.count < 10 { return "\(10 - phone.count) more digit\(10 - phone.count == 1 ? "" : "s")." }
         return "An Indian mobile number starts with 6, 7, 8 or 9."
@@ -214,6 +221,7 @@ final class SignInFlow {
     /// contact card included — by the platform's own rules (`IndianMobile`).
     func setPhone(_ raw: String) {
         phone = IndianMobile.normalize(raw)
+        phoneRejection = nil
     }
 
     /// Keeps only digits and at most six of them, so a code pasted from an email with spaces or
@@ -280,6 +288,8 @@ final class SignInFlow {
                 self.step = .signIn
                 self.offersCode = true
                 self.error = DisplayText.message(for: refusal)
+            case .badPhone:
+                self.phoneRejection = DisplayText.message(for: refusal)
             default:
                 self.error = DisplayText.message(for: refusal)
             }
@@ -319,6 +329,7 @@ final class SignInFlow {
             self.lastSendAt = sentAt
             self.code = ""
             self.step = .enterCode(email: address)
+            self.codeLifetimeMinutes = request.expiresInMinutes
             let minutes = request.expiresInMinutes.map { " It works for \($0) minutes." } ?? ""
             self.notice = "We've emailed a \(Self.codeLength)-digit code to \(address).\(minutes)"
         }

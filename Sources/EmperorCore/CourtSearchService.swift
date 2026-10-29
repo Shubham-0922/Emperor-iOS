@@ -48,6 +48,10 @@ struct CourtSearchService: CourtSearching {
     /// outlast a normal request timeout, and both are doing real work rather than hanging.
     static let timeout: TimeInterval = 60
 
+    /// A High Court's own portal is read with retries inside the request, and the slowest of them
+    /// takes most of a minute for each attempt.
+    static let dedicatedTimeout: TimeInterval = 90
+
     // MARK: - Lookup
 
     /// - Important: this route answers **HTTP 200 for everything**, so the status code is not
@@ -58,13 +62,13 @@ struct CourtSearchService: CourtSearching {
         // A court with no route is refused here as well as being unreachable from the screen.
         // The district courts have exactly one endpoint and it fabricates its answer from the
         // request, so "no route" is the correct reading rather than a gap to fill.
-        guard let path = query.forum.path(for: query.mode) else {
+        guard let path = query.searchPath else {
             throw APIError.server(
                 status: 400,
                 message: "Emperor cannot look a case up at this court yet.")
         }
         var request = try await client.makeRequest("POST", path, body: query.body)
-        request.timeoutInterval = Self.timeout
+        request.timeoutInterval = query.highCourtDedicated ? Self.dedicatedTimeout : Self.timeout
 
         // Never retried. A lookup can take ten seconds of the court's time and a second
         // attempt would double that while a lawyer waits — and a genuine court outage does not
@@ -232,23 +236,10 @@ struct CourtSearchService: CourtSearching {
             throw APIError.notAuthenticated
         }
 
-        var body: [String: JSONValue] = ["userId": .string(credentials.userIDString)]
-        func put(_ key: String, _ value: String?) {
-            guard let value, !value.isEmpty else { return }
-            body[key] = .string(value)
-        }
-        put("cnr", result.cnr)
-        put("diaryNumber", result.diaryNumber)
-        put("courtType", result.courtType)
-        put("courtCode", result.courtCode)
-        put("courtName", result.courtName)
-        put("caseType", result.caseType)
-        put("caseNumber", result.caseNumber)
-        put("caseYear", result.caseYear)
-        put("title", result.title)
-        put("parties", result.parties)
-        put("status", result.status)
-        if let scrapeRef = result.scrapeRef { body["scrapeRef"] = scrapeRef }
+        // The card's fields — shared with `/court/lookup`, which takes the same card nested
+        // under `card`, so the two routes cannot drift apart about what identifies a case.
+        var body = result.cardFields
+        body["userId"] = .string(credentials.userIDString)
 
         var request = try await client.makeRequest(
             "POST", "/save-case", body: SavePayload(body: body))

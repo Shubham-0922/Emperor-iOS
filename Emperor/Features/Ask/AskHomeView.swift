@@ -76,7 +76,17 @@ struct AskHomeView: View {
                 }
             }
             .sheet(isPresented: $isChoosingMode) {
-                AnswerModeSheet(selection: mode) { chosenMode = $0 }
+                AnswerModeSheet(selection: mode) { chosen in
+                    chosenMode = chosen
+                    // The account's starting mode follows, as the web's toggle sets it.
+                    // Best-effort: a failure leaves it chosen for this question.
+                    let routes = session.fileRoutes
+                    let session = self.session
+                    Task {
+                        try? await routes.setPreferredModel(chosen)
+                        await session.refreshPreferredModel()
+                    }
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .emperorConnectivityChanged)) { _ in

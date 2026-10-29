@@ -37,6 +37,27 @@ final class RefusalTests: XCTestCase {
         XCTAssertEqual(unverified?.email, "a@b.in")
     }
 
+    func testTheAccountCodesParseAndAreWordedHere() throws {
+        let none = try XCTUnwrap(Refusal.parse(status: 403, body: body(
+            #"{"error":"This account was not found.","code":"NO_ACCOUNT"}"#)))
+        XCTAssertEqual(none.code, .noAccount)
+        XCTAssertFalse(none.concernsThePlan)
+        XCTAssertTrue(DisplayText.message(for: none).contains("couldn't be found"))
+
+        let auth = try XCTUnwrap(Refusal.parse(status: 401, body: body(
+            #"{"success":false,"code":"AUTH","error":"Please sign in again to fetch court records."}"#)))
+        XCTAssertEqual(auth.code, .reauthenticate)
+        XCTAssertEqual(DisplayText.message(for: auth), "Please sign in again to continue.")
+        XCTAssertEqual(APIError.classify(status: 401, body: body(
+            #"{"code":"AUTH","error":"x"}"#)).refusal?.code, .reauthenticate)
+        XCTAssertEqual(APIError.classify(status: 401, body: body(#"{"error":"x"}"#)), .invalidCredentials)
+
+        let phone = try XCTUnwrap(Refusal.parse(status: 400, body: body(
+            #"{"error":"Please enter a valid 10-digit Indian mobile number.","code":"BAD_PHONE"}"#)))
+        XCTAssertEqual(phone.code, .badPhone)
+        XCTAssertTrue(DisplayText.message(for: phone).contains("10-digit"))
+    }
+
     /// An unknown code must not become a refusal: replacing a sentence we cannot interpret with a
     /// guess is worse than showing the server's own.
     func testAnUnknownCodeIsNotARefusal() {
@@ -77,8 +98,13 @@ final class RefusalTests: XCTestCase {
             APIError.classify(status: 500, body: body(#"{"error":"Missing userId"}"#)),
             .server(status: 500, message: "Missing userId"))
         XCTAssertEqual(
+            APIError.classify(status: 500, body: Data()),
+            .server(status: 500, message: "The server returned status 500."))
+        // A bare 502 is not the platform's sentence at all but the gateway's — the platform is
+        // being restarted — and reads as such (`GatewayDownTests`).
+        XCTAssertEqual(
             APIError.classify(status: 502, body: Data()),
-            .server(status: 502, message: "The server returned status 502."))
+            .maintenance(message: APIError.unreachableMessage))
     }
 
     /// The client answers a refusal with silence, not three retries that count against the
