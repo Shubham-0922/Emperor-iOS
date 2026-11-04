@@ -288,7 +288,7 @@ struct ComplianceCalendarView: View {
             } else {
                 ForEach(dayDeadlines) { deadline in
                     NavigationLink {
-                        ComplianceDeadlineDetailView(detail: model.detail(for: deadline))
+                        ComplianceDeadlineDetailView(model: model, deadline: deadline)
                     } label: {
                         row(deadline, model)
                     }
