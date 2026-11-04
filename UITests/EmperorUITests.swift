@@ -319,7 +319,11 @@ final class EmperorUITests: XCTestCase {
             corporate.waitForExistence(timeout: 10), "the Calendar has no Corporate calendar switch")
         corporate.tap()
 
+        // The agenda sits below the month grid and the company bar, so on a phone the row
+        // starts below the fold, and a List builds no row it is not showing. Reveal it first,
+        // the way every below-fold row here is reached, then wait for it.
         let deadline = app.staticTexts["GSTR-1"]
+        app.reveal(deadline)
         XCTAssertTrue(deadline.waitForExistence(timeout: 10), "the deadline is not listed")
         deadline.tap()
 
