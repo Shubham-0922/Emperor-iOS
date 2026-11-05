@@ -16,12 +16,12 @@ struct MattersView: View {
     @Environment(\.navigator) private var navigator
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    enum Segment: Hashable { case next, upcoming, all }
+    enum Segment: Hashable { case matters, causeList }
 
     @State private var path: [CaseRoute] = []
     @State private var causeList: CauseListViewModel?
     @State private var cases: CaseListViewModel?
-    @State private var segment: Segment = .next
+    @State private var segment: Segment = .matters
     @State private var openHearing: CauseListing?
     @State private var isAddingMatter = false
     @State private var isArranging = false
@@ -31,56 +31,67 @@ struct MattersView: View {
     @State private var toast: String?
     /// The docket row whose "Stop tracking" is being confirmed.
     @State private var removalCandidate: LegalCase?
+    @State private var selectedStatus = "Active"
+    @State private var selectedPracticeArea = "All Practice Areas"
+    @State private var selectedSort = "Recent activity"
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if let overview {
-                        Text(overview.subtitle(trackedMatters: cases.map { $0.cases.count }))
-                            .font(.brand(.subheadline))
-                            .foregroundStyle(theme.textFaint)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    RecordSegmentedControl(
-                        label: "Show",
-                        options: [
-                            (value: Segment.next, title: nextLabel),
-                            (value: Segment.upcoming, title: "Upcoming"),
-                            (value: Segment.all, title: "All matters"),
-                        ],
-                        selection: $segment)
-                        .padding(.top, Spacing.lg)
-
-                    if let failure = causeList?.state.failure, segment != .all {
-                        refreshFailed(failure)
-                            .padding(.top, Spacing.md)
-                    }
-
-                    Group {
-                        switch segment {
-                        case .next: nextSittingList
-                        case .upcoming: upcomingList
-                        case .all: allMattersList
-                        }
-                    }
-                    .padding(.top, 14)
-
-                    if segment != .all {
-                        Text("Court and item numbers come from the published cause list, for your own matters. \(CauseListViewModel.Copy.confirmWithCourt)")
-                            .font(.brand(size: 12.5, relativeTo: .caption))
-                            .foregroundStyle(theme.textTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, Spacing.md)
-                    }
+            VStack(alignment: .leading, spacing: 0) {
+                if let overview {
+                    Text(overview.subtitle(trackedMatters: cases.map { $0.cases.count }))
+                        .font(.brand(.subheadline))
+                        .foregroundStyle(theme.textFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, Spacing.gutter)
                 }
-                .padding(.horizontal, Spacing.gutter)
-                .padding(.bottom, Spacing.xxxl)
-                .frame(maxWidth: ReadableWidth.cap(for: sizeClass))
-                .frame(maxWidth: .infinity)
+
+                // A page-style TabView must be given a height, which a ScrollView wrapping it
+                // cannot do: the pager sits here instead, and each page scrolls itself.
+                TabView(selection: $segment) {
+                    // Page 1: the docket — every matter
+                    ScrollView {
+                        allMattersList
+                            .padding(.horizontal, Spacing.gutter)
+                            .padding(.top, Spacing.lg)
+                            .padding(.bottom, Spacing.xxxl)
+                            .frame(maxWidth: ReadableWidth.cap(for: sizeClass))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .refreshable { await refresh() }
+                    .tag(Segment.matters)
+
+                    // Page 2: the cause list — next sitting, then what is upcoming
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if let failure = causeList?.state.failure {
+                                refreshFailed(failure)
+                                    .padding(.top, Spacing.md)
+                            }
+
+                            nextSittingList
+                                .padding(.top, 14)
+
+                            upcomingList
+                                .padding(.top, 14)
+
+                            Text("Court and item numbers come from the published cause list, for your own matters. \(CauseListViewModel.Copy.confirmWithCourt)")
+                                .font(.brand(size: 12.5, relativeTo: .caption))
+                                .foregroundStyle(theme.textTertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, Spacing.md)
+                        }
+                        .padding(.horizontal, Spacing.gutter)
+                        .padding(.bottom, Spacing.xxxl)
+                        .frame(maxWidth: ReadableWidth.cap(for: sizeClass))
+                        .frame(maxWidth: .infinity)
+                    }
+                    .refreshable { await refresh() }
+                    .tag(Segment.causeList)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .padding(.top, Spacing.lg)
             }
-            .refreshable { await refresh() }
             .background(theme.canvas)
             .navigationTitle("Matters")
             .navigationBarTitleDisplayMode(.large)
@@ -176,10 +187,10 @@ struct MattersView: View {
         }
         ToolbarItemGroup(placement: .primaryAction) {
             // The next sitting's list, downloaded as the web's cause list downloads a day.
-            if segment == .next, let day = overview?.nextSitting {
+            if segment == .causeList, let day = overview?.nextSitting {
                 CauseListDownloadMenu(day: day.key, listings: day.listings)
             }
-            if segment == .all, let cases {
+            if segment == .matters, let cases {
                 Button {
                     isArranging = true
                 } label: {
@@ -190,15 +201,14 @@ struct MattersView: View {
                 .accessibilityLabel(CaseListViewModel.Copy.arrange)
                 .accessibilityValue(cases.filterSummary)
             }
-            // The web's New matter: a matter of its own — name, banner, folder colour — before
-            // any court case. Its own button, beside the court lookup rather than inside a menu
-            // with it, so each is one tap and one control.
+           
+            // New Matter : a matter of its own -name , banner , folder color - before any court case.
             Button {
                 isCreatingMatter = true
             } label: {
-                Image(systemName: "folder.badge.plus")
+                Image(systemName: "plus")
             }
-            .accessibilityLabel(ProjectListViewModel.Copy.newMatter)
+            .accessibilityLabel("New matter")
             .accessibilityHint("Starts a matter with its own name, banner and folder colour")
             Button {
                 isAddingMatter = true
@@ -293,7 +303,43 @@ struct MattersView: View {
             @Bindable var bindable = cases
             VStack(alignment: .leading, spacing: Spacing.md) {
                 RecordSearchField(text: $bindable.query, prompt: CaseListViewModel.Copy.searchPrompt)
-
+                // Three dropdown filters
+                HStack(spacing: Spacing.sm) {
+                    FilterDropdown(
+                        title: "Status",
+                        options: [
+                            ("Active", 0),
+                            ("On hold", 0),
+                            ("Disposed", 0),
+                            ("Archived", 0),
+                            ("All statuses", 0)
+                        ],
+                        selected: $selectedStatus
+                    )
+                
+                    FilterDropdown(
+                        title: "Practice Areas",
+                        options: [
+                            ("All Practice Areas", nil),
+                            ("Civil", nil),
+                            ("Writ/constitutional", nil),
+                            ("Insolvency", nil),
+                            ("No practice area", nil)
+                        ],
+                        selected: $selectedPracticeArea
+                    )
+                
+                    FilterDropdown(
+                        title: "Sort",
+                        options: [
+                            ("Recent activity", nil),
+                            ("Next hearing", nil),
+                            ("Name A-Z", nil)
+                        ],
+                        selected: $selectedSort
+                    )
+                }
+                .padding(.top, Spacing.sm)
                 if !cases.filterChips.isEmpty {
                     FilterChipBar(
                         chips: cases.filterChips,
@@ -448,7 +494,7 @@ struct MattersView: View {
 
     private func openRequestedCase() {
         guard let stack = navigator.takePendingCaseStack() else { return }
-        segment = .all
+        segment = .matters
         path = stack
     }
 
