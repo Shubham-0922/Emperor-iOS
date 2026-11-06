@@ -179,11 +179,10 @@ final class AccessibilityAuditTests: XCTestCase {
         }
 
         if tab == "Matters" {
-            // The docket — All matters — then back; the Calendar is a tab of its own now and is
+            // The docket — the first page of the Matters tab — then back; the Calendar is a tab of its own now and is
             // audited by its own test.
-            let all = app.buttons["All matters"].firstMatch
-            if reached(all, "the docket") {
-                all.tap()
+            if reached(app.tab("Matters"), "the docket") {
+                app.tab("Matters").tap()
                 _ = app.descendants(matching: .any).matching(identifier: "case-row-case1")
                     .firstMatch.waitForExistence(timeout: 10)
                 audit(theme + "matters-docket", in: app)

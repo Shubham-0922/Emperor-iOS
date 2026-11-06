@@ -197,7 +197,7 @@ final class ScreenshotTour: XCTestCase {
         }
         tapIfPresent(app.buttons["Upcoming"].firstMatch)
         snap("matters-upcoming")
-        tapIfPresent(app.buttons["All matters"].firstMatch)
+        app.tab("Matters").tap()
         snap("matters-docket")
 
         // The docket's sort & filter sheet, then scrolled to show the filters, and the docket

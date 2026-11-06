@@ -1035,15 +1035,11 @@ final class EmperorUITests: XCTestCase {
 
     // MARK: - Matters: court headings, sort & filter, and the docket's own search
 
-    /// Opens Matters on "All matters" — the docket.
+    /// Opens the docket page within the Matters tab.
     private func openTheDocket(_ app: XCUIApplication) {
         XCTAssertTrue(app.tab("Matters").waitForExistence(timeout: 10))
         app.tab("Matters").tap()
         XCTAssertTrue(app.navigationBars["Matters"].waitForExistence(timeout: 10))
-        let all = app.buttons["All matters"].firstMatch
-        XCTAssertTrue(all.waitForExistence(timeout: 10), "Matters has no All matters")
-        all.tap()
-        XCTAssertTrue(becomesSelected(all), "All matters did not open")
     }
 
     /// A docket row, by the case's id — its label is the whole row read aloud.
