@@ -1040,6 +1040,8 @@ final class EmperorUITests: XCTestCase {
         XCTAssertTrue(app.tab("Matters").waitForExistence(timeout: 10))
         app.tab("Matters").tap()
         XCTAssertTrue(app.navigationBars["Matters"].waitForExistence(timeout: 10))
+        // The docket is the first page of the TabView
+        app.tab("Matters").tap()
     }
 
     /// A docket row, by the case's id — its label is the whole row read aloud.
