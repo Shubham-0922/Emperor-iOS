@@ -222,9 +222,12 @@ final class EmperorUITests: XCTestCase {
 
     /// The next sitting on Matters leads with where it is heard — item and courtroom — because
     /// that is what a litigator scans a list for. The row is one accessibility element saying so.
+    /// The listing is on the Cause List page, the second page of the tab's pager, so the page is
+    /// swiped to first.
     func testAMatterListingLeadsWithItsItemAndCourt() {
         let app = signedIn()
         app.tab("Matters").tap()
+        app.swipeLeft()
         let row = app.descendants(matching: .any).matching(
             NSPredicate(format: "label BEGINSWITH %@", "Item 7, Court 12")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10), "the listing does not lead with item and court")
@@ -1035,13 +1038,11 @@ final class EmperorUITests: XCTestCase {
 
     // MARK: - Matters: court headings, sort & filter, and the docket's own search
 
-    /// Opens the docket page within the Matters tab.
+    /// Opens the docket page within the Matters tab — the first page of its pager.
     private func openTheDocket(_ app: XCUIApplication) {
         XCTAssertTrue(app.tab("Matters").waitForExistence(timeout: 10))
         app.tab("Matters").tap()
         XCTAssertTrue(app.navigationBars["Matters"].waitForExistence(timeout: 10))
-        // The docket is the first page of the TabView
-        app.tab("Matters").tap()
     }
 
     /// A docket row, by the case's id — its label is the whole row read aloud.
