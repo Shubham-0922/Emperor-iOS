@@ -15,10 +15,15 @@ final class CasesUITests: XCTestCase {
         let matters = app.tab("Matters")
         XCTAssertTrue(matters.waitForExistence(timeout: 10))
         matters.tap()
-        let addMatter = app.buttons["Add a matter"].firstMatch
-        XCTAssertTrue(app.waitAndReveal(addMatter, timeout: 10), "no Add a matter")
-        addMatter.tap()
-        XCTAssertTrue(app.navigationBars["Find a case"].waitForExistence(timeout: 10))
+        let newMatter = app.buttons["New matter"].firstMatch
+        XCTAssertTrue(app.waitAndReveal(newMatter, timeout: 10), "no New matter")
+        newMatter.tap()
+        XCTAssertTrue(app.navigationBars["New matter"].waitForExistence(timeout: 10))
+        let find = app.buttons["Find in court records"].firstMatch
+        XCTAssertTrue(app.waitAndReveal(find, timeout: 10), "no Find in court records")
+        find.tap()
+        XCTAssertTrue(
+            app.navigationBars["Find the case in court records"].waitForExistence(timeout: 10))
 
         app.chooseCourt("Delhi", id: "court-hc-delhi")
 

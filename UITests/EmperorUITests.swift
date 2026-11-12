@@ -573,14 +573,23 @@ final class EmperorUITests: XCTestCase {
 
     // MARK: - Court search
 
-    /// Opens the court lookup from Matters' "Add a matter".
+    /// Opens the court lookup from Matters' New matter sheet, where the web's New matter modal
+    /// carries the same "Find the case" section.
     private func openTheCourtLookup(_ app: XCUIApplication) {
         XCTAssertTrue(app.tab("Matters").waitForExistence(timeout: 10))
         app.tab("Matters").tap()
         XCTAssertTrue(app.navigationBars["Matters"].waitForExistence(timeout: 10))
-        app.buttons["Add a matter"].firstMatch.tap()
+        let newMatter = app.buttons["New matter"].firstMatch
+        XCTAssertTrue(app.waitAndReveal(newMatter, timeout: 10), "no New matter")
+        newMatter.tap()
         XCTAssertTrue(
-            app.navigationBars["Find a case"].waitForExistence(timeout: 10),
+            app.navigationBars["New matter"].waitForExistence(timeout: 10),
+            "the New matter sheet did not open")
+        let find = app.buttons["Find in court records"].firstMatch
+        XCTAssertTrue(app.waitAndReveal(find, timeout: 10), "no Find in court records")
+        find.tap()
+        XCTAssertTrue(
+            app.navigationBars["Find the case in court records"].waitForExistence(timeout: 10),
             "the court search sheet did not open")
     }
 
@@ -1083,7 +1092,7 @@ final class EmperorUITests: XCTestCase {
     }
 
     /// The docket has a search field of its own that searches the user's own cases — by party,
-    /// by a diary number — and says so when nothing matches, with a way back. Adding a matter is
+    /// by a diary number — and says so when nothing matches, with a way back. New matter is
     /// a separate, labelled control.
     func testTheDocketsSearchBarSearchesYourOwnCases() {
         let app = signedIn()
@@ -1091,7 +1100,7 @@ final class EmperorUITests: XCTestCase {
 
         let search = docketSearch(app)
         XCTAssertTrue(search.waitForExistence(timeout: 10), "the docket has no search field")
-        XCTAssertTrue(app.buttons["Add a matter"].firstMatch.exists, "adding a matter is not its own control")
+        XCTAssertTrue(app.buttons["New matter"].firstMatch.exists, "New matter is not its own control")
         XCTAssertTrue(caseRow(app, "case-sc").waitForExistence(timeout: 10))
 
         search.focusForTyping()

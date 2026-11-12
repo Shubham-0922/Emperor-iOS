@@ -195,8 +195,9 @@ that makes no sense against the current source, `rm -rf .build` before investiga
   cause list and the Precedents Vault as the two cards; and the recent conversations, each
   pushing its thread on Home's own stack. **Ask** greets the reader by name in the design's serif,
   then the composer and the role's suggestions — a question sent from here opens a fresh
-  conversation. **Matters** holds the cause list and the docket (the next sitting, what is
-  upcoming, every matter) and opens the court lookup from "Add a matter". **Calendar** is both
+  conversation. **Matters** holds the docket and the cause list (the next sitting, what is
+  upcoming, every matter) behind one pill switch, and starts a matter — name, banner, folder
+  colour, then the court case — from the bar's "+". **Calendar** is both
   calendars behind one segmented switch — **My calendar** (the matters day by day, the diary,
   Subscribe in the bar) and **Corporate calendar** (`ComplianceCalendarView(embedded:)`, no stack
   of its own) — the month grid drawn by one `MonthGrid` in both. **More** is workspace management —

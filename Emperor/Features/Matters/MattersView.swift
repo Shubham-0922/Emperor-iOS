@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// The Matters tab: the next sitting, what is upcoming, and every matter.
+/// The Matters tab: the docket and the cause list, two pages under one pill switch, tapped or
+/// swiped between.
 ///
-/// The first two are the cause list (`MattersOverview`), each hearing led by its item number in
-/// the serif and opening its sheet; the third is the docket (`CaseListViewModel`), with its search,
-/// sort and filters, each matter pushing its page. `+` adds a matter through the court lookup, and
-/// the Calendar button in the bar switches to the Calendar tab. Pull to refresh checks
-/// the cause lists again, and says so when it is done.
+/// The first page is the docket (`CaseListViewModel`), with its search, sort and filters, each
+/// matter pushing its page; the second is the cause list (`MattersOverview`), each hearing led by
+/// its item number in the serif and opening its sheet. `+` starts a matter of its own — name,
+/// banner, folder colour, then the court case — and the Calendar button in the bar switches to
+/// the Calendar tab. Pull to refresh checks the cause lists again, and says so when it is done.
 ///
 /// - Important: what is listed here is the user's own matters by hearing date, not the court's
 ///   published list. Every empty state ends with `CauseListViewModel.Copy.confirmWithCourt`.
@@ -23,7 +24,6 @@ struct MattersView: View {
     @State private var cases: CaseListViewModel?
     @State private var segment: Segment = .matters
     @State private var openHearing: CauseListing?
-    @State private var isAddingMatter = false
     @State private var isArranging = false
     @State private var isShowingTeams = false
     @State private var isCreatingMatter = false
@@ -45,6 +45,16 @@ struct MattersView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, Spacing.gutter)
                 }
+
+                // The switch over the two pages below — the web's "Matters 5 | Cause List 1"
+                // pills. The pager still swipes; this is the way that does not need a gesture.
+                RecordSegmentedControl(
+                    label: "Docket or cause list",
+                    options: segmentOptions,
+                    selection: $segment)
+                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.top, Spacing.xs)
+                    .padding(.bottom, Spacing.sm)
 
                 // A page-style TabView must be given a height, which a ScrollView wrapping it
                 // cannot do: the pager sits here instead, and each page scrolls itself.
@@ -90,7 +100,6 @@ struct MattersView: View {
                     .tag(Segment.causeList)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .padding(.top, Spacing.lg)
             }
             .background(theme.canvas)
             .navigationTitle("Matters")
@@ -106,13 +115,6 @@ struct MattersView: View {
                     allListings: causeList?.listings ?? [],
                     onOpenMatter: { path = [CaseRoute(caseID: $0)] },
                     onAsk: { navigator.ask($0) })
-            }
-            .sheet(isPresented: $isAddingMatter) {
-                CourtSearchView {
-                    let cases = self.cases
-                    Task { await cases?.load() }
-                }
-                .pageSizedSheet()
             }
             .sheet(isPresented: $isArranging) {
                 if let cases {
@@ -158,6 +160,15 @@ struct MattersView: View {
         causeList.map { MattersOverview(listings: $0.listings, todayKey: $0.todayKey) }
     }
 
+    /// The pill switch's two pages, each with its count once the data is in — as the web's
+    /// "Matters 5 | Cause List 1" carries.
+    private var segmentOptions: [(value: Segment, title: String)] {
+        let matterCount = cases.map { " \($0.cases.count)" } ?? ""
+        let causeCount = causeList.map { " \($0.listings.count)" } ?? ""
+        return [(value: .matters, title: "Matters" + matterCount),
+                (value: .causeList, title: "Cause List" + causeCount)]
+    }
+
     /// The first segment is named for its day: "Today", "Mon 12 Oct".
     private var nextLabel: String {
         guard let overview, let day = overview.nextSitting else { return "Next sitting" }
@@ -201,8 +212,8 @@ struct MattersView: View {
                 .accessibilityLabel(CaseListViewModel.Copy.arrange)
                 .accessibilityValue(cases.filterSummary)
             }
-           
-            // New Matter : a matter of its own -name , banner , folder color - before any court case.
+            // A matter of its own — name, banner, folder colour — then its court case, the one
+            // way to add a matter from the bar.
             Button {
                 isCreatingMatter = true
             } label: {
@@ -210,13 +221,6 @@ struct MattersView: View {
             }
             .accessibilityLabel("New matter")
             .accessibilityHint("Starts a matter with its own name, banner and folder colour")
-            Button {
-                isAddingMatter = true
-            } label: {
-                Image(systemName: "plus")
-            }
-            .accessibilityLabel("Add a matter")
-            .accessibilityHint("Finds a case at its court and adds it to your matters")
         }
     }
 
@@ -237,9 +241,9 @@ struct MattersView: View {
                     : "\(CauseListViewModel.Copy.nothingAtAllDetail) \(CauseListViewModel.Copy.confirmWithCourt)"
             ) {
                 Button {
-                    isAddingMatter = true
+                    isCreatingMatter = true
                 } label: {
-                    Label("Add a matter", systemImage: "plus")
+                    Label("New matter", systemImage: "plus")
                 }
                 .buttonStyle(.primaryAction)
             }
@@ -356,9 +360,9 @@ struct MattersView: View {
                         message: CaseListViewModel.Copy.noMattersMessage
                     ) {
                         Button {
-                            isAddingMatter = true
+                            isCreatingMatter = true
                         } label: {
-                            Label("Add a matter", systemImage: "plus")
+                            Label("New matter", systemImage: "plus")
                         }
                         .buttonStyle(.primaryAction)
                     }

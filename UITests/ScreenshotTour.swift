@@ -223,13 +223,22 @@ final class ScreenshotTour: XCTestCase {
             }
         }
 
-        // Finding a case at the court — the form before a court is chosen.
-        let find = app.buttons["Add a matter"].firstMatch
-        if find.waitForExistence(timeout: 5) {
-            find.tap()
-            if app.navigationBars["Find a case"].waitForExistence(timeout: 10) {
-                snap("find-a-case")
-                tapIfPresent(app.navigationBars["Find a case"].buttons["Done"])
+        // Starting a matter — its name, banner and folder colour — then its court case.
+        let start = app.buttons["New matter"].firstMatch
+        if start.waitForExistence(timeout: 5) {
+            start.tap()
+            if app.navigationBars["New matter"].waitForExistence(timeout: 10) {
+                snap("new-matter")
+                let find = app.buttons["Find in court records"].firstMatch
+                if find.waitForExistence(timeout: 5) {
+                    find.tap()
+                    let lookup = app.navigationBars["Find the case in court records"]
+                    if lookup.waitForExistence(timeout: 10) {
+                        snap("find-a-case")
+                        tapIfPresent(lookup.buttons["Done"])
+                    }
+                }
+                tapIfPresent(app.navigationBars["New matter"].buttons["Cancel"])
             }
         }
 
